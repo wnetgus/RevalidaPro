@@ -27,6 +27,10 @@ const Dashboard = () => {
           </div>
         ))}
       </div>
+
+            <div style={{ marginTop: "30px", textAlign: "center" }}>
+        
+      </div>
     </div>
   );
 };
