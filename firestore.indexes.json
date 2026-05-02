@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "estatisticas_lote",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "data",      "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "questoes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "materia",   "order": "ASCENDING" },
+        { "fieldPath": "criadoEm",  "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -1,0 +1,127 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── PLANOS — qualquer pessoa pode ler (modal de assinatura)
+    match /planos/{planoId} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.auth.token.email == "drweynesouza@gmail.com";
+    }
+
+    // ─── USUÁRIOS
+    match /usuarios/{userId} {
+      allow create: if request.auth != null
+        && request.auth.uid == userId;
+
+      // FIX: removida a terceira condição "|| request.auth != null" que tornava
+      // todos os documentos de usuário públicos para qualquer autenticado.
+      // Leitura restrita ao próprio usuário e ao admin.
+      // Para o ranking público, usar coleção separada `perfis_publicos`.
+      allow read: if request.auth != null
+        && (request.auth.uid == userId
+            || request.auth.token.email == "drweynesouza@gmail.com");
+
+      allow update, delete: if request.auth != null
+        && (request.auth.uid == userId
+            || request.auth.token.email == "drweynesouza@gmail.com");
+
+      // Subcoleção de respostas individuais (Dashboard Missões + anti-repetição)
+      match /respostas/{respostaId} {
+        allow read, write: if request.auth != null
+          && (request.auth.uid == userId
+              || request.auth.token.email == "drweynesouza@gmail.com");
+      }
+
+      // Subcoleção de progresso de simulados INEP (continuar de onde parou)
+      match /progressoSimulado/{provaId} {
+        allow read, write: if request.auth != null
+          && (request.auth.uid == userId
+              || request.auth.token.email == "drweynesouza@gmail.com");
+      }
+    }
+
+    // ─── CADERNO DE ERROS
+    // FIX: adicionada validação de ownership pelo campo usuarioId.
+    // Antes: qualquer autenticado podia deletar erros de qualquer aluno.
+    // Agora: leitura/escrita restritas ao dono do documento e ao admin.
+    match /caderno_erros/{erroId} {
+      allow read, write: if request.auth != null
+        && (resource == null
+            || resource.data.usuarioId == request.auth.uid
+            || request.auth.token.email == "drweynesouza@gmail.com");
+      // resource == null cobre o caso de create (documento ainda não existe)
+      allow create: if request.auth != null
+        && (request.resource.data.usuarioId == request.auth.uid
+            || request.auth.token.email == "drweynesouza@gmail.com");
+    }
+
+    // ─── ESTATÍSTICAS POR LOTE (resumo de simulados)
+    match /estatisticas_lote/{loteId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ─── QUESTÕES
+    match /questoes/{questaoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.token.email == "drweynesouza@gmail.com";
+    }
+
+    // ─── TEORIAS (resumos teóricos por subtema — complemento ao simulador)
+    match /teorias/{teoriaId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.token.email == "drweynesouza@gmail.com";
+    }
+
+    // ─── DÚVIDAS
+    match /duvidas_questoes/{duvidaId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ─── MATERIAIS
+    match /materiais/{materialId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.token.email == "drweynesouza@gmail.com";
+    }
+
+    // ─── ESTATÍSTICAS
+    match /estatisticas/{estatId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ─── CHATS
+    match /chats/{userId} {
+      allow read, write: if request.auth != null
+        && (request.auth.uid == userId
+            || request.auth.token.email == "drweynesouza@gmail.com");
+      match /mensagens/{msgId} {
+        allow read, write: if request.auth != null
+          && (request.auth.uid == userId
+              || request.auth.token.email == "drweynesouza@gmail.com");
+      }
+    }
+
+    // ─── SALA CHAT — grupo aberto para alunos autenticados
+    // FIX: parênteses explícitos para garantir precedência correta de operadores.
+    match /sala_chat/{msgId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && (request.resource.data.autorId == request.auth.uid
+            || request.auth.token.email == "drweynesouza@gmail.com");
+      allow delete: if request.auth != null
+        && request.auth.token.email == "drweynesouza@gmail.com";
+      allow update: if false;
+    }
+
+    // ─── PAGAMENTOS
+    match /pagamentos/{pagId} {
+      allow read: if request.auth != null
+        && (resource.data.usuarioId == request.auth.uid
+            || request.auth.token.email == "drweynesouza@gmail.com");
+      allow write: if false;
+    }
+  }
+}

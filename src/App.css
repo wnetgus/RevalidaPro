@@ -1,24 +1,133 @@
-/* Sidebar desktop */
-.sidebar {
-  width: 220px;
-  position: fixed;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  transition: transform 0.3s ease;
+/* Animação suave ao trocar de aba */
+.main-content {
+  animation: fadeIn 0.4s ease-out;
 }
 
-/* Conteúdo principal */
-.content {
-  margin-left: 220px; /* empurra o conteúdo para a direita */
-  padding: 30px;
-  transition: margin-left 0.3s ease;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Mobile */
+/* Estilização dos Cards de Matéria (Dashboard) */
+.materia-card {
+  background: var(--bg-card) !important;
+  border: 1px solid #334155 !important;
+  border-radius: 24px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  cursor: pointer;
+}
+
+.materia-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--primary) !important;
+  box-shadow: 0 10px 25px rgba(79, 70, 229, 0.2) !important;
+}
+
+/* Efeito Especial para o Caderno de Erros */
+.card-especial-erros {
+  animation: pulse-red 2s infinite;
+  background: linear-gradient(135deg, #1e293b 0%, #2d1b1b 100%) !important;
+  border: 1px solid #ef4444 !important;
+}
+
+@keyframes pulse-red {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.2); }
+  70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* Barra de Progresso Animada */
+.progress-bar-fill {
+  background: linear-gradient(90deg, #4f46e5, #7c3aed) !important;
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.4);
+}
+
+/* Customização da Scrollbar interna */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 10px;
+}
+
+/* --- TRAVA DE SEGURANÇA PARA DISPOSITIVOS MÓVEIS --- */
+
+/* Quando a tela for menor que 768px (Tablets e Celulares) */
 @media (max-width: 768px) {
-  .content {
-    margin-left: 0; /* remove margem para mobile */
-    padding-top: 70px; /* espaço para botão hamburguer */
+  
+  /* 1. Ajuste da Sidebar: Ela não pode esmagar o conteúdo */
+  .sidebar {
+    position: absolute; /* Ela flutua sobre o conteúdo em vez de empurrar */
+    z-index: 100;
+    height: 100vh;
+  }
+
+  /* 2. Ajuste do Main: Ocupa a tela cheia */
+  main {
+    width: 100vw !important;
+    min-width: 100vw !important;
+  }
+
+  /* 3. Ajuste das Questões: Letras e Espaçamento */
+  h2 {
+    font-size: 16px !important; /* Texto um pouco menor para caber no celular */
+    line-height: 1.5 !important;
+  }
+
+  /* 4. Alternativas: Mais fáceis de tocar com o dedo */
+  button {
+    padding: 12px 15px !important;
+    font-size: 14px !important;
+  }
+
+  /* 5. Rodapé: Empilha os botões se necessário ou reduz o texto */
+  footer {
+    padding: 0 10px !important;
+    height: auto !important;
+    min-height: 70px;
+  }
+
+  footer button {
+    padding: 8px 10px !important;
+    font-size: 11px !important; /* Botões menores para não encavalar */
+  }
+
+  /* 6. Esconder textos longos em botões para mobile */
+  .btn-text-mobile {
+    display: none; /* Podemos usar isso para esconder palavras como "ANTERIOR" e deixar só a seta */
+  }
+}
+
+/* --- AJUSTE GERAL DE ESTRAPOLAMENTO --- */
+* {
+  box-sizing: border-box; /* O comando de ouro: padding não aumenta a largura */
+}
+
+html, body {
+  overflow-x: hidden; /* Proíbe a barra de rolagem horizontal no nível mais alto */
+  max-width: 100vw;
+}
+
+/* --- AJUSTE EXTRA DE CONFORTO VISUAL (MOBILE) --- */
+@media (max-width: 480px) {
+  .materia-card {
+    margin-bottom: 15px !important;
+    padding: 20px !important;
+  }
+  
+  /* Garante que o texto da questão não fique colado nas bordas */
+  .main-content {
+    padding: 10px !important;
+  }
+
+  /* Faz os botões de alternativa ocuparem a largura total para facilitar o toque */
+  .alternativa-btn, button {
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
   }
 }

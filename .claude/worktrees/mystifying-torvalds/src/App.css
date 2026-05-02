@@ -1,0 +1,24 @@
+/* Sidebar desktop */
+.sidebar {
+  width: 220px;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  transition: transform 0.3s ease;
+}
+
+/* Conteúdo principal */
+.content {
+  margin-left: 220px; /* empurra o conteúdo para a direita */
+  padding: 30px;
+  transition: margin-left 0.3s ease;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .content {
+    margin-left: 0; /* remove margem para mobile */
+    padding-top: 70px; /* espaço para botão hamburguer */
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+*.local
+
+# Variáveis de ambiente das Cloud Functions (NUNCA enviar para o GitHub)
+.env
+.env.local
+.env.production

@@ -1,214 +1,352 @@
-* {
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+
+/* ============================================================
+   RESET E BASE GLOBAL
+============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
-  font-family: "Segoe UI", sans-serif;
 }
 
-body {
-  background: #f4f7fb;
+:root {
+  --primary: #4f46e5;
+  --primary-light: #818cf8;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #fbbf24;
+  --bg-dark: #020617;
+  --bg-card: #1e293b;
+  --bg-deeper: #0f172a;
+  --border: #334155;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
 }
 
-/* ===== APP LAYOUT ===== */
-
-.app {
-  display: flex;
+html {
+  background-color: var(--bg-dark);
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
-/* ===== SIDEBAR ===== */
+body, #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  height: auto !important;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  overflow-y: auto !important;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-.sidebar {
-  width: 250px;
-  height: 100vh;
-  background: linear-gradient(180deg, #0d6efd, #0dcaf0);
+/* ============================================================
+   SCROLLBAR PREMIUM
+============================================================ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #4f46e5; }
+
+/* ============================================================
+   SPINNER GLOBAL (usado no carregamento do App)
+============================================================ */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(79, 70, 229, 0.2);
+  border-top: 3px solid #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ============================================================
+   ANIMAÇÕES GLOBAIS
+============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-fade { animation: fadeIn 0.35s ease-out; }
+.animate-slide { animation: slideUp 0.4s ease-out; }
+
+/* ============================================================
+   TIPOGRAFIA GLOBAL
+============================================================ */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', sans-serif;
+  color: var(--text-main);
+  line-height: 1.2;
+}
+
+p { line-height: 1.6; }
+
+/* ============================================================
+   UTILITÁRIOS
+============================================================ */
+.text-primary { color: var(--primary-light); }
+.text-success { color: var(--success); }
+.text-danger  { color: var(--danger); }
+.text-muted   { color: var(--text-muted); }
+.text-center  { text-align: center; }
+
+/* ============================================================
+   COMPONENTES LEGADOS (compatibilidade com código antigo)
+============================================================ */
+.simulador-container {
+  max-width: 900px;
+  margin: auto;
+  padding: 40px;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-main);
+}
+
+.questao-card {
+  background: var(--bg-card);
+  padding: 32px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  margin-top: 20px;
+}
+
+.enunciado {
+  font-size: 18px;
+  line-height: 1.7;
+  margin-top: 10px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.alternativa {
+  padding: 16px;
+  border-radius: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: 0.15s;
+  background: transparent;
+  color: var(--text-main);
+}
+
+.alternativa:hover { background: rgba(79, 70, 229, 0.08); border-color: var(--primary); }
+.correta { background: rgba(16, 185, 129, 0.1) !important; border-color: var(--success) !important; }
+.errada  { background: rgba(239, 68, 68, 0.1) !important;  border-color: var(--danger) !important; }
+
+.botao-proxima {
+  margin-top: 22px;
+  padding: 13px 26px;
+  background: var(--primary);
   color: white;
-  position: fixed;
-  padding: 20px 10px;
-  transition: 0.4s;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  transition: 0.2s;
+}
+
+.botao-proxima:hover { background: #4338ca; transform: translateY(-1px); }
+
+.barra-container {
+  width: 100%;
+  height: 8px;
+  background: var(--border);
+  border-radius: 10px;
+  margin-top: 25px;
   overflow: hidden;
 }
 
-.sidebar.collapsed {
-  width: 80px;
-}
-
-.toggle-btn {
-  background: white;
-  border: none;
-  padding: 5px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #0d6efd;
-  margin-bottom: 30px;
-}
-
-.sidebar ul {
-  list-style: none;
-}
-
-.sidebar li {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 15px;
+.barra-progresso {
+  height: 8px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
   border-radius: 10px;
-  cursor: pointer;
-  transition: 0.3s;
-  font-size: 16px;
+  transition: width 0.5s ease;
 }
 
-.sidebar li:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.sidebar.collapsed li {
-  justify-content: center;
-}
-
-.sidebar svg {
-  font-size: 18px;
-}
-
-/* ===== MAIN ===== */
-
-.main-content {
-  flex: 1;
-  padding: 30px;
-  transition: 0.4s;
-}
-
-/* ===== HEADER ===== */
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: white;
-  padding: 20px 30px;
-  border-radius: 15px;
-  margin-bottom: 40px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-}
-
-.header h3 {
-  font-weight: 500;
-}
-
-.header button {
-  padding: 8px 18px;
-  border: none;
-  background: #0d6efd;
-  color: white;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-.header button:hover {
-  background: #084298;
-}
-
-/* ===== DASHBOARD ===== */
-
-.dashboard-title {
-  text-align: center;
-  margin-bottom: 40px;
-  font-size: 28px;
-  font-weight: 600;
-}
-
-.materias-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 30px;
-}
-
+/* ============================================================
+   CARDS DE MATÉRIA (Dashboard)
+============================================================ */
 .materia-card {
-  background: white;
-  padding: 40px;
-  border-radius: 20px;
-  text-align: center;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
-  transition: 0.4s;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 20px !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
   cursor: pointer;
 }
 
 .materia-card:hover {
-  transform: translateY(-10px);
-  background: linear-gradient(135deg, #0d6efd, #0dcaf0);
-  color: white;
+  transform: translateY(-4px);
+  border-color: var(--primary) !important;
+  box-shadow: 0 12px 28px rgba(79, 70, 229, 0.18) !important;
 }
 
-.materia-icon {
-  font-size: 35px;
-  margin-bottom: 15px;
-}
-
-/* ===== AUTH PAGES ===== */
-
-.auth-page {
+/* ============================================================
+   MODAIS GLOBAIS
+============================================================ */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(2, 6, 23, 0.88);
   display: flex;
-  height: 100vh;
-}
-
-.auth-left {
-  flex: 1;
-  background: linear-gradient(135deg, #0d6efd, #0dcaf0);
-  color: white;
-  display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  padding: 60px;
+  z-index: 5000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease;
 }
 
-.auth-left h1 {
-  font-size: 40px;
-  margin-bottom: 20px;
+.modal-content {
+  background: var(--bg-deeper);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 32px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: slideUp 0.3s ease;
 }
 
-.auth-right {
-  flex: 1;
-  background: white;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 60px;
-}
-
-.auth-right form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.auth-right input,
-.auth-right select {
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-}
-
-.auth-right button {
-  padding: 12px;
-  border: none;
-  background: #0d6efd;
-  color: white;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-.auth-right button:hover {
-  background: #084298;
-}
-
-.link {
-  margin-top: 15px;
-  color: #0d6efd;
-  cursor: pointer;
-}
-
-.error {
-  color: red;
+/* ============================================================
+   INPUTS PREMIUM GLOBAIS
+============================================================ */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="tel"],
+select,
+textarea {
+  font-family: 'Inter', sans-serif;
   font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important;
+}
+
+/* ============================================================
+   CADERNO DE ERROS — ANIMAÇÕES
+============================================================ */
+.card-especial-erros {
+  animation: pulseRed 2.5s ease-in-out infinite;
+  background: linear-gradient(135deg, #1e293b 0%, #2d1b1b 100%) !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+}
+
+@keyframes pulseRed {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.15); }
+  50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+}
+
+/* ============================================================
+   BOTÕES TOUCH-FRIENDLY (mínimo 44px para mobile)
+============================================================ */
+button {
+  min-height: 36px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ============================================================
+   SELEÇÃO DE TEXTO
+============================================================ */
+::selection {
+  background: rgba(79, 70, 229, 0.3);
+  color: #fff;
+}
+
+/* ============================================================
+   SAFE AREA (iPhone com notch)
+============================================================ */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ============================================================
+   MEDIA QUERIES GLOBAIS
+============================================================ */
+@media (max-width: 768px) {
+  /* Garante que a sidebar não empurra conteúdo */
+  main {
+    width: 100vw !important;
+    min-width: unset !important;
+  }
+
+  /* Textos menores em mobile */
+  h1 { font-size: clamp(20px, 5vw, 32px) !important; }
+  h2 { font-size: clamp(18px, 4vw, 26px) !important; }
+  h3 { font-size: clamp(15px, 3.5vw, 20px) !important; }
+
+  /* Botões com área de toque maior */
+  button {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  /* Modal ocupa mais espaço em mobile */
+  .modal-content {
+    padding: 24px 18px;
+    border-radius: 20px;
+    max-height: 95vh;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Extra ajustes para telas muito pequenas */
+  .enunciado {
+    font-size: 15px !important;
+    line-height: 1.5 !important;
+  }
+
+  .alternativa {
+    padding: 14px !important;
+    font-size: 14px !important;
+  }
+
+  .botao-proxima {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* ============================================================
+   PWA / INSTALAÇÃO COMO APP
+============================================================ */
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }

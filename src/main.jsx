@@ -1,10 +1,15 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App";
-import "./index.css"; // ✅ correto
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom'; // Importação essencial para roteamento
+import App from './App.jsx';
+import './index.css';
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+// A estrutura abaixo garante que o roteador envolva toda a aplicação,
+// resolvendo o erro de contexto que estava deixando sua tela azul.
+ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>
 );
