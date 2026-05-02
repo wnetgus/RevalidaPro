@@ -139,12 +139,13 @@ Estrutura de cada questão no array:
 
 Regras:
 - tema_mestre: OBRIGATÓRIO. Nome clínico padronizado da doença ou condição principal.
-  ✅ CORRETO: "Asma", "Hipertensão arterial sistêmica", "Diabetes mellitus tipo 2", "Insuficiência cardíaca"
+  ✅ CORRETO: "Asma", "Hipertensão arterial sistêmica", "Diabetes mellitus", "Insuficiência cardíaca", "Infarto agudo do miocárdio"
   ❌ ERRADO — contexto no tema: "Diabetes em gestante", "Asma pediátrica", "HAS no idoso"
   ❌ ERRADO — subtema no tema: "Asma — crise aguda", "Diabetes — tratamento", "HAS — classificação"
   ❌ ERRADO — abreviação: "HAS", "DM2", "IC", "IAM"
   ❌ ERRADO — variação de caixa: sempre minúsculas exceto a primeira letra de nomes próprios
   REGRA: tema_mestre é o NOME DA DOENÇA, sem contexto clínico e sem subtema. Derive do conteúdo gerado, NÃO do prompt.
+  NUNCA use tipagem (tipo 1, tipo 2): "Diabetes mellitus" agrupa DM1, DM2, cetoacidose, hipoglicemia e complicações.
 - gabarito: apenas a letra (a, b, c, d ou e)
 - enunciado: dados clínicos reais (idade, sintomas, exames, contexto APS/UBS/hospital)
 - ano_diretriz: número inteiro do ano da diretriz (ex: 2024). Obrigatório.
@@ -153,37 +154,158 @@ Regras:
 - Responda APENAS com o array JSON, começando em [ e terminando em ]`;
 
 // ─── PROMPT DE MIGRAÇÃO tema_mestre ────────────────────────────────────────
-// Sistema separado: classifica subtemas existentes sem gerar questões.
-const PROMPT_MIGRACAO = `Você é um classificador clínico de subtemas médicos para padronização de banco de questões.
+// Sistema separado: classifica/corrige tema_mestre sem gerar questões.
+const PROMPT_MIGRACAO = `Você é um classificador clínico de banco de questões médicas.
 Responda SOMENTE com um array JSON. Nenhum texto antes. Nenhum texto depois. Sem markdown.
 Sua resposta deve começar com [ e terminar com ].
 
-OBJETIVO: Extrair o tema_mestre de cada subtema fornecido. O tema_mestre é o NOME DA DOENÇA principal, isolado, sem contexto e sem detalhe de subtema.
+OBJETIVO: Para cada item, retornar o tema_mestre correto — a CATEGORIA CLÍNICA BASE no nível mais amplo possível.
 
-REGRAS OBRIGATÓRIAS:
-1. Nome clínico completo e padronizado:
-   ✅ "Hipertensão arterial sistêmica" | "Infarto agudo do miocárdio" | "Diabetes mellitus tipo 2" | "Asma" | "Insuficiência cardíaca"
-2. NUNCA inclua contexto clínico no tema_mestre:
-   ❌ "Diabetes em gestante" → ✅ "Diabetes mellitus" (contexto pertence ao subtema)
-   ❌ "Asma pediátrica" → ✅ "Asma" (faixa etária pertence ao subtema)
-   ❌ "HAS no idoso" → ✅ "Hipertensão arterial sistêmica"
-3. NUNCA inclua subtema no tema_mestre:
-   ❌ "Asma — crise aguda" → ✅ "Asma"
-   ❌ "Diabetes mellitus — complicações" → ✅ "Diabetes mellitus tipo 2"
-4. NUNCA use abreviações:
-   ❌ "HAS" → ✅ "Hipertensão arterial sistêmica"
-   ❌ "DM2" → ✅ "Diabetes mellitus tipo 2"
-   ❌ "IAM" → ✅ "Infarto agudo do miocárdio"
-5. Capitalização: primeira letra maiúscula, resto minúsculo (exceto nomes próprios de síndromes).
-6. Múltiplas doenças → escolher a claramente dominante no subtema.
-7. Sem clareza → usar "INDEFINIDO".
-8. NUNCA inventar temas além do que está explícito no subtema fornecido.
+═══ REGRA FUNDAMENTAL — GENERALIZAÇÃO MÁXIMA ═══
+tema_mestre = a DOENÇA ou CONDIÇÃO PRINCIPAL, sem tipagem, sem qualificador, sem subtema.
+Quando "tema_mestre_atual" estiver presente, significa que o valor ESTÁ ERRADO — corrija-o generalizando.
 
-Formato de saída OBRIGATÓRIO (array, mesmo que seja 1 item):
-[{"id":"id_do_documento","tema_mestre":"Nome Clínico"}]`;
+EXEMPLOS OBRIGATÓRIOS:
+❌ "Diabetes mellitus tipo 1"          → ✅ "Diabetes mellitus"
+❌ "Diabetes mellitus tipo 2"          → ✅ "Diabetes mellitus"
+❌ "Cetoacidose diabética"             → ✅ "Diabetes mellitus"
+❌ "Nefropatia diabética"              → ✅ "Diabetes mellitus"
+❌ "Retinopatia diabética"             → ✅ "Diabetes mellitus"
+❌ "Pé diabético"                      → ✅ "Diabetes mellitus"
+❌ "HAS grave"                         → ✅ "Hipertensão arterial sistêmica"
+❌ "HAS"                               → ✅ "Hipertensão arterial sistêmica"
+❌ "Hipertensão gestacional"           → ✅ "Hipertensão arterial sistêmica"
+❌ "Crise hipertensiva"                → ✅ "Hipertensão arterial sistêmica"
+❌ "Pré-eclâmpsia"                     → ✅ "Hipertensão arterial sistêmica"
+❌ "Insuficiência cardíaca sistólica"  → ✅ "Insuficiência cardíaca"
+❌ "ICC descompensada"                 → ✅ "Insuficiência cardíaca"
+❌ "ICC"                               → ✅ "Insuficiência cardíaca"
+❌ "Choque séptico"                    → ✅ "Sepse"
+❌ "Sepse neonatal"                    → ✅ "Sepse"
+❌ "Pneumonia bacteriana"              → ✅ "Pneumonia"
+❌ "PAC"                               → ✅ "Pneumonia"
+❌ "Asma grave"                        → ✅ "Asma"
+❌ "Asma pediátrica"                   → ✅ "Asma"
+❌ "DPOC exacerbado"                   → ✅ "Doença pulmonar obstrutiva crônica"
+❌ "DPOC"                              → ✅ "Doença pulmonar obstrutiva crônica"
+❌ "Angina instável"                   → ✅ "Doença arterial coronariana"
+❌ "SCA sem supra"                     → ✅ "Doença arterial coronariana"
+❌ "IAM"                               → ✅ "Infarto agudo do miocárdio"
 
-const LOTE_MIGRACAO   = 20;  // subtemas por chamada à IA
-const DELAY_MIGRACAO  = 4000; // ms entre lotes (evita rate limit)
+PROIBIDO no tema_mestre (causa rejeição automática):
+- Tipagem: "tipo 1", "tipo 2", "tipo I", "tipo II" etc.
+- Gravidade: "grave", "leve", "moderado", "agudo", "crônico", "descompensado", "exacerbado"
+- Faixa etária: "pediátrica", "neonatal", "no idoso", "do adulto"
+- Contexto gestacional: "gestacional", "em gestante", "na gravidez"
+- Subtópico após traço: "— tratamento", "— complicações", "— diagnóstico"
+- Abreviações: HAS, DM, DM2, IAM, ICC, DPOC, PAC, IVAS, SCA etc.
+- Contexto clínico: "pós-operatório", "hospitalar", "ambulatorial"
+
+OUTRAS REGRAS:
+1. Nome clínico completo e padronizado (primeira letra maiúscula, resto minúsculo)
+2. Múltiplas doenças → escolher a claramente dominante
+3. Sem clareza → usar "INDEFINIDO"
+4. NUNCA invente temas além do que está no subtema fornecido
+
+Formato de saída OBRIGATÓRIO (array, mesmo que 1 item):
+[{"id":"id_do_documento","tema_mestre":"Nome Clínico Base"}]`;
+
+// ─── MAPA DE NORMALIZAÇÃO LOCAL (safety net pós-IA) ─────────────────────
+// Corrige os casos mais frequentes sem depender 100% da IA.
+const MAPA_TEMA_MESTRE = {
+  // Diabetes
+  "diabetes mellitus tipo 1":             "Diabetes mellitus",
+  "diabetes mellitus tipo 2":             "Diabetes mellitus",
+  "diabetes mellitus tipo i":             "Diabetes mellitus",
+  "diabetes mellitus tipo ii":            "Diabetes mellitus",
+  "cetoacidose diabética":                "Diabetes mellitus",
+  "estado hiperosmolar hiperglicêmico":   "Diabetes mellitus",
+  "nefropatia diabética":                 "Diabetes mellitus",
+  "retinopatia diabética":                "Diabetes mellitus",
+  "neuropatia diabética":                 "Diabetes mellitus",
+  "pé diabético":                         "Diabetes mellitus",
+  "dm1": "Diabetes mellitus", "dm2": "Diabetes mellitus",
+  "dm tipo 1": "Diabetes mellitus", "dm tipo 2": "Diabetes mellitus",
+  // Hipertensão
+  "has":                                  "Hipertensão arterial sistêmica",
+  "has grave":                            "Hipertensão arterial sistêmica",
+  "has leve":                             "Hipertensão arterial sistêmica",
+  "hipertensão gestacional":              "Hipertensão arterial sistêmica",
+  "pré-eclâmpsia":                        "Hipertensão arterial sistêmica",
+  "eclâmpsia":                            "Hipertensão arterial sistêmica",
+  "crise hipertensiva":                   "Hipertensão arterial sistêmica",
+  "urgência hipertensiva":                "Hipertensão arterial sistêmica",
+  "emergência hipertensiva":              "Hipertensão arterial sistêmica",
+  // Cardíaca
+  "icc":                                  "Insuficiência cardíaca",
+  "icc descompensada":                    "Insuficiência cardíaca",
+  "insuficiência cardíaca sistólica":     "Insuficiência cardíaca",
+  "insuficiência cardíaca diastólica":    "Insuficiência cardíaca",
+  "insuficiência cardíaca aguda":         "Insuficiência cardíaca",
+  "iam":                                  "Infarto agudo do miocárdio",
+  "sca com supra":                        "Infarto agudo do miocárdio",
+  "angina instável":                      "Doença arterial coronariana",
+  "sca sem supra":                        "Doença arterial coronariana",
+  "síndrome coronariana aguda":           "Doença arterial coronariana",
+  "insuficiência coronariana":            "Doença arterial coronariana",
+  // Respiratório
+  "dpoc":                                 "Doença pulmonar obstrutiva crônica",
+  "dpoc exacerbado":                      "Doença pulmonar obstrutiva crônica",
+  "asma grave":                           "Asma",
+  "asma pediátrica":                      "Asma",
+  "asma brônquica":                       "Asma",
+  "pac":                                  "Pneumonia",
+  "pneumonia adquirida na comunidade":    "Pneumonia",
+  "pneumonia bacteriana":                 "Pneumonia",
+  "pneumonia viral":                      "Pneumonia",
+  // Sepse
+  "sepse grave":                          "Sepse",
+  "sepse neonatal":                       "Sepse",
+  "choque séptico":                       "Sepse",
+  // Outros
+  "ivas":                                 "Infecção das vias aéreas superiores",
+};
+
+// ─── PADRÕES DE FRAGMENTAÇÃO ─────────────────────────────────────────────
+// Detecta tema_mestre com tipagem, qualificadores ou abreviações proibidas.
+const PADROES_FRAGMENTADOS = [
+  /\btipo\s+(1|2|3|i|ii|iii|iv)\b/i,
+  /\s*[-—]\s*(tratamento|diagnóstico|complicaç|classificaç|crise|controle|manejo|rastreamento)/i,
+  /\s+(pediátric[ao]|neonatal|no idoso|gestacional|em gestante|na gravidez)\b/i,
+  /\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao])\s*$/i,
+  /^(has|dm2?|dm1|icc|iam|dpoc|pac|ivas|sca)$/i,  // apenas abreviação pura
+];
+
+const estaFragmentado = (tema) => {
+  if (!tema || tema === "INDEFINIDO") return false;
+  return PADROES_FRAGMENTADOS.some(p => p.test(tema));
+};
+
+/**
+ * Normalização local como safety net após resposta da IA.
+ * Ordem: mapa exato → remoção regex de sufixos → devolve original.
+ */
+const normalizarTemaMestre = (tema) => {
+  if (!tema || tema === "INDEFINIDO") return tema;
+  const low = tema.toLowerCase().trim();
+
+  // 1. Mapa exato (cobre os casos mais frequentes)
+  if (MAPA_TEMA_MESTRE[low]) return MAPA_TEMA_MESTRE[low];
+
+  // 2. Remove tipagem: "tipo 1", "tipo 2", "tipo I", "tipo II"
+  let norm = tema.replace(/\s+tipo\s+(1|2|3|i|ii|iii|iv)\b/gi, "").trim();
+
+  // 3. Remove subtópico após traço/travessão
+  norm = norm.replace(/\s*[-—]\s*(tratamento|diagnóstico|complicaç\w*|classificaç\w*|crise|manejo|conduta|rastreamento|prevenção|controle)\b.*/gi, "").trim();
+
+  // 4. Remove qualificadores de faixa etária/contexto
+  norm = norm.replace(/\s+(pediátric[ao]|neonatal|no idoso|da gestante|gestacional|em gestante|na gravidez|do adulto|no adulto)\b.*/gi, "").trim();
+
+  // 5. Remove qualificadores de gravidade no final
+  norm = norm.replace(/\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao]|agud[ao]|crônic[ao])\s*$/gi, "").trim();
+
+  return norm || tema; // nunca retorna string vazia
+};
 
 // ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 /**
@@ -771,7 +893,8 @@ Requisitos gerais:
   };
 
   // ── SCAN: lê a base e monta a fila de pendentes (ZERO writes no Firestore) ──
-  // Pode ser re-executado a qualquer momento para atualizar a fila.
+  // Detecta tanto questões SEM tema_mestre quanto com tema_mestre FRAGMENTADO
+  // (ex: "Diabetes mellitus tipo 2" que deveria ser "Diabetes mellitus").
   const escanearBase = async () => {
     setEscaneando(true);
     setMigLog([]);
@@ -785,25 +908,46 @@ Requisitos gerais:
       const snap = await getDocs(collection(db, "questoes"));
       const total = snap.docs.length;
 
-      // Filtra apenas docs sem tema_mestre válido E com subtema preenchido
-      const semTema = snap.docs
-        .filter(d => {
-          const tm = d.data().tema_mestre;
-          return !tm || tm.trim() === "" || tm.trim() === "INDEFINIDO";
-        })
-        .map(d => ({ id: d.id, subtema: (d.data().subtema || "").trim() }))
-        .filter(q => q.subtema.length > 0);
+      const pendentes = [];
+      let cntSemTema   = 0;
+      let cntFragmentado = 0;
 
-      setMigPendentes(semTema);
-      setMigProgresso({ atual: 0, total: semTema.length });
+      snap.docs.forEach(d => {
+        const data = d.data();
+        const tm  = (data.tema_mestre || "").trim();
+        const sub = (data.subtema     || "").trim();
+
+        const semTema      = !tm || tm === "INDEFINIDO";
+        const fragmentado  = !semTema && estaFragmentado(tm);
+
+        if (semTema || fragmentado) {
+          // Inclui tema_mestre_atual apenas quando já existe mas está errado
+          pendentes.push({
+            id: d.id,
+            subtema: sub,
+            ...(fragmentado ? { tema_mestre_atual: tm } : {}),
+          });
+          if (semTema)     cntSemTema++;
+          if (fragmentado) cntFragmentado++;
+        }
+      });
+
+      // Filtra docs onde nem subtema nem tema_mestre_atual existem (nada a classificar)
+      const filaValida = pendentes.filter(q => q.subtema.length > 0 || q.tema_mestre_atual);
+
+      setMigPendentes(filaValida);
+      setMigProgresso({ atual: 0, total: filaValida.length });
       setMigEscaneado(true);
 
       addMigLog(`📊 Base: ${total} questões total`, "sistema");
-      if (semTema.length === 0) {
-        addMigLog("✅ Todas as questões já possuem tema_mestre válido. Nada a migrar.", "ok");
+
+      if (filaValida.length === 0) {
+        addMigLog("✅ Todos os tema_mestre estão corretos. Nada a migrar.", "ok");
       } else {
-        const nLotes = Math.ceil(semTema.length / migTamLote);
-        addMigLog(`⚠️  ${semTema.length} questão(ões) pendentes — ${nLotes} lote(s) de ${migTamLote}`, "aviso");
+        if (cntSemTema     > 0) addMigLog(`⚠️  ${cntSemTema} sem tema_mestre`, "aviso");
+        if (cntFragmentado > 0) addMigLog(`⚠️  ${cntFragmentado} fragmentados (ex: "Diabetes mellitus tipo 2")`, "aviso");
+        const nLotes = Math.ceil(filaValida.length / migTamLote);
+        addMigLog(`📋 Total: ${filaValida.length} pendente(s) — ${nLotes} lote(s) de ${migTamLote}`, "info");
         addMigLog("👆 Clique em 'Rodar lote' para iniciar. Você controla o ritmo.", "sistema");
       }
     } catch (err) {
@@ -816,6 +960,7 @@ Requisitos gerais:
   // ── RODAR LOTE: processa APENAS os próximos N da fila — para em seguida ────
   // Segurança: não altera documentos que NÃO estejam na fila de pendentes.
   // Cada clique = 1 lote. O admin valida o resultado antes de continuar.
+  // Dupla proteção: IA com prompt reforçado + normalizarTemaMestre() local.
   const rodarLote = async () => {
     if (migPendentes.length === 0 || migrando) return;
     migAbortRef.current = false;
@@ -827,15 +972,29 @@ Requisitos gerais:
       : (import.meta.env.VITE_FUNCTIONS_BASE_URL || "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/gerarQuestoesIA";
 
     // Captura o lote atual ANTES de qualquer setState
-    const lote     = migPendentes.slice(0, migTamLote);
-    const loteNum  = Math.floor(migProcessados / migTamLote) + 1;
+    const lote      = migPendentes.slice(0, migTamLote);
+    const loteNum   = Math.floor(migProcessados / migTamLote) + 1;
     const restantes = migPendentes.length - lote.length;
 
-    addMigLog(`▶️  Lote ${loteNum} — ${lote.length} questão(ões) enviadas à IA…`, "info");
+    const fragmentadosNoLote = lote.filter(q => q.tema_mestre_atual).length;
+    addMigLog(
+      `▶️  Lote ${loteNum} — ${lote.length} doc(s)${fragmentadosNoLote > 0 ? ` (${fragmentadosNoLote} fragmentados para corrigir)` : ""} → IA…`,
+      "info"
+    );
 
     try {
+      // Envia id + subtema; inclui tema_mestre_atual quando existe mas está errado
+      const loteParaIA = lote.map(q => ({
+        id: q.id,
+        subtema: q.subtema,
+        ...(q.tema_mestre_atual ? { tema_mestre_atual: q.tema_mestre_atual } : {}),
+      }));
+
       const promptUsuario =
-        `Classifique os subtemas abaixo. Responda SOMENTE com array JSON no formato [{"id":"...","tema_mestre":"..."}].\n${JSON.stringify(lote)}`;
+        `Classifique os subtemas abaixo aplicando GENERALIZAÇÃO MÁXIMA.\n` +
+        `Quando "tema_mestre_atual" estiver presente, o valor ESTÁ ERRADO — corrija generalizando (ex: "tipo 2" → remover; "cetoacidose diabética" → "Diabetes mellitus").\n` +
+        `Responda SOMENTE com array JSON: [{"id":"...","tema_mestre":"..."}]\n` +
+        JSON.stringify(loteParaIA);
 
       const resp = await fetch(endpoint, {
         method: "POST",
@@ -844,8 +1003,8 @@ Requisitos gerais:
       });
 
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data  = await resp.json();
-      const texto = (data.content || []).map(c => c.text || "").join("").trim();
+      const data   = await resp.json();
+      const texto  = (data.content || []).map(c => c.text || "").join("").trim();
       const parsed = extrairJSONDoTexto(texto);
 
       if (!parsed || !Array.isArray(parsed)) {
@@ -854,18 +1013,23 @@ Requisitos gerais:
         return;
       }
 
-      // Grava em batch — apenas os IDs que vieram na resposta da IA
+      // Grava em batch com normalização local como segunda camada de proteção
       const batch = writeBatch(db);
-      let atualizadosLote = 0;
-      let indefinidosLote = 0;
+      let atualizadosLote  = 0;
+      let indefinidosLote  = 0;
+      let normalizadosLocal = 0;
 
       for (const item of parsed) {
         if (!item.id || !item.tema_mestre) continue;
-        // Segurança extra: só atualiza se o ID estava na fila deste lote
-        if (!lote.find(q => q.id === item.id)) continue;
-        batch.update(doc(db, "questoes", item.id), { tema_mestre: item.tema_mestre });
+        if (!lote.find(q => q.id === item.id)) continue; // segurança: só IDs do lote
+
+        // Aplica normalizarTemaMestre() como safety net
+        const temaNorm = normalizarTemaMestre(item.tema_mestre);
+        if (temaNorm !== item.tema_mestre) normalizadosLocal++;
+
+        batch.update(doc(db, "questoes", item.id), { tema_mestre: temaNorm });
         atualizadosLote++;
-        if (item.tema_mestre === "INDEFINIDO") indefinidosLote++;
+        if (temaNorm === "INDEFINIDO") indefinidosLote++;
       }
 
       await batch.commit();
@@ -876,19 +1040,16 @@ Requisitos gerais:
       setMigProcessados(novosProcessados);
       setMigProgresso({ atual: novosProcessados, total: migProgresso.total });
 
-      addMigLog(
-        `✅ Lote ${loteNum}: ${atualizadosLote} atualizados · ${indefinidosLote} INDEFINIDO`,
-        "ok"
-      );
+      let msgOk = `✅ Lote ${loteNum}: ${atualizadosLote} atualizados`;
+      if (indefinidosLote  > 0) msgOk += ` · ${indefinidosLote} INDEFINIDO`;
+      if (normalizadosLocal > 0) msgOk += ` · ${normalizadosLocal} corrigidos pelo normalizador local`;
+      addMigLog(msgOk, "ok");
 
       if (restantes === 0) {
         addMigLog("🎉 Fila concluída! Todos os pendentes foram processados.", "sistema");
-        addMigLog("💡 Rode o Scan novamente para verificar se restam questões.", "sistema");
+        addMigLog("💡 Rode o Scan novamente para confirmar que não restam fragmentados.", "sistema");
       } else {
-        addMigLog(
-          `📋 ${restantes} questão(ões) ainda na fila — clique 'Rodar lote' para continuar.`,
-          "sistema"
-        );
+        addMigLog(`📋 ${restantes} doc(s) ainda na fila — clique 'Rodar lote' para continuar.`, "sistema");
       }
 
     } catch (err) {
