@@ -9,6 +9,15 @@ import {
   FaStethoscope, FaBaby, FaVenusMars, FaUserShield, FaSyringe
 } from "react-icons/fa";
 
+// ─── Normalização de string para busca (acentos + case) ──────────────────────
+// Permite buscar "hipertensao" e encontrar "Hipertensão arterial sistêmica".
+const normalizarTexto = (str) =>
+  (str || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const MATERIAS = [
   { id: "Clínica Médica",           icon: <FaStethoscope />, color: "#818cf8", desc: "Cardiologia · Pneumo · Neuro · Endo" },
@@ -147,13 +156,14 @@ const BuscarPorTema = () => {
   };
 
   // ── Filtra grupos pelo campo de busca ───────────────────────────────────────
+  // IMPORTANTE: filtramos APENAS por tema_mestre (g.tema).
+  // Filtrar por subtemas causava falsos positivos: "Amenorreia Secundária" aparecia
+  // na busca por "diabetes" porque tinha subtema "Diagnóstico diferencial — DM".
+  // Busca é insensível a acentos: "hipertensao" encontra "Hipertensão arterial".
   const gruposFiltrados = useMemo(() => {
     if (!buscaTema.trim()) return grupos;
-    const t = buscaTema.toLowerCase();
-    return grupos.filter(g =>
-      g.tema.toLowerCase().includes(t) ||
-      Object.keys(g.subtemas).some(s => s.toLowerCase().includes(t))
-    );
+    const t = normalizarTexto(buscaTema);
+    return grupos.filter(g => normalizarTexto(g.tema).includes(t));
   }, [grupos, buscaTema]);
 
   // ── Iniciar simulado ────────────────────────────────────────────────────────
@@ -244,7 +254,7 @@ const BuscarPorTema = () => {
         {/* ═══ ETAPA 1: MATÉRIAS ════════════════════════════════════════════ */}
         {etapa === 1 && (
           <div style={s.body}>
-            <div style={s.gridMaterias}>
+            <div style={s.gridMaterias} className="bpt-materias-grid">
               {MATERIAS.map(m => (
                 <button key={m.id} onClick={() => selecionarMateria(m)} style={s.cardMateria}>
                   <div style={{ ...s.materiaIcon, background: `${m.color}20`, border: `1px solid ${m.color}40` }}>
@@ -403,7 +413,7 @@ const BuscarPorTema = () => {
               </div>
             </div>
 
-            <div style={s.configGrid}>
+            <div style={s.configGrid} className="bpt-config-grid">
               {/* Subtemas */}
               <div style={s.configCol}>
                 <div style={s.configLabel}>
@@ -418,7 +428,7 @@ const BuscarPorTema = () => {
                 >
                   {todasSubtemasAtivas ? "Desmarcar todos" : "Selecionar todos"}
                 </button>
-                <div style={s.listaSubtemas}>
+                <div style={s.listaSubtemas} className="bpt-lista-subtemas">
                   {Object.entries(temaAtivo.subtemas)
                     .sort((a, b) => b[1] - a[1])
                     .map(([sub, cnt]) => {
@@ -427,6 +437,7 @@ const BuscarPorTema = () => {
                         <button
                           key={sub}
                           onClick={() => toggleSubtema(sub)}
+                          className="bpt-subtema-item"
                           style={{
                             ...s.subtemasItem,
                             borderColor: ativo ? "#4f46e5" : "#1e293b",
@@ -440,10 +451,10 @@ const BuscarPorTema = () => {
                           }}>
                             {ativo && <FaCheckCircle size={8} color="#fff" />}
                           </div>
-                          <span style={{ ...s.subtemasNome, color: ativo ? "#f1f5f9" : "#64748b" }}>
+                          <span style={{ ...s.subtemasNome, color: ativo ? "#e2e8f0" : "#94a3b8" }}>
                             {sub}
                           </span>
-                          <span style={s.subtemasCount}>{cnt}</span>
+                          <span className="bpt-subtema-count" style={s.subtemasCount}>{cnt}</span>
                         </button>
                       );
                     })}
@@ -536,6 +547,32 @@ const BuscarPorTema = () => {
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Hover nos itens de subtema */
+        .bpt-subtema-item:hover {
+          border-color: rgba(79,70,229,0.55) !important;
+          background: rgba(79,70,229,0.09) !important;
+          transform: translateX(2px);
+        }
+        .bpt-subtema-item:hover .bpt-subtema-count {
+          background: rgba(79,70,229,0.18) !important;
+          border-color: rgba(79,70,229,0.35) !important;
+          color: #a5b4fc !important;
+        }
+        .bpt-subtema-item:active {
+          transform: translateX(1px);
+        }
+
+        /* Scrollbar fina para a lista de subtemas */
+        .bpt-lista-subtemas::-webkit-scrollbar { width: 5px; }
+        .bpt-lista-subtemas::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); border-radius: 4px; }
+        .bpt-lista-subtemas::-webkit-scrollbar-thumb {
+          background: #334155; border-radius: 4px;
+        }
+        .bpt-lista-subtemas::-webkit-scrollbar-thumb:hover {
+          background: #475569;
+        }
+
         @media (max-width: 640px) {
           .bpt-config-grid { grid-template-columns: 1fr !important; }
           .bpt-materias-grid { grid-template-columns: 1fr !important; }
@@ -592,7 +629,6 @@ const s = {
   // ETAPA 1 — matérias
   gridMaterias: {
     display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12,
-    className: "bpt-materias-grid",
   },
   cardMateria: {
     display: "flex", alignItems: "center", gap: 14,
@@ -726,30 +762,36 @@ const s = {
   },
   listaSubtemas: {
     display: "flex", flexDirection: "column", gap: 6,
-    maxHeight: 240, overflowY: "auto",
+    maxHeight: 320, overflowY: "auto",
+    minHeight: 0,
+    paddingRight: 4,
   },
   subtemasItem: {
-    display: "flex", alignItems: "center", gap: 10,
-    padding: "8px 12px", borderRadius: 10, border: "1px solid",
-    cursor: "pointer", transition: "all .15s", width: "100%",
-    textAlign: "left",
+    display: "flex", alignItems: "center", gap: 12,
+    padding: "12px 15px", borderRadius: 12, border: "1px solid",
+    cursor: "pointer", transition: "border-color .15s, background .15s, transform .1s",
+    width: "100%", boxSizing: "border-box",
+    textAlign: "left", margin: 0,
+    minHeight: "auto", flexShrink: 0,
+    outline: "none",
   },
   subtemasCheck: {
-    width: 18, height: 18, borderRadius: 5, border: "1.5px solid",
+    width: 22, height: 22, borderRadius: 7, border: "1.5px solid",
     display: "flex", alignItems: "center", justifyContent: "center",
     flexShrink: 0, transition: "all .15s",
   },
-  subtemasNome: { flex: 1, fontSize: 12, fontWeight: 600, lineHeight: 1.3 },
+  subtemasNome: { flex: 1, fontSize: 14, fontWeight: 600, lineHeight: 1.45 },
   subtemasCount: {
-    fontSize: 10, fontWeight: 800, color: "#334155",
-    background: "#0a1628", border: "1px solid #1e293b",
-    borderRadius: 4, padding: "0 6px",
+    fontSize: 11, fontWeight: 800, color: "#94a3b8",
+    background: "rgba(255,255,255,0.05)", border: "1px solid #334155",
+    borderRadius: 6, padding: "2px 9px", flexShrink: 0,
+    letterSpacing: "0.4px", transition: "all .15s",
   },
   modoCard: {
     display: "flex", alignItems: "center", gap: 12,
     padding: "12px 14px", borderRadius: 12, border: "1.5px solid",
     cursor: "pointer", transition: "all .15s", width: "100%",
-    textAlign: "left",
+    textAlign: "left", boxSizing: "border-box",
   },
   modoIcon: {
     width: 36, height: 36, borderRadius: 10,
@@ -763,6 +805,7 @@ const s = {
     display: "flex", alignItems: "center", justifyContent: "center",
     gap: 10, boxShadow: "0 10px 28px rgba(79,70,229,0.35)",
     letterSpacing: "0.5px", transition: "opacity .2s",
+    cursor: "pointer",
   },
 };
 

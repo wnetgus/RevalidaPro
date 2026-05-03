@@ -7,8 +7,10 @@ import {
 import {
   FaRobot, FaPlay, FaStop, FaSpinner, FaCheckCircle,
   FaExclamationTriangle, FaInfoCircle, FaClock, FaFire,
-  FaLayerGroup, FaTrash, FaDatabase, FaSearch
+  FaLayerGroup, FaTrash, FaDatabase, FaSearch,
+  FaBookOpen, FaEdit, FaSave, FaSync, FaEye
 } from "react-icons/fa";
+import { doc as fsDoc, getDoc as fsGetDoc, setDoc as fsSetDoc } from "firebase/firestore";
 import { SUPER_APOSTAS_CONFIG } from "../config/superApostasConfig";
 
 // ─── CONSTANTES DE TEMPORIZAÇÃO ────────────────────────────────────────────────
@@ -176,6 +178,9 @@ EXEMPLOS OBRIGATÓRIOS:
 ❌ "HAS"                               → ✅ "Hipertensão arterial sistêmica"
 ❌ "Hipertensão gestacional"           → ✅ "Hipertensão arterial sistêmica"
 ❌ "Crise hipertensiva"                → ✅ "Hipertensão arterial sistêmica"
+❌ "Emergência hipertensiva"           → ✅ "Hipertensão arterial sistêmica"
+❌ "Encefalopatia hipertensiva"        → ✅ "Hipertensão arterial sistêmica"
+❌ "Retinopatia hipertensiva"          → ✅ "Hipertensão arterial sistêmica"
 ❌ "Pré-eclâmpsia"                     → ✅ "Hipertensão arterial sistêmica"
 ❌ "Insuficiência cardíaca sistólica"  → ✅ "Insuficiência cardíaca"
 ❌ "ICC descompensada"                 → ✅ "Insuficiência cardíaca"
@@ -210,6 +215,31 @@ OUTRAS REGRAS:
 Formato de saída OBRIGATÓRIO (array, mesmo que 1 item):
 [{"id":"id_do_documento","tema_mestre":"Nome Clínico Base"}]`;
 
+// ─── PROMPT RESUMO DE TEMA ────────────────────────────────────────────────
+const PROMPT_RESUMO_TEMA = `Você é um preceptor de medicina especializado no Revalida INEP/SUS.
+Gere um resumo clínico estruturado para o tema informado, focado nas cobranças da prova.
+Responda SOMENTE com JSON válido. Sem texto antes, sem markdown, sem explicações.
+
+Formato obrigatório:
+{
+  "definicao": "Definição clínica objetiva em 2-3 frases. Incluir epidemiologia se relevante.",
+  "diagnostico": "Critérios diagnósticos principais. Exames chave. Valores de corte quando aplicável.",
+  "tratamento": "Conduta de 1ª linha pelo SUS/MS. Fármacos com doses quando possível. Escalonamento se necessário.",
+  "pontos_chave": ["ponto 1", "ponto 2", "ponto 3", "ponto 4", "ponto 5"],
+  "pegadinhas": ["armadilha clássica 1", "armadilha clássica 2", "armadilha clássica 3"],
+  "dica_mestre": "Regra de ouro única que resolve 80% das questões sobre esse tema no Revalida."
+}
+
+Regras:
+- definicao: máximo 60 palavras
+- diagnostico: máximo 80 palavras
+- tratamento: máximo 100 palavras
+- pontos_chave: exatamente 5 itens, máximo 20 palavras cada
+- pegadinhas: exatamente 3 itens, máximo 25 palavras cada
+- dica_mestre: máximo 30 palavras
+- Usar diretrizes MS/SUS/PCDT 2022-2025
+- Foco em tomada de decisão clínica, não em decoreba`;
+
 // ─── MAPA DE NORMALIZAÇÃO LOCAL (safety net pós-IA) ─────────────────────
 // Corrige os casos mais frequentes sem depender 100% da IA.
 const MAPA_TEMA_MESTRE = {
@@ -226,16 +256,25 @@ const MAPA_TEMA_MESTRE = {
   "pé diabético":                         "Diabetes mellitus",
   "dm1": "Diabetes mellitus", "dm2": "Diabetes mellitus",
   "dm tipo 1": "Diabetes mellitus", "dm tipo 2": "Diabetes mellitus",
-  // Hipertensão
+  // Hipertensão — doença base + todas as manifestações/complicações
   "has":                                  "Hipertensão arterial sistêmica",
   "has grave":                            "Hipertensão arterial sistêmica",
   "has leve":                             "Hipertensão arterial sistêmica",
   "hipertensão gestacional":              "Hipertensão arterial sistêmica",
   "pré-eclâmpsia":                        "Hipertensão arterial sistêmica",
   "eclâmpsia":                            "Hipertensão arterial sistêmica",
+  "hellp":                                "Hipertensão arterial sistêmica",
+  "síndrome hellp":                       "Hipertensão arterial sistêmica",
   "crise hipertensiva":                   "Hipertensão arterial sistêmica",
   "urgência hipertensiva":                "Hipertensão arterial sistêmica",
   "emergência hipertensiva":              "Hipertensão arterial sistêmica",
+  "encefalopatia hipertensiva":           "Hipertensão arterial sistêmica",
+  "retinopatia hipertensiva":             "Hipertensão arterial sistêmica",
+  "nefroesclerose hipertensiva":          "Hipertensão arterial sistêmica",
+  "hipertensão resistente":               "Hipertensão arterial sistêmica",
+  "hipertensão acelerada":                "Hipertensão arterial sistêmica",
+  "hipertensão maligna":                  "Hipertensão arterial sistêmica",
+  "hipertensão secundária":               "Hipertensão arterial sistêmica",
   // Cardíaca
   "icc":                                  "Insuficiência cardíaca",
   "icc descompensada":                    "Insuficiência cardíaca",
@@ -272,8 +311,12 @@ const PADROES_FRAGMENTADOS = [
   /\btipo\s+(1|2|3|i|ii|iii|iv)\b/i,
   /\s*[-—]\s*(tratamento|diagnóstico|complicaç|classificaç|crise|controle|manejo|rastreamento)/i,
   /\s+(pediátric[ao]|neonatal|no idoso|gestacional|em gestante|na gravidez)\b/i,
-  /\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao])\s*$/i,
-  /^(has|dm2?|dm1|icc|iam|dpoc|pac|ivas|sca)$/i,  // apenas abreviação pura
+  /\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao]|agud[ao]|avançad[ao])\s*$/i,
+  /^(has|dm2?|dm1|icc|iam|dpoc|pac|ivas|sca)$/i,          // abreviação pura
+  /hipertensiv[ao]/i,      // "encefalopatia hipertensiva", "crise hipertensiva" etc.
+  /diabétic[ao]/i,         // "pé diabético", "retinopatia diabética" etc.
+  /^\s*(crise|exacerbação|emergência|urgência)\s+(de|da|do|das|dos)\s+/i,  // "crise de asma"
+  /\b(crise|exacerbação)\s*$/i,   // sufixo: "asma em crise", "DPOC em exacerbação"
 ];
 
 const estaFragmentado = (tema) => {
@@ -292,17 +335,35 @@ const normalizarTemaMestre = (tema) => {
   // 1. Mapa exato (cobre os casos mais frequentes)
   if (MAPA_TEMA_MESTRE[low]) return MAPA_TEMA_MESTRE[low];
 
-  // 2. Remove tipagem: "tipo 1", "tipo 2", "tipo I", "tipo II"
-  let norm = tema.replace(/\s+tipo\s+(1|2|3|i|ii|iii|iv)\b/gi, "").trim();
+  // 2. Adjetivos de origem — alta confiança, independem do mapa
+  //    "encefalopatia hipertensiva" → HAS  |  "pé diabético" → DM
+  if (/hipertensiv[ao]/i.test(low)) return "Hipertensão arterial sistêmica";
+  if (/diabétic[ao]/i.test(low))    return "Diabetes mellitus";
 
-  // 3. Remove subtópico após traço/travessão
+  // 3. Remove prefixo de contexto clínico
+  //    "crise de asma" → "asma"  |  "emergência hipertensiva" já cai no step 2
+  let norm = tema.replace(/^\s*(crise|exacerbação|urgência|emergência)\s+(de\s+|da\s+|do\s+|das\s+|dos\s+)?/gi, "").trim();
+
+  // 4. Remove sufixo de contexto clínico
+  //    "asma em crise" → "Asma"  |  "DPOC em exacerbação" → "DPOC"
+  norm = norm.replace(/\s+(em\s+|na\s+|no\s+)?(crise|exacerbação|emergência|urgência)\s*$/gi, "").trim();
+
+  // 5. Remove tipagem: "tipo 1", "tipo 2", "tipo I", "tipo II"
+  norm = norm.replace(/\s+tipo\s+(1|2|3|i|ii|iii|iv)\b/gi, "").trim();
+
+  // 6. Remove subtópico após traço/travessão
   norm = norm.replace(/\s*[-—]\s*(tratamento|diagnóstico|complicaç\w*|classificaç\w*|crise|manejo|conduta|rastreamento|prevenção|controle)\b.*/gi, "").trim();
 
-  // 4. Remove qualificadores de faixa etária/contexto
+  // 7. Remove qualificadores de faixa etária/contexto
   norm = norm.replace(/\s+(pediátric[ao]|neonatal|no idoso|da gestante|gestacional|em gestante|na gravidez|do adulto|no adulto)\b.*/gi, "").trim();
 
-  // 5. Remove qualificadores de gravidade no final
-  norm = norm.replace(/\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao]|agud[ao]|crônic[ao])\s*$/gi, "").trim();
+  // 8. Remove qualificadores de gravidade/evolução no final
+  norm = norm.replace(/\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao]|agud[ao]|crônic[ao]|avançad[ao])\s*$/gi, "").trim();
+
+  // 9. Segunda passagem no mapa (após limpeza dos qualificadores)
+  //    "asma aguda" limpada para "asma" → verifica mapa novamente
+  const low2 = norm.toLowerCase();
+  if (low2 !== low && MAPA_TEMA_MESTRE[low2]) return MAPA_TEMA_MESTRE[low2];
 
   return norm || tema; // nunca retorna string vazia
 };
@@ -337,6 +398,21 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   const [migTamLote, setMigTamLote]         = useState(20);   // docs por execução manual
   const migAbortRef = useRef(false);
   const migLogRef   = useRef(null);
+
+  // ── Estados do painel Resumo por Tema ─────────────────────────────────────
+  const [resAberto, setResAberto]       = useState(false);
+  const [resTema, setResTema]           = useState("");
+  const [resGerando, setResGerando]     = useState(false);
+  const [resPreview, setResPreview]     = useState(null);   // objeto gerado pela IA
+  const [resEditando, setResEditando]   = useState(false);  // modo edição
+  const [resSalvo, setResSalvo]         = useState(false);  // feedback pós-save
+  const [resExistente, setResExistente] = useState(null);   // resumo já salvo no Firestore
+  const [resLog, setResLog]             = useState("");      // mensagem de status
+  // Campo editável espelha resPreview durante edição
+  const [resEdit, setResEdit]           = useState({
+    definicao: "", diagnostico: "", tratamento: "",
+    pontos_chave: [], pegadinhas: [], dica_mestre: ""
+  });
 
   const abortRef      = useRef(false);
   const countdownRef  = useRef(null);  // guarda o resolve() atual para resolver externamente
@@ -491,6 +567,84 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       await setDoc(doc(db, "questoes", docId), finalData);
     }
   }, []);
+
+  // ── FUNÇÕES DO RESUMO POR TEMA ───────────────────────────────────────────
+  const toResDocId = (tema) =>
+    (tema || "").trim().replace(/[/.#[\]*]/g, "-");
+
+  const buscarResumoExistente = async (tema) => {
+    if (!tema.trim()) return;
+    try {
+      const snap = await fsGetDoc(fsDoc(db, "resumos_temas", toResDocId(tema)));
+      if (snap.exists()) {
+        setResExistente(snap.data());
+        setResPreview(snap.data());
+        setResLog("✅ Resumo existente carregado.");
+      } else {
+        setResExistente(null);
+        setResPreview(null);
+        setResLog("");
+      }
+    } catch (e) {
+      setResLog("Erro ao buscar: " + e.message);
+    }
+  };
+
+  const gerarResumo = async () => {
+    if (!resTema.trim()) { setResLog("⚠ Informe o tema antes de gerar."); return; }
+    setResGerando(true);
+    setResPreview(null);
+    setResExistente(null);
+    setResSalvo(false);
+    setResLog("Gerando resumo via IA…");
+    try {
+      const resposta = await chamarIA(
+        `${PROMPT_RESUMO_TEMA}\n\nTEMA: ${resTema.trim()}`
+      );
+      // chamarIA retorna array; resumo é objeto único
+      const raw = Array.isArray(resposta) ? resposta[0] : resposta;
+      if (!raw || !raw.definicao) throw new Error("Resposta da IA inválida ou incompleta.");
+      setResPreview(raw);
+      setResEdit({
+        definicao:    raw.definicao    || "",
+        diagnostico:  raw.diagnostico  || "",
+        tratamento:   raw.tratamento   || "",
+        pontos_chave: Array.isArray(raw.pontos_chave) ? raw.pontos_chave : [],
+        pegadinhas:   Array.isArray(raw.pegadinhas)   ? raw.pegadinhas   : [],
+        dica_mestre:  raw.dica_mestre  || "",
+      });
+      setResLog("✅ Resumo gerado. Revise antes de salvar.");
+    } catch (e) {
+      setResLog("❌ Erro: " + e.message);
+    } finally {
+      setResGerando(false);
+    }
+  };
+
+  const salvarResumo = async (dados) => {
+    if (!resTema.trim()) return;
+    try {
+      const docData = {
+        tema_mestre:  resTema.trim(),
+        definicao:    dados.definicao    || "",
+        diagnostico:  dados.diagnostico  || "",
+        tratamento:   dados.tratamento   || "",
+        pontos_chave: Array.isArray(dados.pontos_chave) ? dados.pontos_chave : [],
+        pegadinhas:   Array.isArray(dados.pegadinhas)   ? dados.pegadinhas   : [],
+        dica_mestre:  dados.dica_mestre  || "",
+        criado_em:    serverTimestamp(),
+      };
+      await fsSetDoc(fsDoc(db, "resumos_temas", toResDocId(resTema)), docData);
+      setResExistente(docData);
+      setResPreview(docData);
+      setResEditando(false);
+      setResSalvo(true);
+      setResLog("✅ Resumo salvo com sucesso!");
+      setTimeout(() => setResSalvo(false), 3000);
+    } catch (e) {
+      setResLog("❌ Erro ao salvar: " + e.message);
+    }
+  };
 
   // ── LOOP PRINCIPAL DO ROBÔ ────────────────────────────────────────────────
   const iniciarRobo = async () => {
@@ -958,9 +1112,12 @@ Requisitos gerais:
   };
 
   // ── RODAR LOTE: processa APENAS os próximos N da fila — para em seguida ────
-  // Segurança: não altera documentos que NÃO estejam na fila de pendentes.
-  // Cada clique = 1 lote. O admin valida o resultado antes de continuar.
-  // Dupla proteção: IA com prompt reforçado + normalizarTemaMestre() local.
+  // GARANTIA ANTI-LOOP: todos os docs do lote SEMPRE saem com tema_mestre válido.
+  // Ordem de resolução por doc:
+  //   1. IA respondeu com valor válido → normaliza e grava
+  //   2. IA respondeu INDEFINIDO → tenta normalizar subtema como fallback
+  //   3. IA não respondeu / falhou totalmente → usa subtema truncado como fallback
+  //   4. Subtema também vazio → grava "A classificar" (valor estável, não volta à fila)
   const rodarLote = async () => {
     if (migPendentes.length === 0 || migrando) return;
     migAbortRef.current = false;
@@ -971,19 +1128,32 @@ Requisitos gerais:
       ? "/functions/gerarQuestoesIA"
       : (import.meta.env.VITE_FUNCTIONS_BASE_URL || "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/gerarQuestoesIA";
 
-    // Captura o lote atual ANTES de qualquer setState
     const lote      = migPendentes.slice(0, migTamLote);
     const loteNum   = Math.floor(migProcessados / migTamLote) + 1;
     const restantes = migPendentes.length - lote.length;
 
     const fragmentadosNoLote = lote.filter(q => q.tema_mestre_atual).length;
     addMigLog(
-      `▶️  Lote ${loteNum} — ${lote.length} doc(s)${fragmentadosNoLote > 0 ? ` (${fragmentadosNoLote} fragmentados para corrigir)` : ""} → IA…`,
+      `▶️  Lote ${loteNum} — ${lote.length} doc(s)${fragmentadosNoLote > 0 ? ` (${fragmentadosNoLote} fragmentados)` : ""} → IA…`,
       "info"
     );
 
+    // Helper: constrói fallback a partir do subtema quando IA falha
+    const buildFallback = (q) => {
+      const raw = (q.subtema || q.tema_mestre_atual || "").trim();
+      if (!raw) return "A classificar";
+      // Tenta normalizar o subtema (ex: "crise hipertensiva — dx" → "HAS")
+      const norm = normalizarTemaMestre(raw.replace(/\s*[-—]\s*.*$/, "").trim());
+      if (norm && norm !== "INDEFINIDO" && !estaFragmentado(norm)) return norm;
+      // Usa o subtema bruto sem subtópico (tudo após traço), max 80 chars
+      const semSubtopico = raw.replace(/\s*[-—]\s*.*$/, "").trim().substring(0, 80);
+      return semSubtopico || "A classificar";
+    };
+
+    // Mapa de respostas da IA: id → tema_mestre normalizado
+    const parsedMap = new Map();
+
     try {
-      // Envia id + subtema; inclui tema_mestre_atual quando existe mas está errado
       const loteParaIA = lote.map(q => ({
         id: q.id,
         subtema: q.subtema,
@@ -992,7 +1162,7 @@ Requisitos gerais:
 
       const promptUsuario =
         `Classifique os subtemas abaixo aplicando GENERALIZAÇÃO MÁXIMA.\n` +
-        `Quando "tema_mestre_atual" estiver presente, o valor ESTÁ ERRADO — corrija generalizando (ex: "tipo 2" → remover; "cetoacidose diabética" → "Diabetes mellitus").\n` +
+        `Quando "tema_mestre_atual" estiver presente, o valor ESTÁ ERRADO — corrija generalizando.\n` +
         `Responda SOMENTE com array JSON: [{"id":"...","tema_mestre":"..."}]\n` +
         JSON.stringify(loteParaIA);
 
@@ -1003,57 +1173,91 @@ Requisitos gerais:
       });
 
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data   = await resp.json();
-      const texto  = (data.content || []).map(c => c.text || "").join("").trim();
+      const data  = await resp.json();
+      const texto = (data.content || []).map(c => c.text || "").join("").trim();
       const parsed = extrairJSONDoTexto(texto);
 
-      if (!parsed || !Array.isArray(parsed)) {
-        addMigLog(`⚠️  Lote ${loteNum}: IA retornou resposta inválida — nenhum doc alterado. Tente novamente.`, "aviso");
-        setMigrando(false);
-        return;
-      }
-
-      // Grava em batch com normalização local como segunda camada de proteção
-      const batch = writeBatch(db);
-      let atualizadosLote  = 0;
-      let indefinidosLote  = 0;
-      let normalizadosLocal = 0;
-
-      for (const item of parsed) {
-        if (!item.id || !item.tema_mestre) continue;
-        if (!lote.find(q => q.id === item.id)) continue; // segurança: só IDs do lote
-
-        // Aplica normalizarTemaMestre() como safety net
-        const temaNorm = normalizarTemaMestre(item.tema_mestre);
-        if (temaNorm !== item.tema_mestre) normalizadosLocal++;
-
-        batch.update(doc(db, "questoes", item.id), { tema_mestre: temaNorm });
-        atualizadosLote++;
-        if (temaNorm === "INDEFINIDO") indefinidosLote++;
-      }
-
-      await batch.commit();
-
-      // Remove o lote processado da fila e atualiza contadores
-      const novosProcessados = migProcessados + lote.length;
-      setMigPendentes(prev => prev.slice(migTamLote));
-      setMigProcessados(novosProcessados);
-      setMigProgresso({ atual: novosProcessados, total: migProgresso.total });
-
-      let msgOk = `✅ Lote ${loteNum}: ${atualizadosLote} atualizados`;
-      if (indefinidosLote  > 0) msgOk += ` · ${indefinidosLote} INDEFINIDO`;
-      if (normalizadosLocal > 0) msgOk += ` · ${normalizadosLocal} corrigidos pelo normalizador local`;
-      addMigLog(msgOk, "ok");
-
-      if (restantes === 0) {
-        addMigLog("🎉 Fila concluída! Todos os pendentes foram processados.", "sistema");
-        addMigLog("💡 Rode o Scan novamente para confirmar que não restam fragmentados.", "sistema");
+      if (parsed && Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (!item.id || !lote.find(q => q.id === item.id)) continue;
+          const temaNorm = normalizarTemaMestre(item.tema_mestre || "");
+          // Só registra se IA retornou valor realmente válido (não INDEFINIDO)
+          if (temaNorm && temaNorm !== "INDEFINIDO") {
+            parsedMap.set(item.id, temaNorm);
+          }
+        }
+        addMigLog(`   IA: ${parsedMap.size}/${lote.length} doc(s) com tema válido`, "detalhe");
       } else {
-        addMigLog(`📋 ${restantes} doc(s) ainda na fila — clique 'Rodar lote' para continuar.`, "sistema");
+        addMigLog(`   ⚠️  IA retornou formato inválido — todos os ${lote.length} doc(s) usarão fallback`, "aviso");
       }
 
     } catch (err) {
-      addMigLog(`❌ Lote ${loteNum} falhou: ${err.message} — fila não alterada, pode tentar novamente.`, "erro");
+      addMigLog(`   ⚠️  Falha na IA (${err.message}) — todos os ${lote.length} doc(s) usarão fallback`, "aviso");
+    }
+
+    // ── Grava TODOS os docs do lote, sem exceção ──────────────────────────────
+    const batch = writeBatch(db);
+    let cntIA        = 0;  // gravados com tema da IA
+    let cntNorm      = 0;  // gravados com normalização local
+    let cntFallback  = 0;  // gravados com fallback de subtema
+    let cntClassif   = 0;  // gravados como "A classificar"
+    const logFallback = []; // IDs que precisarão revisão manual
+
+    for (const q of lote) {
+      let temaFinal;
+
+      if (parsedMap.has(q.id)) {
+        // IA respondeu com valor válido (já normalizado no step acima)
+        const iaVal = parsedMap.get(q.id);
+        const iaValOriginal = iaVal; // para detectar normalização adicional
+        temaFinal = normalizarTemaMestre(iaVal); // segunda passagem: segurança extra
+        if (temaFinal !== iaValOriginal) cntNorm++;
+        else cntIA++;
+      } else {
+        // IA falhou para este doc → fallback
+        temaFinal = buildFallback(q);
+        if (temaFinal === "A classificar") {
+          cntClassif++;
+          logFallback.push(q.id);
+        } else {
+          cntFallback++;
+        }
+      }
+
+      batch.update(doc(db, "questoes", q.id), { tema_mestre: temaFinal });
+    }
+
+    try {
+      await batch.commit();
+    } catch (batchErr) {
+      addMigLog(`❌ Erro ao gravar lote ${loteNum}: ${batchErr.message}`, "erro");
+      setMigrando(false);
+      return;
+    }
+
+    // Avança a fila e atualiza contadores
+    const novosProcessados = migProcessados + lote.length;
+    setMigPendentes(prev => prev.slice(migTamLote));
+    setMigProcessados(novosProcessados);
+    setMigProgresso({ atual: novosProcessados, total: migProgresso.total });
+
+    // Log de resultado
+    const partes = [];
+    if (cntIA       > 0) partes.push(`${cntIA} via IA`);
+    if (cntNorm     > 0) partes.push(`${cntNorm} normalizados`);
+    if (cntFallback > 0) partes.push(`${cntFallback} via subtema`);
+    if (cntClassif  > 0) partes.push(`${cntClassif} "A classificar"`);
+    addMigLog(`✅ Lote ${loteNum}: ${lote.length} docs gravados — ${partes.join(" · ")}`, "ok");
+
+    if (logFallback.length > 0) {
+      addMigLog(`   ℹ️  "A classificar" (${logFallback.length}): sem subtema disponível. Revise manualmente.`, "aviso");
+    }
+
+    if (restantes === 0) {
+      addMigLog("🎉 Fila concluída! Nenhum doc ficou sem tema_mestre.", "sistema");
+      addMigLog("💡 Rode o Scan para confirmar. Docs 'A classificar' precisam de revisão manual.", "sistema");
+    } else {
+      addMigLog(`📋 ${restantes} doc(s) ainda na fila — clique 'Rodar lote' para continuar.`, "sistema");
     }
 
     setMigrando(false);
@@ -1151,7 +1355,6 @@ Requisitos gerais:
               <FaTrash size={10} /> Limpar log
             </button>
           )}
-          {/* Botão de migração — corrige matérias geradas antes do fix */}
           {!rodando && (
             <button
               style={{
@@ -1162,7 +1365,7 @@ Requisitos gerais:
               }}
               onClick={corrigirMaterias}
               disabled={corrigindo}
-              title={`Corrige questões da edição "${edicao}" onde a matéria ficou errada (ex: "Cirurgia do Abdome" → "Cirurgia")`}
+              title={`Corrige questões da edição "${edicao}" onde a matéria ficou errada`}
             >
               {corrigindo
                 ? <><FaSpinner size={10} style={{ animation: "spin 1s linear infinite" }} /> Corrigindo…</>
@@ -1215,8 +1418,6 @@ Requisitos gerais:
               </span>
             )}
           </div>
-
-          {/* FIX BUG #2: logEndRef para auto-scroll */}
           <div style={st.logWrap}>
             {log.map((entry, i) => (
               <div key={i} style={st.logLinha(entry.tipo)}>
@@ -1224,7 +1425,6 @@ Requisitos gerais:
                 {entry.msg}
               </div>
             ))}
-            {/* Âncora invisível — scrollIntoView sempre traz a última linha */}
             <div ref={logEndRef} />
           </div>
         </div>
@@ -1240,23 +1440,18 @@ Requisitos gerais:
             <FaExclamationTriangle size={15} color="#f87171" />
             {temasFalhos.length} tema(s) não gerado(s) após {MAX_RETRIES} tentativas
           </div>
-
           <div style={{
             background: "#0f172a", borderRadius: "10px", padding: "12px 14px",
             marginBottom: "14px", fontFamily: "monospace", fontSize: "12px"
           }}>
             {temasFalhos.map((t, i) => (
-              <div key={i} style={{ color: "#f87171", marginBottom: "4px" }}>
-                • {t}
-              </div>
+              <div key={i} style={{ color: "#f87171", marginBottom: "4px" }}>• {t}</div>
             ))}
           </div>
-
           <p style={{ ...st.hint, color: "#94a3b8", marginBottom: "14px" }}>
-            Esses temas podem ter falhado por instabilidade temporária da API ou complexidade do conteúdo.
-            Clique em "Re-tentar" para carregar somente eles na textarea e rodar novamente.
+            Esses temas podem ter falhado por instabilidade da API. Clique em "Re-tentar"
+            para carregá-los na textarea e rodar novamente.
           </p>
-
           <button
             style={{
               background: "rgba(239,68,68,0.15)", color: "#f87171",
@@ -1269,7 +1464,6 @@ Requisitos gerais:
               setTemasFalhos([]);
               setLog([]);
               setProgresso({ atual: 0, total: 0 });
-              // rola para o topo da página para o usuário ver a textarea preenchida
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
           >
@@ -1285,7 +1479,6 @@ Requisitos gerais:
         borderRadius: "16px", marginBottom: "20px", overflow: "hidden",
         transition: "all 0.2s"
       }}>
-        {/* Cabeçalho colapsável */}
         <button
           onClick={() => setMigAberto(v => !v)}
           style={{
@@ -1312,16 +1505,13 @@ Requisitos gerais:
 
         {migAberto && (
           <div style={{ padding: "0 20px 20px" }}>
-
-            {/* ── Descrição ──────────────────────────────────────────────── */}
             <p style={{ color: "#64748b", fontSize: "12px", marginBottom: "16px", lineHeight: 1.6 }}>
-              Classifica o <strong style={{ color: "#94a3b8" }}>tema_mestre</strong> de questões sem esse campo.
-              Funciona em <strong style={{ color: "#94a3b8" }}>dois passos</strong>:
-              primeiro faça o <em>scan</em> para ver quantas estão pendentes,
-              depois clique <em>"Rodar lote"</em> quantas vezes quiser — você controla o ritmo.
+              Classifica o <strong style={{ color: "#94a3b8" }}>tema_mestre</strong> de questões sem esse campo
+              (ou com valor fragmentado). Funciona em <strong style={{ color: "#94a3b8" }}>dois passos</strong>:
+              primeiro faça o <em>scan</em>, depois clique <em>"Rodar lote"</em> — você controla o ritmo.
+              Todos os docs do lote saem com tema_mestre válido (com fallback automático se a IA falhar).
             </p>
 
-            {/* ── Controles: tamanho do lote + botão scan ─────────────────── */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                 <span style={{ color: "#64748b", fontSize: "10px", fontWeight: "700", letterSpacing: "0.5px" }}>
@@ -1360,7 +1550,6 @@ Requisitos gerais:
               </button>
             </div>
 
-            {/* ── Painel de status pós-scan ────────────────────────────────── */}
             {migEscaneado && (
               <div style={{
                 background: migPendentes.length === 0 ? "rgba(16,185,129,0.06)" : "rgba(251,191,36,0.06)",
@@ -1388,7 +1577,6 @@ Requisitos gerais:
                     </div>
                   </div>
                 </div>
-                {/* Barra de progresso inline */}
                 {migProgresso.total > 0 && (
                   <div style={{ flex: 1, minWidth: "120px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
@@ -1411,7 +1599,6 @@ Requisitos gerais:
               </div>
             )}
 
-            {/* ── Log da migração ──────────────────────────────────────────── */}
             {migLog.length > 0 && (
               <div style={{
                 background: "#0f172a", border: "1px solid #1e293b",
@@ -1419,7 +1606,7 @@ Requisitos gerais:
                 overflowY: "auto", fontFamily: "monospace", fontSize: "11px", marginBottom: "14px"
               }}>
                 {migLog.map((e, i) => {
-                  const cores = { ok: "#34d399", erro: "#f87171", aviso: "#fbbf24", sistema: "#818cf8", info: "#94a3b8" };
+                  const cores = { ok: "#34d399", erro: "#f87171", aviso: "#fbbf24", sistema: "#818cf8", info: "#94a3b8", detalhe: "#475569" };
                   return (
                     <div key={i} style={{ color: cores[e.tipo] || "#94a3b8", marginBottom: "4px", lineHeight: 1.6 }}>
                       <span style={{ color: "#334155", marginRight: "8px" }}>[{e.ts}]</span>{e.msg}
@@ -1430,7 +1617,6 @@ Requisitos gerais:
               </div>
             )}
 
-            {/* ── Botão principal: Rodar lote ──────────────────────────────── */}
             <div style={{ display: "flex", gap: "10px" }}>
               <button
                 onClick={rodarLote}
@@ -1470,12 +1656,192 @@ Requisitos gerais:
                 </button>
               )}
             </div>
+          </div>
+        )}
+      </div>
 
-            {/* Dica de fluxo */}
-            {!migEscaneado && !escaneando && (
-              <p style={{ color: "#334155", fontSize: "11px", marginTop: "10px", textAlign: "center" }}>
-                ① Escanear base → ② Rodar lote → ③ Validar no Banco de Temas → repetir
+      {/* RESUMO POR TEMA */}
+      <div style={{
+        marginTop: "20px", borderRadius: "16px", overflow: "hidden",
+        background: resAberto ? "rgba(79,70,229,0.04)" : "transparent",
+        border: `1px solid ${resAberto ? "rgba(79,70,229,0.25)" : "#1e293b"}`,
+        transition: "all 0.2s",
+      }}>
+        <button
+          onClick={() => setResAberto(v => !v)}
+          style={{
+            width: "100%", background: "transparent", border: "none",
+            color: "#f1f5f9", display: "flex", alignItems: "center",
+            justifyContent: "space-between", padding: "14px 16px",
+            cursor: "pointer", fontSize: "13px", fontWeight: "800",
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <FaBookOpen size={13} color="#818cf8" />
+            Resumo por Tema
+            {resExistente && <span style={{ fontSize: "10px", background: "rgba(16,185,129,0.15)", color: "#34d399", borderRadius: "6px", padding: "2px 8px", fontWeight: "700" }}>SALVO</span>}
+          </span>
+          {resAberto ? "▲" : "▼"}
+        </button>
+
+        {resAberto && (
+          <div style={{ padding: "0 16px 16px" }}>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+              <input
+                type="text"
+                value={resTema}
+                onChange={e => { setResTema(e.target.value); setResPreview(null); setResExistente(null); setResLog(""); }}
+                onBlur={() => buscarResumoExistente(resTema)}
+                placeholder="Ex: Hipertensão arterial sistêmica"
+                style={{
+                  flex: 1, background: "#0f172a", border: "1px solid #334155",
+                  borderRadius: "10px", padding: "9px 14px", color: "#f1f5f9",
+                  fontSize: "13px", fontWeight: "600", outline: "none",
+                }}
+              />
+              <button
+                onClick={gerarResumo}
+                disabled={resGerando || rodando || !resTema.trim()}
+                style={{
+                  background: resGerando || !resTema.trim() ? "#1e293b" : "linear-gradient(135deg,#4f46e5,#7c3aed)",
+                  color: resGerando || !resTema.trim() ? "#475569" : "#fff",
+                  border: "none", borderRadius: "10px", padding: "9px 16px",
+                  fontSize: "12px", fontWeight: "800", cursor: resGerando || !resTema.trim() ? "not-allowed" : "pointer",
+                  display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap",
+                }}
+              >
+                {resGerando
+                  ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Gerando…</>
+                  : resExistente
+                  ? <><FaSync size={11} /> Regenerar</>
+                  : <><FaRobot size={11} /> Gerar Resumo</>}
+              </button>
+            </div>
+
+            {resLog && (
+              <p style={{ fontSize: "11px", color: resLog.startsWith("✅") ? "#34d399" : resLog.startsWith("❌") ? "#f87171" : "#94a3b8", margin: "0 0 10px", fontWeight: "700" }}>
+                {resLog}
               </p>
+            )}
+
+            {resPreview && !resEditando && (
+              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "14px", padding: "16px", marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+                  <h4 style={{ color: "#818cf8", fontSize: "12px", fontWeight: "900", letterSpacing: "0.5px", margin: 0, textTransform: "uppercase" }}>
+                    <FaEye size={10} style={{ marginRight: 6 }} />{resTema}
+                  </h4>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      onClick={() => { setResEditando(true); setResEdit({ ...resPreview, pontos_chave: [...(resPreview.pontos_chave||[])], pegadinhas: [...(resPreview.pegadinhas||[])] }); }}
+                      style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", color: "#fbbf24", borderRadius: "8px", padding: "5px 12px", fontSize: "11px", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}
+                    >
+                      <FaEdit size={10} /> Editar
+                    </button>
+                    <button
+                      onClick={() => salvarResumo(resPreview)}
+                      style={{ background: resSalvo ? "rgba(16,185,129,0.2)" : "rgba(79,70,229,0.15)", border: `1px solid ${resSalvo ? "rgba(16,185,129,0.4)" : "rgba(79,70,229,0.4)"}`, color: resSalvo ? "#34d399" : "#818cf8", borderRadius: "8px", padding: "5px 12px", fontSize: "11px", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: "5px" }}
+                    >
+                      <FaSave size={10} /> {resSalvo ? "Salvo!" : "Salvar"}
+                    </button>
+                  </div>
+                </div>
+
+                {[
+                  { key: "definicao",   label: "Definição",    color: "#818cf8" },
+                  { key: "diagnostico", label: "Diagnóstico",  color: "#34d399" },
+                  { key: "tratamento",  label: "Tratamento",   color: "#60a5fa" },
+                ].map(({ key, label, color }) => (
+                  <div key={key} style={{ marginBottom: "10px" }}>
+                    <span style={{ fontSize: "10px", fontWeight: "900", color, letterSpacing: "0.5px", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>{label}</span>
+                    <p style={{ fontSize: "12px", color: "#cbd5e1", margin: 0, lineHeight: 1.6 }}>{resPreview[key]}</p>
+                  </div>
+                ))}
+
+                {resPreview.pontos_chave?.length > 0 && (
+                  <div style={{ marginBottom: "10px" }}>
+                    <span style={{ fontSize: "10px", fontWeight: "900", color: "#f59e0b", letterSpacing: "0.5px", display: "block", marginBottom: "6px", textTransform: "uppercase" }}>Pontos-chave</span>
+                    {resPreview.pontos_chave.map((p, i) => (
+                      <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "4px" }}>
+                        <span style={{ color: "#f59e0b", fontSize: "11px", fontWeight: "900", flexShrink: 0 }}>{i + 1}.</span>
+                        <span style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.5 }}>{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {resPreview.pegadinhas?.length > 0 && (
+                  <div style={{ marginBottom: "10px" }}>
+                    <span style={{ fontSize: "10px", fontWeight: "900", color: "#ef4444", letterSpacing: "0.5px", display: "block", marginBottom: "6px", textTransform: "uppercase" }}>⚠ Pegadinhas de prova</span>
+                    {resPreview.pegadinhas.map((p, i) => (
+                      <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "4px" }}>
+                        <span style={{ color: "#ef4444", fontSize: "11px", flexShrink: 0 }}>✗</span>
+                        <span style={{ fontSize: "12px", color: "#fca5a5", lineHeight: 1.5 }}>{p}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {resPreview.dica_mestre && (
+                  <div style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: "10px", padding: "10px 14px" }}>
+                    <span style={{ fontSize: "10px", fontWeight: "900", color: "#fbbf24", letterSpacing: "0.5px", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>⭐ Dica do Mestre</span>
+                    <p style={{ fontSize: "12px", color: "#fef3c7", margin: 0, lineHeight: 1.6, fontStyle: "italic" }}>{resPreview.dica_mestre}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {resEditando && (
+              <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: "14px", padding: "16px", marginBottom: "12px" }}>
+                <h4 style={{ color: "#fbbf24", fontSize: "12px", fontWeight: "900", margin: "0 0 14px", textTransform: "uppercase", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <FaEdit size={10} /> Editando: {resTema}
+                </h4>
+
+                {[
+                  { key: "definicao",   label: "Definição",   rows: 3 },
+                  { key: "diagnostico", label: "Diagnóstico", rows: 3 },
+                  { key: "tratamento",  label: "Tratamento",  rows: 4 },
+                  { key: "dica_mestre", label: "Dica do Mestre", rows: 2 },
+                ].map(({ key, label, rows }) => (
+                  <div key={key} style={{ marginBottom: "12px" }}>
+                    <label style={{ fontSize: "10px", fontWeight: "900", color: "#94a3b8", letterSpacing: "0.5px", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>{label}</label>
+                    <textarea
+                      value={resEdit[key]}
+                      onChange={e => setResEdit(prev => ({ ...prev, [key]: e.target.value }))}
+                      rows={rows}
+                      style={{ width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: "8px", padding: "8px 12px", color: "#f1f5f9", fontSize: "12px", lineHeight: 1.6, resize: "vertical", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                ))}
+
+                {["pontos_chave", "pegadinhas"].map(key => (
+                  <div key={key} style={{ marginBottom: "12px" }}>
+                    <label style={{ fontSize: "10px", fontWeight: "900", color: "#94a3b8", letterSpacing: "0.5px", display: "block", marginBottom: "4px", textTransform: "uppercase" }}>
+                      {key === "pontos_chave" ? "Pontos-chave (1 por linha)" : "Pegadinhas (1 por linha)"}
+                    </label>
+                    <textarea
+                      value={(resEdit[key] || []).join("\n")}
+                      onChange={e => setResEdit(prev => ({ ...prev, [key]: e.target.value.split("\n").filter(l => l.trim()) }))}
+                      rows={5}
+                      style={{ width: "100%", background: "#1e293b", border: "1px solid #334155", borderRadius: "8px", padding: "8px 12px", color: "#f1f5f9", fontSize: "12px", lineHeight: 1.8, resize: "vertical", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                ))}
+
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button
+                    onClick={() => salvarResumo(resEdit)}
+                    style={{ flex: 1, background: "linear-gradient(135deg,#4f46e5,#7c3aed)", color: "#fff", border: "none", borderRadius: "10px", padding: "10px", fontSize: "12px", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                  >
+                    <FaSave size={11} /> Salvar Resumo
+                  </button>
+                  <button
+                    onClick={() => { setResEditando(false); }}
+                    style={{ background: "transparent", border: "1px solid #334155", color: "#64748b", borderRadius: "10px", padding: "10px 16px", fontSize: "12px", fontWeight: "700", cursor: "pointer" }}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}

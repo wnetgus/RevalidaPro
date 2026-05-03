@@ -31,6 +31,7 @@ const Dashboard = ({ usuario }) => {
   const [dadosUser, setDadosUser] = useState(dadosUsuarioCtx || usuario || {});
   const [metaDiaria, setMetaDiaria] = useState((dadosUsuarioCtx || usuario)?.metaDiaria || 20);
   const [editandoMeta, setEditandoMeta] = useState(false);
+  const [metaCustomInput, setMetaCustomInput] = useState("");
   const [anoSelecionado, setAnoSelecionado] = useState(null);
   const [missoes, setMissoes] = useState([]);
   const [carregandoMissoes, setCarregandoMissoes] = useState(true);
@@ -1202,13 +1203,73 @@ const Dashboard = ({ usuario }) => {
       {editandoMeta && (
         <div className="modal-overlay">
           <div className="modal-content" style={{maxWidth: '400px', textAlign: 'center'}}>
-            <h3 style={{color: '#fff', marginBottom: '20px'}}>Ajustar Meta Diária</h3>
+            <h3 style={{color: '#fff', marginBottom: '6px'}}>Ajustar Meta Diária</h3>
+            <p style={{color: '#64748b', fontSize: '12px', marginBottom: '20px'}}>Escolha uma opção ou digite um valor personalizado</p>
+
+            {/* Opções rápidas */}
             <div style={st.gridMetas}>
-              {[20, 50, 100, 150].map(m => (
-                <button key={m} onClick={() => salvarNovaMeta(m)} style={st.btnMetaOpcao}>{m} Qts</button>
+              {[10, 20, 50, 100, 150].map(m => (
+                <button key={m}
+                  onClick={() => { setMetaCustomInput(""); salvarNovaMeta(m); }}
+                  style={{
+                    ...st.btnMetaOpcao,
+                    ...(metaDiaria === m ? { background: '#4f46e5', borderColor: '#4f46e5', color: '#fff' } : {})
+                  }}>
+                  {m} Qts
+                </button>
               ))}
             </div>
-            <button onClick={() => setEditandoMeta(false)} style={st.btnCancel}>CANCELAR</button>
+
+            {/* Divider */}
+            <div style={{display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0'}}>
+              <div style={{flex: 1, height: 1, background: '#1e293b'}} />
+              <span style={{color: '#475569', fontSize: '11px', fontWeight: 700}}>OU DIGITE</span>
+              <div style={{flex: 1, height: 1, background: '#1e293b'}} />
+            </div>
+
+            {/* Input livre */}
+            <div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={metaCustomInput}
+                onChange={e => setMetaCustomInput(e.target.value)}
+                placeholder="Ex: 35"
+                style={{
+                  flex: 1, background: '#0f172a', border: '1px solid #334155',
+                  borderRadius: 10, padding: '10px 14px', color: '#f1f5f9',
+                  fontSize: 14, fontWeight: 700, outline: 'none',
+                  textAlign: 'center', appearance: 'textfield',
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const v = parseInt(metaCustomInput, 10);
+                    if (v >= 1 && v <= 500) { setMetaCustomInput(""); salvarNovaMeta(v); }
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  const v = parseInt(metaCustomInput, 10);
+                  if (v >= 1 && v <= 500) { setMetaCustomInput(""); salvarNovaMeta(v); }
+                }}
+                disabled={!metaCustomInput || parseInt(metaCustomInput,10) < 1 || parseInt(metaCustomInput,10) > 500}
+                style={{
+                  background: metaCustomInput && parseInt(metaCustomInput,10) >= 1 && parseInt(metaCustomInput,10) <= 500
+                    ? '#4f46e5' : '#1e293b',
+                  color: '#fff', border: 'none', borderRadius: 10,
+                  padding: '10px 18px', fontSize: 13, fontWeight: 800,
+                  cursor: metaCustomInput ? 'pointer' : 'not-allowed',
+                  transition: 'background .2s', whiteSpace: 'nowrap',
+                }}
+              >
+                SALVAR
+              </button>
+            </div>
+            <p style={{color: '#475569', fontSize: '11px', marginTop: 8}}>Mínimo: 1 · Máximo: 500 questões</p>
+
+            <button onClick={() => { setMetaCustomInput(""); setEditandoMeta(false); }} style={{...st.btnCancel, marginTop: 16}}>CANCELAR</button>
           </div>
         </div>
       )}
@@ -1464,17 +1525,23 @@ const st = {
   badgeRecente: { fontSize: '9px', fontWeight: '900', color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '6px', padding: '2px 7px', display: 'inline-block', marginTop: '4px', letterSpacing: '0.3px' },
   badgeAntigo: { fontSize: '9px', fontWeight: '900', color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '6px', padding: '2px 7px', display: 'inline-block', marginTop: '4px', letterSpacing: '0.3px' },
   badgeRevisao: { fontSize: '9px', fontWeight: '900', color: '#818cf8', background: 'rgba(129,140,248,0.1)', border: '1px solid rgba(129,140,248,0.25)', borderRadius: '6px', padding: '2px 6px', letterSpacing: '0.5px', display: 'inline-block' },
-  btnClose: { background: 'rgba(255,255,255,0.05)', border: '1px solid #334155', color: '#94a3b8', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' },
+  btnClose: { background: 'rgba(255,255,255,0.05)', border: '1px solid #334155', color: '#94a3b8', borderRadius: '8px', width: '30px', height: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  // ── MODAIS ─────────────────────────────────────
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #1e293b' },
+  gridMetas: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '14px' },
+  btnMetaOpcao: { background: '#1e293b', border: '1px solid #334155', color: '#94a3b8', borderRadius: '10px', padding: '12px', fontSize: '14px', fontWeight: '800', cursor: 'pointer', transition: 'all 0.15s' },
+  btnCancel: { background: 'transparent', border: '1px solid #334155', color: '#64748b', borderRadius: '10px', padding: '10px 20px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', marginTop: '8px', width: '100%' },
   edicoesList: { display: 'flex', flexDirection: 'column', gap: '8px' },
   iconCircle: { width: '80px', height: '80px', background: 'rgba(16,185,129,0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' },
   btnStart: { background: 'linear-gradient(135deg, #4f46e5, #4338ca)', color: '#fff', border: 'none', padding: '14px 28px', borderRadius: '14px', cursor: 'pointer', fontWeight: '900', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '10px', margin: '0 auto', letterSpacing: '0.5px', boxShadow: '0 8px 20px rgba(79,70,229,0.35)' },
+  floatWhatsapp: { position: 'fixed', bottom: '24px', right: '24px', background: 'linear-gradient(135deg, #25d366, #128c7e)', color: '#fff', border: 'none', borderRadius: '50px', padding: '12px 20px', fontSize: '13px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 20px rgba(37,211,102,0.4)', zIndex: 999, letterSpacing: '0.3px' },
   conquistasSection: { display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '15px' },
+  conquistaBar: { height: '6px', background: '#1e293b', borderRadius: '3px', overflow: 'hidden', marginTop: '6px' },
   badgesRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
   badgeEarned: { display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(79,70,229,0.12)', border: '1px solid rgba(79,70,229,0.35)', borderRadius: '10px', padding: '6px 10px', fontSize: '11px', color: '#fff', fontWeight: '700', cursor: 'default' },
   badgeUnearned: { display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.03)', border: '1px solid #1e293b', borderRadius: '10px', padding: '6px 10px', fontSize: '11px', color: '#334155', fontWeight: '700', filter: 'grayscale(1)', cursor: 'default' },
   scoreMemoriaBar: { display: 'flex', alignItems: 'center', gap: '8px', background: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '10px 14px', marginBottom: '12px' },
   metaInteligente: { background: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', padding: '16px', marginBottom: '14px', transition: 'border 0.3s ease, box-shadow 0.3s ease' },
-  // ── ESTUDO POR ÁREAS / SIMULADOS INEP / WIDGETS ────────────────────────────
   materiasGrid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '15px' },
   materiaCard: { background: '#0f172a', padding: '16px', borderRadius: '16px', textAlign: 'center', cursor: 'pointer', border: '1px solid #1e293b', transition: 'transform 0.2s, border-color 0.2s' },
   acervoContainer: { background: '#0f172a', borderRadius: '20px', padding: '20px', marginBottom: '15px', border: '1px solid #1e293b' },

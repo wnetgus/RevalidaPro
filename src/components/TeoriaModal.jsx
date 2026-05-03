@@ -37,19 +37,40 @@ const COR_CONTEXTO = {
   "pós-operatório":"#8b5cf6",
 };
 
+// Sanitiza para docId da coleção resumos_temas
+const toResDocId = (tema) =>
+  (tema || "").trim().replace(/[/.#[\]*]/g, "-");
+
 const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClose }) => {
   const [teoria, setTeoria] = useState(null);
+  const [resumo, setResumo] = useState(null);  // resumos_temas (schema plano)
   const [carregando, setCarregando] = useState(true);
+  const [fonte, setFonte] = useState(null);    // "resumos_temas" | "teorias" | null
 
   useEffect(() => {
     const buscar = async () => {
       setCarregando(true);
+      setResumo(null);
+      setTeoria(null);
+      setFonte(null);
       try {
+        // ── 0ª tentativa: resumos_temas (novo schema plano) — prioridade máxima
+        if (tema_mestre) {
+          const snap = await getDoc(doc(db, "resumos_temas", toResDocId(tema_mestre)));
+          if (snap.exists()) {
+            setResumo(snap.data());
+            setFonte("resumos_temas");
+            setCarregando(false);
+            return;
+          }
+        }
+
         // ── 1ª tentativa: tema_mestre + contexto via getDoc (O(1)) ──────────
         if (tema_mestre && subcontexto_clinico) {
           const snap = await getDoc(doc(db, "teorias", toDocId(tema_mestre, subcontexto_clinico)));
           if (snap.exists()) {
             setTeoria(snap.data());
+            setFonte("teorias");
             setCarregando(false);
             return;
           }
@@ -60,6 +81,7 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
           const snap = await getDoc(doc(db, "teorias", toDocId(tema_mestre, "")));
           if (snap.exists()) {
             setTeoria(snap.data());
+            setFonte("teorias");
             setCarregando(false);
             return;
           }
@@ -71,6 +93,7 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
           const s1 = await getDocs(q1);
           if (!s1.empty) {
             setTeoria(s1.docs[0].data());
+            setFonte("teorias");
             setCarregando(false);
             return;
           }
@@ -86,14 +109,17 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
           const s2 = await getDocs(q2);
           if (!s2.empty) {
             setTeoria(s2.docs[0].data());
+            setFonte("teorias");
             setCarregando(false);
             return;
           }
         }
 
         setTeoria(null);
+        setResumo(null);
       } catch {
         setTeoria(null);
+        setResumo(null);
       }
       setCarregando(false);
     };
@@ -115,7 +141,7 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
     );
   };
 
-  const tituloExibido = teoria?.titulo || teoria?.tema_mestre || tema_mestre || subtema || materia;
+  const tituloExibido = resumo?.tema_mestre || teoria?.titulo || teoria?.tema_mestre || tema_mestre || subtema || materia;
 
   return (
     <div style={s.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
@@ -158,9 +184,61 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
           {carregando ? (
             <div style={s.loadBox}>
               <FaSpinner style={{ animation: "spin 0.8s linear infinite", fontSize: "20px", color: "#4f46e5" }} />
-              <p style={s.loadTxt}>Buscando teoria...</p>
+              <p style={s.loadTxt}>Buscando resumo...</p>
             </div>
+
+          ) : resumo ? (
+            /* ── Schema plano (resumos_temas) ─────────────────────── */
+            <div>
+              {[
+                { key: "definicao",   label: "Definição",   color: "#818cf8" },
+                { key: "diagnostico", label: "Diagnóstico", color: "#34d399" },
+                { key: "tratamento",  label: "Tratamento",  color: "#60a5fa" },
+              ].map(({ key, label, color }) => resumo[key] && (
+                <div key={key} style={s.secaoResumo}>
+                  <span style={{ ...s.secaoLabel, color }}>{label}</span>
+                  <p style={s.secaoTexto}>{resumo[key]}</p>
+                </div>
+              ))}
+
+              {resumo.pontos_chave?.length > 0 && (
+                <div style={s.secaoResumo}>
+                  <span style={{ ...s.secaoLabel, color: "#f59e0b" }}>Pontos-chave</span>
+                  <ul style={s.lista}>
+                    {resumo.pontos_chave.map((p, i) => (
+                      <li key={i} style={s.liItem}>
+                        <FaChevronRight size={9} color="#f59e0b" style={{ flexShrink: 0, marginTop: "4px" }} />
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {resumo.pegadinhas?.length > 0 && (
+                <div style={s.secaoResumo}>
+                  <span style={{ ...s.secaoLabel, color: "#ef4444" }}>⚠ Pegadinhas de prova</span>
+                  <ul style={s.lista}>
+                    {resumo.pegadinhas.map((p, i) => (
+                      <li key={i} style={{ ...s.liItem, borderColor: "rgba(239,68,68,0.15)", background: "rgba(239,68,68,0.04)" }}>
+                        <FaChevronRight size={9} color="#ef4444" style={{ flexShrink: 0, marginTop: "4px" }} />
+                        <span style={{ color: "#fca5a5" }}>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {resumo.dica_mestre && (
+                <div style={s.dicaMestreBox}>
+                  <span style={s.dicaMestreLabel}>⭐ Dica do Mestre</span>
+                  <p style={s.dicaMestreTexto}>{resumo.dica_mestre}</p>
+                </div>
+              )}
+            </div>
+
           ) : teoria ? (
+            /* ── Schema rico (teorias — pontos array) ─────────────── */
             <>
               {teoria.titulo && <h3 style={s.tituloTeoria}>{teoria.titulo}</h3>}
               <ul style={s.lista}>
@@ -168,23 +246,30 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
               </ul>
               {teoria.fonte && <p style={s.fonte}>Fonte: {teoria.fonte}</p>}
             </>
+
           ) : (
+            /* ── Fallback: nenhum resumo encontrado ───────────────── */
             <div style={s.emptyBox}>
               <FaBookOpen size={28} color="#1e293b" />
-              <p style={s.emptyTitulo}>Conteúdo sendo preparado</p>
+              <p style={s.emptyTitulo}>Resumo ainda não disponível</p>
               <p style={s.emptyDesc}>
                 O resumo de{" "}
                 <strong style={{ color: "#818cf8" }}>
                   {tema_mestre || subtema || materia}
                 </strong>{" "}
                 ainda não foi gerado.
-                <br />O administrador pode criá-lo na aba <strong>📚 Resumos</strong> do AdminPainel.
               </p>
+              <a
+                href="/admin"
+                onClick={onClose}
+                style={s.btnGerarAgora}
+              >
+                Gerar resumo agora no AdminPainel
+              </a>
             </div>
           )}
         </div>
 
-        {/* ─── Footer ──────────────────────────────────────────── */}
         <div style={s.footer}>
           <button onClick={onClose} style={s.btnFechar}>
             Fechar e voltar à questão
@@ -195,7 +280,6 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
   );
 };
 
-// ─── Estilos ─────────────────────────────────────────────────────────────────
 const s = {
   overlay: {
     position: "fixed", inset: 0, background: "rgba(2,6,23,0.88)",
@@ -217,7 +301,7 @@ const s = {
   headerSub: { fontSize: "11px", color: "#475569", marginTop: "2px", margin: 0 },
   btnClose: {
     background: "transparent", border: "none", color: "#475569",
-    cursor: "pointer", padding: "6px",     borderRadius: "6px",
+    cursor: "pointer", padding: "6px", borderRadius: "6px",
     display: "flex", alignItems: "center", justifyContent: "center",
   },
   avisoBar: {
@@ -226,13 +310,11 @@ const s = {
     padding: "8px 20px", fontSize: "10px", color: "#a16207", flexShrink: 0,
   },
   body: { padding: "20px", overflowY: "auto", flex: 1 },
-
   loadBox: {
     display: "flex", flexDirection: "column", alignItems: "center",
     gap: "12px", padding: "32px 0",
   },
   loadTxt: { color: "#64748b", fontSize: "13px" },
-
   tituloTeoria: {
     fontSize: "15px", fontWeight: "900", color: "#f1f5f9",
     marginBottom: "16px", letterSpacing: "-0.3px",
@@ -247,14 +329,33 @@ const s = {
     padding: "10px 14px", fontSize: "13px", color: "#cbd5e1", lineHeight: 1.55,
   },
   fonte: { marginTop: "16px", fontSize: "10px", color: "#334155", fontStyle: "italic" },
-
   emptyBox: {
     display: "flex", flexDirection: "column", alignItems: "center",
     gap: "12px", padding: "32px 16px", textAlign: "center",
   },
   emptyTitulo: { fontSize: "14px", fontWeight: "800", color: "#475569", margin: 0 },
   emptyDesc: { fontSize: "12px", color: "#334155", lineHeight: 1.6, margin: 0 },
-
+  btnGerarAgora: {
+    marginTop: "8px", background: "rgba(79,70,229,0.12)", border: "1px solid rgba(79,70,229,0.3)",
+    color: "#818cf8", borderRadius: "10px", padding: "9px 18px", fontSize: "12px",
+    fontWeight: "800", cursor: "pointer", textDecoration: "none", display: "inline-block",
+    letterSpacing: "0.3px",
+  },
+  secaoResumo: { marginBottom: "14px" },
+  secaoLabel: {
+    fontSize: "10px", fontWeight: "900", letterSpacing: "0.5px",
+    textTransform: "uppercase", display: "block", marginBottom: "5px",
+  },
+  secaoTexto: { fontSize: "13px", color: "#cbd5e1", margin: 0, lineHeight: 1.65 },
+  dicaMestreBox: {
+    background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)",
+    borderRadius: "12px", padding: "12px 16px", marginTop: "6px",
+  },
+  dicaMestreLabel: {
+    fontSize: "10px", fontWeight: "900", color: "#fbbf24",
+    letterSpacing: "0.5px", textTransform: "uppercase", display: "block", marginBottom: "5px",
+  },
+  dicaMestreTexto: { fontSize: "13px", color: "#fef3c7", margin: 0, lineHeight: 1.65, fontStyle: "italic" },
   footer: { padding: "14px 20px", borderTop: "1px solid #1e293b", flexShrink: 0 },
   btnFechar: {
     width: "100%", padding: "11px", background: "transparent",
