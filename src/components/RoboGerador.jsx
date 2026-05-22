@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { db } from "../firebase";
+import { getQuestoes, invalidarCacheQuestoes } from "../utils/questoesCache";
 import {
   doc, setDoc, getDocs, collection, query, where,
   serverTimestamp, writeBatch
@@ -91,7 +92,7 @@ const extrairJSONDoTexto = (str) => {
 // IMPORTANTE: os limites de tamanho abaixo são OBRIGATÓRIOS para caber em
 // max_tokens: 8192. Sem eles, 3 questões completas ultrapassam o limite e o
 // JSON fica truncado (erro "JSON não encontrado").
-const PROMPT_SISTEMA = `Você é um gerador premium de questões médicas para o Revalida INEP.
+const PROMPT_SISTEMA = `Você é um especialista em engenharia pedagógica de questões médicas para o Revalida INEP/ENAMED.
 Responda SOMENTE com um array JSON. Nenhum texto antes. Nenhum texto depois. Sem markdown. Sem explicações.
 Sua resposta deve começar com [ e terminar com ].
 
@@ -115,41 +116,70 @@ ESTRATÉGIA DE DISTRIBUIÇÃO quando houver múltiplos subtemas:
 - Integrar múltiplos temas em um único caso clínico, OU
 - Mistura das duas abordagens — sempre priorizando o mais cobrado em prova.
 
-═══ PADRÃO PREMIUM DE QUALIDADE ═══
-- Casos clínicos realistas: inclua idade, sexo, sintomas, exames e contexto (UBS, UPA, emergência, enfermaria).
-- Distratores plausíveis: pegadinhas clássicas de prova, não alternativas obviamente erradas.
-- Teste tomada de decisão clínica, não memorização decorativa.
-- Explore armadilhas clássicas do Revalida (conduta correta vs. conduta comum mas errada).
-- Evite perguntas óbvias ou superficiais — nível mínimo: questão de residência.
+═══ REGRA 1 — NÃO ENTREGUE O DIAGNÓSTICO PRECOCEMENTE ═══
+O enunciado deve apresentar dados clínicos progressivamente, como um plantão real.
+PROIBIDO: iniciar com diagnóstico fechado ("Paciente diabético..."). O aluno deve construir o raciocínio.
+CORRETO: sintomas → sinais → exames → contexto → forçar tomada de decisão.
+Use linguagem de plantão: "chega ao PS com...", "comparece à UBS referindo...", "é admitido na enfermaria...".
+Inclua sempre: idade, sexo, contexto clínico (UBS/UPA/PS/enfermaria), sinais vitais relevantes, exames pertinentes.
+
+═══ REGRA 2 — DISTRATORES POR TIPO DE ERRO COGNITIVO ═══
+Cada alternativa errada deve explorar um erro cognitivo específico. Use estes tipos:
+• CONFUSÃO DIAGNÓSTICA: conduta correta para doença semelhante
+• TIMING INCORRETO: exame ou conduta corretos, porém no momento inadequado
+• TRATAMENTO INCOMPLETO: conduta parcialmente certa, faltando passo essencial
+• DIRETRIZ ANTIGA: conduta que foi padrão mas está desatualizada (ex: morfina na IC aguda)
+• ARMADILHA DE CLASSE: dois fármacos similares — um indicado, outro contraindicado neste caso
+• EXCESSO DE INTERVENÇÃO: mais invasivo do que o necessário para o estágio atual
+No campo "nota" de cada alternativa: nomeie o TIPO DE ERRO no início e explique brevemente.
+
+═══ REGRA 3 — RACIOCÍNIO CLÍNICO EM ETAPAS ═══
+O campo "raciocinio" deve seguir OBRIGATORIAMENTE esta estrutura:
+PADRÃO: [achados que identificam o caso] → DIFERENCIAL: [o que confundiria e por quê é excluído] → DECISÃO: [conduta e justificativa neste momento] → ARMADILHA: [erro mais comum que o aluno comete]
+Máximo 100 palavras. Objetivo, sem repetir dados do enunciado.
+
+═══ REGRA 4 — GLOSSÁRIO INLINE ═══
+Na PRIMEIRA aparição de sigla ou termo técnico pouco familiar, adicione explicação entre parênteses:
+"DPOC (doença pulmonar obstrutiva crônica)", "ortopneia (falta de ar ao deitar)",
+"CURB-65 (escore de gravidade da pneumonia)", "TRAb (anticorpo anti-receptor de TSH)"
+NÃO explicar: PA, FC, FR, febre, dor, UBS, PS, UTI, VO, IV, SC. Não repetir na mesma questão.
+
+═══ REGRA 5 — NÍVEL COGNITIVO ═══
+Exigir APLICAÇÃO ou ANÁLISE clínica, não memorização.
+PROIBIDO: "Qual o diagnóstico?" quando os dados tornam a resposta óbvia isoladamente.
+Use: "Qual a conduta imediata?", "Qual o próximo passo?", "O que diferencia este caso de X?",
+"Qual o erro mais grave aqui?" Varie os comandos entre questões do mesmo lote.
+
+═══ REGRA 6 — CONTEXTO SUS/APS ═══
+Alterne: UBS/ESF (APS, encaminhamento) | UPA/PS (urgência) | Enfermaria | Pré-natal/GO.
+Linguagem clínica humana. Contextualize narrativamente, evite listas de sintomas.
 
 ═══ DIRETRIZES ATUALIZADAS ═══
-- Use diretrizes recentes (MS, SUS, PCDT, FEBRASGO, CFM, SBC, SBPT, SBEM — preferencialmente 2023-2025).
-- Se a conduta for de diretriz anterior a 2023, indique no "raciocinio": "Conforme diretriz de [ANO]...".
+- Use preferencialmente: MS/SUS 2023-2025, PCDT, FEBRASGO, CFM, SBC, SBPT, SBEM.
+- Se a conduta for de diretriz anterior a 2023, indique no "raciocinio": "Conforme diretriz [ANO]...".
 - Condutas de APS devem refletir os Cadernos de Atenção Primária vigentes.
 
 ═══ LIMITES DE TAMANHO OBRIGATÓRIOS ═══
-- enunciado: máximo 180 palavras
-- alts[x].texto: máximo 20 palavras por alternativa
-- alts[x].nota: máximo 45 palavras por justificativa
-- raciocinio: máximo 80 palavras
-- tto: máximo 100 palavras
-- dicaMestre: máximo 35 palavras
+- enunciado: máximo 200 palavras
+- alts[x].texto: máximo 22 palavras por alternativa
+- alts[x].nota: máximo 55 palavras por justificativa
+- raciocinio: máximo 100 palavras
+- tto: máximo 110 palavras
+- dicaMestre: máximo 38 palavras
 Seja técnico e conciso. Não use frases introdutórias.
 
 Estrutura de cada questão no array:
-{"materia":"string","tema_mestre":"string","subtema":"string","banca":"Revalida INEP","ano":"2025","numeroQuestao":1,"enunciado":"caso clínico com dados reais","imagemUrl":"","alts":{"a":{"texto":"","nota":""},"b":{"texto":"","nota":""},"c":{"texto":"","nota":""},"d":{"texto":"","nota":""},"e":{"texto":"","nota":""}},"gabarito":"letra_correta","raciocinio":"fisiopatologia objetivo","tto":"conduta atualizada","dicaMestre":"regra de ouro","ano_diretriz":2024,"fonte_diretriz":"MS/SUS 2024"}
+{"materia":"string","tema_mestre":"Nome da doença principal sem tipagem e sem abreviação","subtema":"string","banca":"Revalida INEP","ano":"2025","numeroQuestao":1,"enunciado":"caso progressivo sem diagnóstico prematuro","imagemUrl":"","alts":{"a":{"texto":"","nota":"TIPO ERRO: explicação"},"b":{"texto":"","nota":"TIPO ERRO: explicação"},"c":{"texto":"","nota":""},"d":{"texto":"","nota":""},"e":{"texto":"","nota":""}},"gabarito":"letra_correta","raciocinio":"PADRÃO: ... → DIFERENCIAL: ... → DECISÃO: ... → ARMADILHA: ...","tto":"conduta completa atualizada","dicaMestre":"regra de ouro","ano_diretriz":2024,"fonte_diretriz":"MS/SUS 2024"}
 
-Regras:
-- tema_mestre: OBRIGATÓRIO. Nome clínico padronizado da doença ou condição principal.
-  ✅ CORRETO: "Asma", "Hipertensão arterial sistêmica", "Diabetes mellitus", "Insuficiência cardíaca", "Infarto agudo do miocárdio"
-  ❌ ERRADO — contexto no tema: "Diabetes em gestante", "Asma pediátrica", "HAS no idoso"
-  ❌ ERRADO — subtema no tema: "Asma — crise aguda", "Diabetes — tratamento", "HAS — classificação"
-  ❌ ERRADO — abreviação: "HAS", "DM2", "IC", "IAM"
-  ❌ ERRADO — variação de caixa: sempre minúsculas exceto a primeira letra de nomes próprios
-  REGRA: tema_mestre é o NOME DA DOENÇA, sem contexto clínico e sem subtema. Derive do conteúdo gerado, NÃO do prompt.
-  NUNCA use tipagem (tipo 1, tipo 2): "Diabetes mellitus" agrupa DM1, DM2, cetoacidose, hipoglicemia e complicações.
+Regras de campos:
+- tema_mestre: OBRIGATÓRIO. Nome clínico padronizado da doença principal.
+  ✅ "Asma", "Hipertensão arterial sistêmica", "Diabetes mellitus", "Insuficiência cardíaca"
+  ❌ contexto: "Diabetes em gestante", "Asma pediátrica", "HAS no idoso"
+  ❌ subtema: "Asma — crise aguda", "HAS — classificação"
+  ❌ abreviação: "HAS", "DM2", "IC", "IAM"
+  REGRA: nome da DOENÇA, sem contexto clínico e sem subtema. Derive do conteúdo, NÃO do prompt.
+  NUNCA use tipagem (tipo 1, tipo 2): "Diabetes mellitus" agrupa DM1, DM2, cetoacidose e complicações.
 - gabarito: apenas a letra (a, b, c, d ou e)
-- enunciado: dados clínicos reais (idade, sintomas, exames, contexto APS/UBS/hospital)
 - ano_diretriz: número inteiro do ano da diretriz (ex: 2024). Obrigatório.
 - fonte_diretriz: fonte da diretriz (ex: "MS/SUS 2024", "SBC 2025"). Obrigatório.
 - JAMAIS ultrapasse os limites de tamanho definidos acima.
@@ -758,6 +788,7 @@ Requisitos gerais:
 
           addLog(`   ✅ ${dados.length} questão(ões) salvas! (Total da sessão: ${totalSalvas})`, "ok");
 
+          invalidarCacheQuestoes(); // próxima leitura vai buscar dados frescos
           // FIX BUG #3 — avisa o AdminPainel para invalidar o cache do Banco
           if (typeof onQuestoesSalvas === "function") onQuestoesSalvas();
 
@@ -1059,15 +1090,15 @@ Requisitos gerais:
     addMigLog("🔍 Escaneando base — nenhum documento será alterado…", "sistema");
 
     try {
-      const snap = await getDocs(collection(db, "questoes"));
-      const total = snap.docs.length;
+      // getQuestoes() usa cache de sessão — evita leitura extra do Firestore
+      const questoesDocs = await getQuestoes();
+      const total = questoesDocs.length;
 
       const pendentes = [];
       let cntSemTema   = 0;
       let cntFragmentado = 0;
 
-      snap.docs.forEach(d => {
-        const data = d.data();
+      questoesDocs.forEach(data => {
         const tm  = (data.tema_mestre || "").trim();
         const sub = (data.subtema     || "").trim();
 
@@ -1077,7 +1108,7 @@ Requisitos gerais:
         if (semTema || fragmentado) {
           // Inclui tema_mestre_atual apenas quando já existe mas está errado
           pendentes.push({
-            id: d.id,
+            id: data.id,
             subtema: sub,
             ...(fragmentado ? { tema_mestre_atual: tm } : {}),
           });
@@ -1846,10 +1877,8 @@ Requisitos gerais:
           </div>
         )}
       </div>
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
-};
+}
 
 export default RoboGerador;

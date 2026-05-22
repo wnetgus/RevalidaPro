@@ -1,6 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useCallback } from "react";
 import { db } from "../firebase";
+import { invalidarCacheQuestoes } from "../utils/questoesCache";
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
 import {
   FaPlus, FaTrash, FaImage, FaCode, FaThList,
@@ -69,26 +70,69 @@ const calcularStatusAtualizacao = (ano_diretriz) => {
 };
 
 // ─── PROMPT PARA A IA GERAR QUESTÕES ───────────────────────────
-const PROMPT_SISTEMA = `Você é um gerador de questões médicas para o Revalida INEP.
+const PROMPT_SISTEMA = `Você é um especialista em engenharia pedagógica de questões médicas para o Revalida INEP/ENAMED.
 Responda SOMENTE com um array JSON. Nenhum texto antes. Nenhum texto depois. Sem markdown. Sem explicações.
 Sua resposta deve começar com [ e terminar com ].
 
-REGRA DE QUALIDADE OBRIGATÓRIA — DIRETRIZES ATUALIZADAS:
-- Baseie TODAS as questões nas diretrizes mais recentes disponíveis (Ministério da Saúde, SUS, PCDT, FEBRASGO, CFM, SBC, SBPT, SBEM e demais sociedades médicas — priorizando publicações de 2023, 2024 ou 2025).
-- Se a conduta descrita for de uma diretriz anterior a 2023, indique EXPLICITAMENTE no campo "raciocinio" ou no enunciado: "De acordo com as diretrizes de [ANO]..." ou "Segundo atualização de [ANO]...".
-- Nunca descreva condutas desatualizadas sem esta sinalização explícita.
-- Condutas baseadas em protocolos do SUS e Atenção Básica devem refletir o Caderno de Atenção Primária e Protocolos Clínicos vigentes.
+═══ REGRA 1 — NÃO ENTREGUE O DIAGNÓSTICO PRECOCEMENTE ═══
+O enunciado deve apresentar dados clínicos progressivamente, como um plantão real.
+PROIBIDO: iniciar com diagnóstico fechado ("Paciente diabético em uso de insulina, qual a conduta?").
+CORRETO: sintomas → sinais → exames → contexto → forçar tomada de decisão.
+Use linguagem de plantão: "chega ao PS com...", "comparece à UBS referindo...", "é admitido na enfermaria com...".
+Inclua sempre: idade, sexo, contexto clínico (UBS/UPA/PS/enfermaria), sinais vitais relevantes, exames pertinentes.
 
-Estrutura de cada questão no array:
-{"materia":"string","subtema":"string","banca":"Revalida INEP","ano":"2025","numeroQuestao":1,"enunciado":"caso clínico completo","imagemUrl":"","alts":{"a":{"texto":"","nota":""},"b":{"texto":"","nota":""},"c":{"texto":"","nota":""},"d":{"texto":"","nota":""},"e":{"texto":"","nota":""}},"gabarito":"letra_correta","raciocinio":"fisiopatologia e raciocínio clínico baseado em diretriz atual","tto":"conduta completa e prescrição atualizada","dicaMestre":"regra de ouro para o Revalida","ano_diretriz":2024,"fonte_diretriz":"MS/SUS 2024"}
+═══ REGRA 2 — DISTRATORES POR TIPO DE ERRO COGNITIVO ═══
+Cada alternativa errada deve explorar um erro cognitivo específico. Use estes tipos:
+• CONFUSÃO DIAGNÓSTICA: conduta correta para doença semelhante (ex: trata IC como pneumonia)
+• TIMING INCORRETO: exame ou conduta corretos, porém no momento inadequado para o caso
+• TRATAMENTO INCOMPLETO: conduta parcialmente certa, faltando passo essencial
+• DIRETRIZ ANTIGA: conduta que foi padrão mas está desatualizada (ex: morfina na IC aguda)
+• ARMADILHA DE CLASSE: dois fármacos similares — um indicado, outro contraindicado neste caso
+• EXCESSO DE INTERVENÇÃO: conduta mais invasiva do que o necessário para o estágio atual
+No campo "nota" de cada alternativa: nomeie o TIPO DE ERRO no início e explique brevemente.
 
-Regras:
-- gabarito: apenas a letra (a, b, c, d ou e)
-- todas as notas das alternativas devem explicar por que estão certas ou erradas segundo as diretrizes atuais
-- enunciado deve ter dados clínicos reais (idade, sintomas, exames, contexto de APS/UBS/hospital)
-- ano_diretriz: número inteiro com o ano da diretriz usada (ex: 2024). Obrigatório.
-- fonte_diretriz: string com a fonte (ex: "MS/SUS 2024", "FEBRASGO 2023", "SBC 2025"). Obrigatório.
-- responda APENAS com o array JSON, começando em [ e terminando em ]`;
+═══ REGRA 3 — RACIOCÍNIO CLÍNICO EM ETAPAS ═══
+O campo "raciocinio" deve seguir OBRIGATORIAMENTE esta estrutura sequencial:
+PADRÃO: [achados que identificam o caso] → DIFERENCIAL: [o que confundiria e por quê é excluído] → DECISÃO: [conduta e justificativa neste momento] → ARMADILHA: [erro mais comum que o aluno comete]
+Máximo 110 palavras. Objetivo, sem repetir dados do enunciado.
+
+═══ REGRA 4 — GLOSSÁRIO INLINE ═══
+Na PRIMEIRA aparição de sigla ou termo técnico pouco familiar, adicione explicação entre parênteses:
+"DPOC (doença pulmonar obstrutiva crônica)", "ortopneia (falta de ar ao deitar que melhora ao sentar)",
+"CURB-65 (escore de gravidade da pneumonia adquirida na comunidade)", "TRAb (anticorpo anti-receptor de TSH)"
+NÃO explicar termos básicos: PA, FC, FR, febre, dor, náusea, UBS, PS, UTI, VO, IV, SC. Não repetir na mesma questão.
+
+═══ REGRA 5 — NÍVEL COGNITIVO ═══
+Exigir APLICAÇÃO ou ANÁLISE clínica, não memorização simples.
+PROIBIDO: "Qual o diagnóstico?" quando os dados tornam a resposta óbvia isoladamente.
+OBRIGATÓRIO: forçar tomada de decisão no momento específico do caso.
+Use: "Qual a conduta imediata?", "Qual o próximo passo?", "O que diferencia este caso de X?", "Qual o erro mais grave aqui?"
+
+═══ REGRA 6 — CONTEXTO SUS/APS OBRIGATÓRIO ═══
+Alterne entre: UBS/ESF (APS, conduta inicial, critério de encaminhamento) | UPA/PS (urgência, estabilização)
+Enfermaria (interpretação de exames, piora clínica, alta) | Pré-natal/GO (contexto obstétrico realista).
+Linguagem clínica humana. Contextualize narrativamente — evite listas de sintomas sem contexto.
+
+═══ DIRETRIZES ATUALIZADAS ═══
+Priorizar: MS/SUS 2023-2025, PCDT, FEBRASGO, CFM, SBC, SBPT, SBEM.
+Se usar conduta de diretriz anterior a 2023, sinalizar no raciocinio: "Conforme diretriz [ANO]..."
+Condutas de APS devem seguir os Cadernos de Atenção Primária vigentes.
+
+═══ LIMITES DE TAMANHO OBRIGATÓRIOS ═══
+enunciado: máx 220 palavras | alts[x].texto: máx 22 palavras | alts[x].nota: máx 55 palavras
+raciocinio: máx 110 palavras | tto: máx 120 palavras | dicaMestre: máx 40 palavras
+
+Estrutura obrigatória de cada questão no array:
+{"materia":"string","tema_mestre":"Nome da doença principal sem tipagem e sem abreviação","subtema":"string","banca":"Revalida INEP","ano":"2025","numeroQuestao":1,"enunciado":"caso progressivo sem diagnóstico prematuro","imagemUrl":"","alts":{"a":{"texto":"","nota":"TIPO ERRO: explicação"},"b":{"texto":"","nota":"TIPO ERRO: explicação"},"c":{"texto":"","nota":""},"d":{"texto":"","nota":""},"e":{"texto":"","nota":""}},"gabarito":"letra","raciocinio":"PADRÃO: ... → DIFERENCIAL: ... → DECISÃO: ... → ARMADILHA: ...","tto":"conduta completa atualizada com doses quando pertinente","dicaMestre":"regra de ouro objetiva","ano_diretriz":2024,"fonte_diretriz":"MS/SUS 2024"}
+
+REGRAS FINAIS:
+- tema_mestre: nome clínico padronizado da doença principal, sem tipagem, sem subtema, sem abreviação
+  ✅ "Hipertensão arterial sistêmica" | ✅ "Insuficiência cardíaca" | ✅ "Diabetes mellitus"
+  ❌ "HAS", "Crise hipertensiva", "HAS em gestante", "DM tipo 2", "ICC descompensada"
+- gabarito: apenas letra minúscula (a, b, c, d ou e)
+- ano_diretriz: número inteiro (ex: 2024). Obrigatório.
+- fonte_diretriz: string com fonte (ex: "MS/SUS 2024", "FEBRASGO 2023"). Obrigatório.
+- Responda APENAS com o array JSON, começando em [ e terminando em ]`;
 
 // ─── MOCK INTELIGENTE BASEADO EM PALAVRAS-CHAVE ───────────────
 // Mock inteligente baseado em palavras-chave — substituir por IA real posteriormente
@@ -1065,6 +1109,7 @@ const ImportadorPro = () => {
         await setDoc(doc(db, "questoes", qId), finalData);
         setPublicados(i + 1);
       }
+      invalidarCacheQuestoes(); // força releitura na próxima vez que algum componente precisar
       alert(`✅ ${questoes.length} questão(ões) publicada(s) com sucesso!`);
       setQuestoes([]);
       setPublicados(0);
@@ -1274,6 +1319,24 @@ const ImportadorPro = () => {
       {/* ─── ABA REVISÃO / CARDS ─── */}
       {abaInterna === "manual" && (
         <div style={st.cardsList}>
+          {questoes.length > 0 && (
+            <div style={st.bannerRascunho}>
+              <FaExclamationTriangle color="#fbbf24" size={13} />
+              <div style={{ flex: 1 }}>
+                <span style={{ color: "#fbbf24", fontSize: "12px", fontWeight: "800" }}>
+                  {questoes.length} questão(ões) em rascunho
+                </span>
+                <span style={{ color: "#64748b", fontSize: "11px", marginLeft: "8px" }}>
+                  — Revise qualidade antes de publicar. Expanda cada card para ver o checklist pedagógico.
+                </span>
+              </div>
+              <span style={{ color: "#475569", fontSize: "10px", fontWeight: "700", whiteSpace: "nowrap" }}>
+                {questoes.filter(q =>
+                  (q.raciocinio || "").includes("→") && !!q.fonte_diretriz && !!q.tema_mestre
+                ).length}/{questoes.length} prontas
+              </span>
+            </div>
+          )}
           {questoes.length === 0 ? (
             <div style={st.emptyImport}>
               <FaRocket size={40} style={{ opacity: 0.15, marginBottom: "16px" }} />
@@ -1299,11 +1362,31 @@ const ImportadorPro = () => {
                       style={st.miniInput}
                     />
                     <input
+                      placeholder="Tema Mestre (ex: Insuficiência cardíaca)"
+                      value={q.tema_mestre || ""}
+                      onChange={e => handleChange(idx, "tema_mestre", e.target.value)}
+                      style={{ ...st.miniInput, flex: 2, borderColor: !q.tema_mestre ? "rgba(251,191,36,0.4)" : "#334155" }}
+                    />
+                    <input
                       placeholder="Subtema"
                       value={q.subtema}
                       onChange={e => handleChange(idx, "subtema", e.target.value)}
                       style={{ ...st.miniInput, flex: 2 }}
                     />
+                    {/* Indicadores de qualidade pedagógica */}
+                    <div style={{ display: "flex", gap: "4px", alignItems: "center", flexShrink: 0 }} title="Qualidade: enunciado | raciocínio em etapas | diretriz">
+                      {[
+                        { ok: (q.enunciado || "").length > 150, label: "Enunciado" },
+                        { ok: (q.raciocinio || "").includes("→") || (q.raciocinio || "").includes("PADRÃO"), label: "Raciocínio em etapas" },
+                        { ok: !!q.fonte_diretriz && q.ano_diretriz >= 2023, label: "Diretriz atualizada" },
+                      ].map((dot, di) => (
+                        <span key={di} title={dot.label} style={{
+                          width: 8, height: 8, borderRadius: "50%",
+                          background: dot.ok ? "#10b981" : "#ef4444",
+                          display: "inline-block", flexShrink: 0,
+                        }} />
+                      ))}
+                    </div>
                     <div style={st.gabaritoWrapper}>
                       <label style={{ color: "#64748b", fontSize: "10px", fontWeight: "700" }}>GAB.</label>
                       <select
@@ -1388,8 +1471,12 @@ const ImportadorPro = () => {
                         <textarea
                           value={q.raciocinio}
                           onChange={e => handleChange(idx, "raciocinio", e.target.value)}
-                          style={st.areaExpert}
-                          placeholder="Fisiopatologia, diagnóstico diferencial..."
+                          style={{
+                            ...st.areaExpert,
+                            borderColor: (q.raciocinio || "").includes("→") || (q.raciocinio || "").includes("PADRÃO")
+                              ? "rgba(16,185,129,0.3)" : "rgba(251,191,36,0.3)"
+                          }}
+                          placeholder="PADRÃO: ... → DIFERENCIAL: ... → DECISÃO: ... → ARMADILHA: ..."
                           rows={4}
                         />
                       </div>
@@ -1416,6 +1503,65 @@ const ImportadorPro = () => {
                           placeholder="Regra de ouro para nunca esquecer..."
                           rows={4}
                         />
+                      </div>
+                    </div>
+
+                    {/* DIRETRIZ + CHECKLIST PEDAGÓGICO */}
+                    <div style={st.editorialPanel}>
+                      {/* Linha de diretriz */}
+                      <div style={{ display: "flex", gap: "10px", marginBottom: "14px", flexWrap: "wrap" }}>
+                        <div style={{ flex: 1, minWidth: "160px" }}>
+                          <label style={{ ...st.expertLabel, color: "#60a5fa", marginBottom: "6px", display: "flex" }}>
+                            FONTE DA DIRETRIZ
+                          </label>
+                          <input
+                            value={q.fonte_diretriz || ""}
+                            onChange={e => handleChange(idx, "fonte_diretriz", e.target.value)}
+                            style={{ ...st.miniInput, width: "100%", fontSize: "11px" }}
+                            placeholder="ex: MS/SUS 2024, FEBRASGO 2023"
+                          />
+                        </div>
+                        <div style={{ width: "100px" }}>
+                          <label style={{ ...st.expertLabel, color: "#60a5fa", marginBottom: "6px", display: "flex" }}>
+                            ANO DIRETRIZ
+                          </label>
+                          <input
+                            type="number"
+                            value={q.ano_diretriz || ""}
+                            onChange={e => handleChange(idx, "ano_diretriz", parseInt(e.target.value) || "")}
+                            style={{ ...st.miniInput, width: "100%", fontSize: "11px" }}
+                            placeholder="2024"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Checklist pedagógico */}
+                      <div style={{ borderTop: "1px solid #1e293b", paddingTop: "12px" }}>
+                        <p style={{ color: "#475569", fontSize: "10px", fontWeight: "800", letterSpacing: "0.5px", margin: "0 0 8px", textTransform: "uppercase" }}>
+                          Checklist Pedagógico
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "6px" }}>
+                          {[
+                            { ok: (q.enunciado || "").length > 150, label: "Enunciado rico (>150 chars)" },
+                            { ok: !(q.enunciado || "").match(/^(paciente com|portador de|diabético|hipertenso)/i), label: "Sem diagnóstico prematuro" },
+                            { ok: (q.raciocinio || "").includes("→") || (q.raciocinio || "").includes("PADRÃO"), label: "Raciocínio em etapas (→)" },
+                            { ok: (q.tto || "").length > 60, label: "TTO detalhado" },
+                            { ok: (q.dicaMestre || "").length > 20, label: "Dica Mestre preenchida" },
+                            { ok: !!q.fonte_diretriz && q.ano_diretriz >= 2023, label: "Diretriz ≥ 2023 informada" },
+                            { ok: ["a","b","c","d","e"].every(l => (q.alts?.[l]?.nota || "").length > 20), label: "5 justificativas completas" },
+                            { ok: !!q.tema_mestre && q.tema_mestre.length > 3, label: "Tema Mestre definido" },
+                          ].map((item, ci) => (
+                            <div key={ci} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <span style={{
+                                width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+                                background: item.ok ? "#10b981" : "#ef4444",
+                              }} />
+                              <span style={{ fontSize: "11px", color: item.ok ? "#64748b" : "#94a3b8" }}>
+                                {item.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </>
@@ -1532,10 +1678,12 @@ const st = {
   gabPreview: { display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", padding: "8px 12px", background: "rgba(16,185,129,0.06)", borderRadius: "8px", border: "1px solid rgba(16,185,129,0.15)", flexWrap: "wrap" },
   btnAddManual: { padding: "20px", background: "none", border: "2px dashed #334155", color: "#64748b", borderRadius: "16px", cursor: "pointer", fontWeight: "700", fontSize: "13px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", transition: "0.2s" },
   pre: { background: "#020617", color: "#10b981", padding: "16px", borderRadius: "12px", whiteSpace: "pre-wrap", fontSize: "11px", lineHeight: 1.6, overflow: "auto" },
+  editorialPanel: { background: "rgba(15,23,42,0.7)", border: "1px solid #1e293b", borderRadius: "14px", padding: "16px", marginTop: "16px" },
+  bannerRascunho: { display: "flex", alignItems: "center", gap: "10px", background: "rgba(251,191,36,0.07)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: "12px", padding: "10px 16px", marginBottom: "16px" },
   // ─── SUPER APOSTAS ───────────────────────────────────────────────────────────
   destinoBtn: { background: "none", border: "none", color: "#64748b", padding: "6px 12px", borderRadius: "8px", cursor: "pointer", fontWeight: "700", fontSize: "11px", display: "flex", alignItems: "center", gap: "5px", transition: "0.15s" },
-  destinoBtnActive: { background: "#4f46e5", color: "#fff" },
-  destinoBtnSA: { background: "rgba(239,68,68,0.15)", color: "#ef4444" },
+  destinoBtnActive: { background: "rgba(79,70,229,0.15)", border: "1px solid rgba(79,70,229,0.4)", color: "#818cf8", borderRadius: "8px", padding: "6px 12px", fontWeight: "800", fontSize: "11px", display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", transition: "0.15s" },
+  destinoBtnSA: { background: "rgba(234,179,8,0.12)", border: "1px solid rgba(234,179,8,0.35)", color: "#fbbf24", borderRadius: "8px", padding: "6px 12px", fontWeight: "800", fontSize: "11px", display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", transition: "0.15s" },
 };
 
 export default ImportadorPro;
