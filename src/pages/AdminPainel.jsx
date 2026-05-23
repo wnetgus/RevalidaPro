@@ -1,8 +1,9 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useMemo } from "react";
 import { db } from "../firebase";
+import { normalizarMateriaEstrita, pertenceAMateria } from "../utils/normalizarMateria";
 import {
-  collection, onSnapshot, getDocs, query, orderBy, doc,
+  collection, onSnapshot, getDocs, query, orderBy, where, doc,
   updateDoc, writeBatch, deleteDoc, arrayUnion, serverTimestamp, addDoc, setDoc
 } from "firebase/firestore";
 import {
@@ -16,6 +17,7 @@ import {
 import ImportadorPro from "../components/ImportadorPro";
 import RoboGerador from "../components/RoboGerador";
 import ResumoGerador from "../components/ResumoGerador";
+import PainelDiretrizes from "../components/PainelDiretrizes";
 
 const PLANOS_PADRAO = [
   { id: "teste", nome: "Teste Grátis", dias: 2, preco: 0, descricao: "48h para conhecer a plataforma", destaque: false, cor: "#10b981", ativo: true },
@@ -134,6 +136,9 @@ const AdminPainel = () => {
   const [carregando, setCarregando] = useState(false);
   const [questoesCarregadas, setQuestoesCarregadas] = useState(false);
 
+  // Badge de alertas de vigilância pendentes
+  const [alertasDiretrizesPendentes, setAlertasDiretrizesPendentes] = useState(0);
+
   // Filtro de hierarquia na aba Médicos
   const [filtroUsuariosStatus, setFiltroUsuariosStatus] = useState("Todos");
 
@@ -189,6 +194,19 @@ const AdminPainel = () => {
     }
   };
   useEffect(() => { carregarDados(); }, []);
+
+  // ── Alertas de vigilância pendentes — badge na aba Diretrizes ─────────────
+  useEffect(() => {
+    const carregar = async () => {
+      try {
+        const snap = await getDocs(
+          query(collection(db, "vigilanciaDiretrizes"), where("status", "==", "pendente"))
+        );
+        setAlertasDiretrizesPendentes(snap.size);
+      } catch { /* noop */ }
+    };
+    carregar();
+  }, []);
 
   // ── Auto-refresh a cada 5 min para manter contagem online atualizada ──────
   // Sincronizado com o heartbeat do cliente (que escreve a cada 5 min).
@@ -291,7 +309,7 @@ const AdminPainel = () => {
       const modulo = getModuloQuestao(q);
       const enunciadoLimpo = q.enunciado?.toLowerCase() || "";
       const matchBusca   = enunciadoLimpo.includes(busca.toLowerCase());
-      const matchMat     = filtroMateria === "Todas"  || q.materia      === filtroMateria;
+      const matchMat     = filtroMateria === "Todas"  || pertenceAMateria(q.materia, filtroMateria);
       const matchSub     = filtroSubtema === "Todos"  || q.subtema      === filtroSubtema;
       const matchAno     = filtroAno     === "Todos"  || q.ano          === filtroAno;
       const matchModulo  = filtroModulo  === "Todos"  || modulo              === filtroModulo;
@@ -573,6 +591,7 @@ const AdminPainel = () => {
           { id: "importador", label: "Importador" },
           { id: "robo", label: "🤖 Robô" },
           { id: "resumos", label: "📚 Resumos" },
+          { id: "diretrizes", label: "🛡️ Diretrizes", badge: alertasDiretrizesPendentes },
         ].map(item => (
           <button key={item.id} onClick={() => setAba(item.id)} style={aba === item.id ? st.btnActive : st.btn}>
             {item.label}
@@ -1099,11 +1118,11 @@ const AdminPainel = () => {
                 </select>
                 <select value={filtroMateria} onChange={(e) => { setFiltroMateria(e.target.value); setFiltroSubtema("Todos"); }} style={st.select}>
                   <option value="Todas">Todas as Matérias</option>
-                  {[...new Set(questoes.map(q => String(q.materia || "")))].filter(s => s.trim() !== "").sort().map(m=><option key={m} value={m}>{m}</option>)}
+                  {[...new Set(questoes.map(q => normalizarMateriaEstrita(q.materia)).filter(Boolean))].sort().map(m=><option key={m} value={m}>{m}</option>)}
                 </select>
                 <select value={filtroSubtema} onChange={(e) => setFiltroSubtema(e.target.value)} style={st.select}>
                   <option value="Todos">Todos os Subtemas</option>
-                  {[...new Set(questoes.filter(q => filtroMateria === "Todas" || q.materia === filtroMateria).map(q => String(q.subtema || "")))].filter(s => s.trim() !== "").sort().map(s => <option key={s} value={s}>{s}</option>)}
+                  {[...new Set(questoes.filter(q => filtroMateria === "Todas" || pertenceAMateria(q.materia, filtroMateria)).map(q => String(q.subtema || "")))].filter(s => s.trim() !== "").sort().map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} style={{...st.select, minWidth: "140px"}}>
                   <option value="Todos">📋 Todos Status</option>
@@ -1111,12 +1130,27 @@ const AdminPainel = () => {
                   <option value="revisar">🟡 Revisar</option>
                 </select>
               </div>
-              {/* ── LINHA 3: contador + bulk delete ── */}
+              {/* ── LINHA 3: selecionar todas + contador + bulk delete ── */}
               <div style={{...st.filterRow, justifyContent: "space-between", alignItems: "center"}}>
-                <span style={{fontSize:"11px", color:"#64748b", fontWeight:"700"}}>
-                  {questoesFiltradas.length} questão(ões) encontrada(s)
-                  {filtroModulo !== "Todos" && <span style={{color: filtroModulo === "super_apostas" ? "#ef4444" : filtroModulo === "inep" ? "#818cf8" : "#10b981"}}> · {filtroModulo === "super_apostas" ? "Super Apostas" : filtroModulo === "inep" ? "INEP" : "Banco Geral"}</span>}
-                </span>
+                <div style={{display:"flex", alignItems:"center", gap:"12px", flexWrap:"wrap"}}>
+                  <label style={{display:"flex", alignItems:"center", gap:"6px", cursor:"pointer", fontSize:"11px", color:"#94a3b8", fontWeight:"700", userSelect:"none"}}>
+                    <input
+                      type="checkbox"
+                      checked={questoesFiltradas.length > 0 && questoesFiltradas.every(q => selecionadas.includes(q.id))}
+                      onChange={() => {
+                        const todasMarcadas = questoesFiltradas.every(q => selecionadas.includes(q.id));
+                        setSelecionadas(todasMarcadas ? [] : questoesFiltradas.map(q => q.id));
+                      }}
+                      style={{width:"14px", height:"14px", cursor:"pointer", accentColor:"#818cf8"}}
+                    />
+                    Selecionar Todas
+                  </label>
+                  <span style={{fontSize:"11px", color:"#64748b", fontWeight:"700"}}>
+                    {questoesFiltradas.length} encontrada(s)
+                    {selecionadas.length > 0 && <span style={{color:"#818cf8", fontWeight:"700"}}> · {selecionadas.length} selecionada(s)</span>}
+                    {filtroModulo !== "Todos" && <span style={{color: filtroModulo === "super_apostas" ? "#ef4444" : filtroModulo === "inep" ? "#818cf8" : "#10b981"}}> · {filtroModulo === "super_apostas" ? "Super Apostas" : filtroModulo === "inep" ? "INEP" : "Banco Geral"}</span>}
+                  </span>
+                </div>
                 {selecionadas.length > 0 && <button onClick={deletarEmMassa} style={st.btnDanger}><FaTrash/> Excluir {selecionadas.length} Questões</button>}
               </div>
             </div>
@@ -1404,6 +1438,9 @@ const AdminPainel = () => {
 
         {/* ABA RESUMOS — banco de resumos clínicos por tema_mestre */}
         {aba === "resumos" && <ResumoGerador />}
+
+        {/* ABA DIRETRIZES — engine de diretrizes controladas */}
+        {aba === "diretrizes" && <PainelDiretrizes />}
       </div>
 
       <style>{`
@@ -1486,7 +1523,7 @@ const st = {
   btnIconSmall: { background: "none", border: "none", cursor: "pointer", padding: "4px" },
   btnIconClose: { background: "none", border: "none", cursor: "pointer" },
   infoBox: { background: "rgba(79,70,229,0.08)", border: "1px solid rgba(79,70,229,0.2)", borderRadius: "14px", padding: "16px 20px", marginTop: "8px" },
-  btnQuickAction: { background: "rgba(79,70,229,0.1)", color: "#818cf8", border: "1px solid rgba(79,70,229,0.3)", padding: "12px 20px", borderRadius: "12px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", fontSize: "13px" },
+  btnQuickAction: { background: "rgba(79,70,229,0.1)", color: "#818cf8", border: "1px solid rgba(79,70,229,0.3)", padding: "12px 20px", borderRadius: "12px", fontWeight: "700", cursor: "pointer", fontSize: "13px" },
 };
 
 export default AdminPainel;

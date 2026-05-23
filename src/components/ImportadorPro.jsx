@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { db } from "../firebase";
 import { invalidarCacheQuestoes } from "../utils/questoesCache";
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
@@ -11,6 +11,13 @@ import {
   FaMagic, FaSpinner, FaFire, FaBan
 } from "react-icons/fa";
 import { SUPER_APOSTAS_CONFIG } from "../config/superApostasConfig";
+import { TAXONOMIA_BASE, getTemasMestres, getSubtemas } from "../config/taxonomiaPedagogica";
+import { MATERIAS_VALIDAS } from "../utils/normalizarMateria";
+import {
+  DIRETRIZES_CONTROLADAS,
+  detectarDiretriz, montarBlocoDiretriz,
+  detectarDiretrizDinamica,
+} from "../config/diretrizesControladas";
 
 // ─── HELPER: PRÓXIMO NÚMERO DE QUESTÃO ────────────────────────
 /**
@@ -69,6 +76,12 @@ const calcularStatusAtualizacao = (ano_diretriz) => {
   return ano_diretriz >= 2024 ? "atual" : "revisar";
 };
 
+// ─── NORMALIZAÇÃO PARA DEDUPLICAÇÃO SEMÂNTICA ────────────────────────────────
+// Remove separadores comuns (traço, barra, vírgula), colapsa espaços e lowercase.
+// Previne duplicatas como "Sepse - Grave" / "sepse grave" / "SEPSE GRAVE".
+const normChave = (s) =>
+  String(s).trim().toLowerCase().replace(/[-_/,]/g, " ").replace(/\s+/g, " ").trim();
+
 // ─── PROMPT PARA A IA GERAR QUESTÕES ───────────────────────────
 const PROMPT_SISTEMA = `Você é um especialista em engenharia pedagógica de questões médicas para o Revalida INEP/ENAMED.
 Responda SOMENTE com um array JSON. Nenhum texto antes. Nenhum texto depois. Sem markdown. Sem explicações.
@@ -81,7 +94,7 @@ CORRETO: sintomas → sinais → exames → contexto → forçar tomada de decis
 Use linguagem de plantão: "chega ao PS com...", "comparece à UBS referindo...", "é admitido na enfermaria com...".
 Inclua sempre: idade, sexo, contexto clínico (UBS/UPA/PS/enfermaria), sinais vitais relevantes, exames pertinentes.
 
-═══ REGRA 2 — DISTRATORES POR TIPO DE ERRO COGNITIVO ═══
+═══ REGRA 2 — DISTRATORES E JUSTIFICATIVA PEDAGÓGICA ═══
 Cada alternativa errada deve explorar um erro cognitivo específico. Use estes tipos:
 • CONFUSÃO DIAGNÓSTICA: conduta correta para doença semelhante (ex: trata IC como pneumonia)
 • TIMING INCORRETO: exame ou conduta corretos, porém no momento inadequado para o caso
@@ -89,7 +102,21 @@ Cada alternativa errada deve explorar um erro cognitivo específico. Use estes t
 • DIRETRIZ ANTIGA: conduta que foi padrão mas está desatualizada (ex: morfina na IC aguda)
 • ARMADILHA DE CLASSE: dois fármacos similares — um indicado, outro contraindicado neste caso
 • EXCESSO DE INTERVENÇÃO: conduta mais invasiva do que o necessário para o estágio atual
-No campo "nota" de cada alternativa: nomeie o TIPO DE ERRO no início e explique brevemente.
+No campo "nota" de cada alternativa INCORRETA: nomeie o TIPO DE ERRO no início e explique brevemente.
+
+ALTERNATIVA CORRETA — nota obrigatoriamente pedagógica:
+A nota da alternativa correta NÃO pode ser genérica. São exemplos PROIBIDOS:
+  ✗ "CORRETA: conduta adequada." | ✗ "CORRETA: segue diretriz." | ✗ "CORRETA: diagnóstico correto."
+A nota DEVE funcionar como um mini reforço de aprendizado. Deve conter:
+  1. O MOTIVO clínico da escolha (o que nos dados do caso leva a esta resposta)
+  2. A DIRETRIZ ou fundamento que sustenta a conduta (com nome da fonte quando possível)
+  3. O DETALHE que consolida o aprendizado (dose, critério, periodicidade, contraindicação relevante, nuance)
+Exemplos CORRETOS de nota da alternativa certa:
+  ✓ "CORRETA. Fluconazol 150 mg dose única é a 1ª escolha para candidíase não complicada (FEBRASGO 2023). O pH ácido e o corrimento caseoso confirmam o diagnóstico; o antibiótico prévio explica a quebra da microbiota."
+  ✓ "CORRETA. Bundle 1h da Surviving Sepsis: hemoculturas → ATB em ≤1h → cristaloide 30 mL/kg. Lactato ≥4 mmol/L caracteriza choque séptico críptico mesmo sem hipotensão."
+  ✓ "CORRETA. Rastreamento de câncer de colo uterino pelo MS: início aos 25 anos, citologia a cada 3 anos após 2 exames anuais negativos. Não iniciar antes dos 25 mesmo com vida sexual ativa."
+Em temas de Preventiva, APS, rastreamento, vacinação e pré-natal a nota DEVE incluir:
+  critério de indicação + periodicidade ou dose + fundamento (MS/SUS, PCDT ou diretriz nomeada).
 
 ═══ REGRA 3 — RACIOCÍNIO CLÍNICO EM ETAPAS ═══
 O campo "raciocinio" deve seguir OBRIGATORIAMENTE esta estrutura sequencial:
@@ -102,16 +129,42 @@ Na PRIMEIRA aparição de sigla ou termo técnico pouco familiar, adicione expli
 "CURB-65 (escore de gravidade da pneumonia adquirida na comunidade)", "TRAb (anticorpo anti-receptor de TSH)"
 NÃO explicar termos básicos: PA, FC, FR, febre, dor, náusea, UBS, PS, UTI, VO, IV, SC. Não repetir na mesma questão.
 
-═══ REGRA 5 — NÍVEL COGNITIVO ═══
-Exigir APLICAÇÃO ou ANÁLISE clínica, não memorização simples.
-PROIBIDO: "Qual o diagnóstico?" quando os dados tornam a resposta óbvia isoladamente.
-OBRIGATÓRIO: forçar tomada de decisão no momento específico do caso.
-Use: "Qual a conduta imediata?", "Qual o próximo passo?", "O que diferencia este caso de X?", "Qual o erro mais grave aqui?"
+═══ REGRA 5 — NÍVEL COGNITIVO E DIFICULDADE ═══
+Exigir APLICAÇÃO ou ANÁLISE clínica. Memorização pura não é aceita.
+PROIBIDO: enunciado curto que entrega o diagnóstico em uma frase ("Paciente com DM2 em CAD, qual a primeira conduta?").
+PROIBIDO: pergunta cujo gabarito é obtível sem raciocinar o caso (triagem por palavra-chave isolada).
+OBRIGATÓRIO: o aluno deve integrar pelo menos 3 dados clínicos antes de chegar à resposta.
+Dificuldade-alvo: igual ou superior ao Revalida INEP moderno. Não é prova de residência irreal, mas exige raciocínio clínico genuíno.
+Priorizar nesta ordem: 1) tomada de decisão no momento exato | 2) interpretação de exames em contexto | 3) diagnóstico diferencial com exclusão ativa | 4) classificação com impacto de conduta.
 
 ═══ REGRA 6 — CONTEXTO SUS/APS OBRIGATÓRIO ═══
 Alterne entre: UBS/ESF (APS, conduta inicial, critério de encaminhamento) | UPA/PS (urgência, estabilização)
 Enfermaria (interpretação de exames, piora clínica, alta) | Pré-natal/GO (contexto obstétrico realista).
 Linguagem clínica humana. Contextualize narrativamente — evite listas de sintomas sem contexto.
+
+═══ REGRA 7 — PERGUNTA DE FECHAMENTO OBRIGATÓRIA ═══
+O enunciado DEVE terminar com uma pergunta clínica explícita, em linguagem natural, alinhada ao objetivo cognitivo da questão.
+A pergunta cria a tensão clínica que força o raciocínio. Sem ela o enunciado é inválido.
+
+BANCO DE FECHAMENTOS — alterne naturalmente, nunca repita a mesma estrutura em questões consecutivas do mesmo lote:
+• "Qual é a conduta mais adequada neste momento?"
+• "Qual deve ser a abordagem inicial neste caso?"
+• "Qual é o próximo passo diagnóstico mais adequado?"
+• "Qual exame deve ser solicitado prioritariamente?"
+• "Qual é o diagnóstico mais provável?"
+• "O que melhor explica o quadro clínico apresentado?"
+• "Qual é a classificação de gravidade deste paciente?"
+• "O que deve ser feito segundo as diretrizes atuais?"
+• "Qual seria o erro mais grave na abordagem deste caso?"
+• "O que diferencia este caso de [condição similar] e muda a conduta?"
+• "Qual a conduta preconizada pelo Ministério da Saúde para este cenário?"
+• "Qual o fator mais importante que determina a conduta neste momento?"
+
+PROIBIDO:
+• Enunciado sem pergunta explícita no final
+• Reutilizar a mesma estrutura de pergunta em questões do mesmo lote
+• Perguntas que entregam o gabarito na própria formulação ("Qual o tratamento de escolha do IAM com supra?")
+• "Qual o diagnóstico?" quando a tríade diagnóstica está explícita e óbvia no enunciado
 
 ═══ DIRETRIZES ATUALIZADAS ═══
 Priorizar: MS/SUS 2023-2025, PCDT, FEBRASGO, CFM, SBC, SBPT, SBEM.
@@ -119,7 +172,7 @@ Se usar conduta de diretriz anterior a 2023, sinalizar no raciocinio: "Conforme 
 Condutas de APS devem seguir os Cadernos de Atenção Primária vigentes.
 
 ═══ LIMITES DE TAMANHO OBRIGATÓRIOS ═══
-enunciado: máx 220 palavras | alts[x].texto: máx 22 palavras | alts[x].nota: máx 55 palavras
+enunciado: mín 80 palavras, máx 220 palavras | alts[x].texto: máx 22 palavras | alts[x].nota: máx 55 palavras
 raciocinio: máx 110 palavras | tto: máx 120 palavras | dicaMestre: máx 40 palavras
 
 Estrutura obrigatória de cada questão no array:
@@ -694,6 +747,7 @@ const ImportadorPro = () => {
   const [publicados, setPublicados] = useState(0);
   const [copiado, setCopiado] = useState(false);
   const [expandidos, setExpandidos] = useState({});
+  const [showGuia, setShowGuia] = useState(false);
 
   // ─── ESTADOS DA GERAÇÃO POR IA ───────────────────────────────
   const [abaIA, setAbaIA] = useState("json"); // "json" | "gerador"
@@ -703,6 +757,19 @@ const ImportadorPro = () => {
   // Cooldown de 30s entre chamadas — protege contra uso excessivo de tokens de IA
   const [cooldownRestante, setCooldownRestante] = useState(0);
   const cooldownIntervalRef = React.useRef(null);
+
+  // ─── ESTADOS DA TAXONOMIA CONTROLADA (Gerador IA) ────────────
+  // O admin seleciona matéria → tema mestre → subtema ANTES de gerar.
+  // A IA recebe esses valores no prompt e eles são sobrescritos no resultado —
+  // garantindo que o banco nunca receba subtemas inventados pela IA.
+  const [materiaGerador, setMateriaGerador] = useState("Clínica Médica");
+  const [temaMestreGerador, setTemaMestreGerador] = useState("");
+  const [temaMestreCustom, setTemaMestreCustom] = useState("");
+  const [subtemaGerador, setSubtemaGerador] = useState("");
+  const [subtemaCustom, setSubtemaCustom] = useState("");
+  const [qtdGerador, setQtdGerador] = useState(1);
+  // Taxonomia mesclada (base estática + Firestore). null = ainda carregando.
+  const [taxonomiaDinamica, setTaxonomiaDinamica] = useState(null);
 
   // ─── ESTADOS DO MÓDULO SUPER APOSTAS ────────────────────────
   // destino: "inep" | "super_apostas"
@@ -717,6 +784,95 @@ const ImportadorPro = () => {
   React.useEffect(() => {
     return () => { if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current); };
   }, []);
+
+  // ─── TAXONOMIA PERSISTENTE — FIRESTORE ───────────────────────
+  // Carrega coleção `taxonomiaPedagogica` e mescla com base estática.
+  // Deduplicação semântica via normChave (trim+lower+colapsa separadores).
+  const carregarTaxonomia = useCallback(async () => {
+    const merged = {};
+    for (const [mat, temas] of Object.entries(TAXONOMIA_BASE)) {
+      merged[mat] = temas.map(t => ({ tema_mestre: t.tema_mestre, subtemas: [...t.subtemas] }));
+    }
+    try {
+      const snap = await getDocs(collection(db, "taxonomiaPedagogica"));
+      snap.forEach(docSnap => {
+        const { materia, tema_mestre, subtema } = docSnap.data();
+        if (!materia || !tema_mestre || !subtema) return;
+        if (!merged[materia]) merged[materia] = [];
+        let temaEntry = merged[materia].find(t => normChave(t.tema_mestre) === normChave(tema_mestre));
+        if (!temaEntry) {
+          temaEntry = { tema_mestre, subtemas: [] };
+          merged[materia].push(temaEntry);
+        }
+        if (!temaEntry.subtemas.some(s => normChave(s) === normChave(subtema))) {
+          temaEntry.subtemas.push(subtema);
+        }
+      });
+    } catch (e) {
+      console.error("[taxonomia] Erro ao carregar:", e);
+    }
+    setTaxonomiaDinamica(merged);
+  }, []);
+
+  // Persiste novo tema_mestre/subtema no Firestore usando chave normalizada como ID
+  // (upsert via merge: true — seguro contra duplicatas concorrentes).
+  const persistirTaxonomia = async (materia, temaMestre, subtema) => {
+    const chave = `${normChave(materia)}__${normChave(temaMestre)}__${normChave(subtema)}`;
+    try {
+      await setDoc(doc(db, "taxonomiaPedagogica", chave), {
+        materia, tema_mestre: temaMestre, subtema,
+        ativo: true, origem: "admin", createdAt: serverTimestamp(),
+      }, { merge: true });
+      carregarTaxonomia();
+    } catch (e) {
+      console.error("[taxonomia] Erro ao persistir:", e);
+    }
+  };
+
+  // Helpers que operam na taxonomia dinâmica (com fallback para base estática)
+  const getTemasMestresGer = (materia) =>
+    ((taxonomiaDinamica ?? TAXONOMIA_BASE)[materia] || [])
+      .map(t => t.tema_mestre)
+      .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  const getSubtemasGer = (materia, temaMestre) => {
+    const temas = (taxonomiaDinamica ?? TAXONOMIA_BASE)[materia] || [];
+    const entry = temas.find(t => t.tema_mestre === temaMestre);
+    return entry ? [...entry.subtemas].sort((a, b) => a.localeCompare(b, "pt-BR")) : [];
+  };
+
+  useEffect(() => { carregarTaxonomia(); }, [carregarTaxonomia]);
+
+  // ─── DIRETRIZES ATIVAS — FIRESTORE ───────────────────────────────────────
+  // Carrega versões ativas do Firestore; fallback para lista estática.
+  // Isso garante que novas diretrizes publicadas pelo admin sejam usadas
+  // imediatamente, sem necessidade de novo deploy.
+  const [diretrizesAtivas, setDiretrizesAtivas] = useState([]);
+  useEffect(() => {
+    const carregarDiretrizes = async () => {
+      try {
+        const snap = await getDocs(collection(db, "diretrizes"));
+        const ativas = snap.docs
+          .map(d => d.data())
+          .filter(d => d.ativa);
+        setDiretrizesAtivas(ativas.length > 0 ? ativas : DIRETRIZES_CONTROLADAS.filter(d => d.ativa));
+      } catch {
+        // Firestore indisponível → usa estática silenciosamente
+        setDiretrizesAtivas(DIRETRIZES_CONTROLADAS.filter(d => d.ativa));
+      }
+    };
+    carregarDiretrizes();
+  }, []);
+
+  // Detecta em tempo real se o tema/subtema selecionado possui diretriz controlada.
+  // Usa lista Firestore se disponível, cai para estática enquanto carrega.
+  const diretrizDetectada = useMemo(() => {
+    const tmReal = temaMestreGerador === "__novo__" ? temaMestreCustom : temaMestreGerador;
+    const stReal = subtemaGerador    === "__novo__" ? subtemaCustom    : subtemaGerador;
+    return diretrizesAtivas.length > 0
+      ? detectarDiretrizDinamica(diretrizesAtivas, tmReal, stReal)
+      : detectarDiretriz(tmReal, stReal);
+  }, [temaMestreGerador, temaMestreCustom, subtemaGerador, subtemaCustom, diretrizesAtivas]);
 
   const iniciarCooldown = () => {
     setCooldownRestante(30);
@@ -833,10 +989,15 @@ const ImportadorPro = () => {
 
   // ─── GERAR VIA IA — Integração real com Anthropic via Cloud Function ────────
   // Endpoint: gerarQuestoesIA (Firebase Functions) → Anthropic claude-sonnet-4-6
-  // O prompt do usuário é enviado junto com o PROMPT_SISTEMA como system message.
+  // Taxonomia controlada: materia/tema_mestre/subtema são definidos pelo admin
+  // e sobrescritos no resultado — a IA nunca controla esses campos.
   const gerarViaIA = async () => {
-    if (!promptUsuario.trim()) return alert("Descreva o que quer gerar.");
-    if (!provaEdicao && isOficial) return alert("Selecione a Edição primeiro.");
+    const temaMestreReal = temaMestreGerador === "__novo__" ? temaMestreCustom.trim() : temaMestreGerador;
+    const subtemaReal    = subtemaGerador    === "__novo__" ? subtemaCustom.trim()    : subtemaGerador;
+
+    if (!temaMestreReal) return alert("Selecione ou digite o Tema Mestre antes de gerar.");
+    if (!subtemaReal)    return alert("Selecione ou digite o Subtema antes de gerar.");
+    if (!provaEdicao && isOficial && destino === "inep") return alert("Selecione a Edição INEP primeiro.");
     if (cooldownRestante > 0) return; // proteção contra cliques rápidos
     setGerandoIA(true);
     setErroIA("");
@@ -851,10 +1012,32 @@ const ImportadorPro = () => {
         : (import.meta.env.VITE_FUNCTIONS_BASE_URL ||
            "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/gerarQuestoesIA";
 
+      // Prompt com taxonomia controlada: a IA recebe os campos exatos e deve usá-los.
+      // Os campos também são sobrescritos no resultado (dupla garantia).
+      const temaMestreReal2 = temaMestreGerador === "__novo__" ? temaMestreCustom.trim() : temaMestreGerador;
+      const subtemaReal2    = subtemaGerador    === "__novo__" ? subtemaCustom.trim()    : subtemaGerador;
+
+      // Diretriz vigente: Firestore se carregado, estática como fallback.
+      const diretrizAtual = diretrizesAtivas.length > 0
+        ? detectarDiretrizDinamica(diretrizesAtivas, temaMestreReal2, subtemaReal2)
+        : detectarDiretriz(temaMestreReal2, subtemaReal2);
+
+      const promptConstruido =
+        `Gere ${qtdGerador} questão(ões) de múltipla escolha para o Revalida INEP/ENAMED.\n\n` +
+        `TAXONOMIA CONTROLADA — use EXATAMENTE estes valores nos campos do JSON:\n` +
+        `"materia": "${materiaGerador}"\n` +
+        `"tema_mestre": "${temaMestreReal2}"\n` +
+        `"subtema": "${subtemaReal2}"\n\n` +
+        (diretrizAtual ? montarBlocoDiretriz(diretrizAtual) : "") +
+        (promptUsuario.trim()
+          ? `FOCO PEDAGÓGICO ADICIONAL:\n${promptUsuario.trim()}\n\n`
+          : "") +
+        `Retorne um array JSON com exatamente ${qtdGerador} questão(ões). Comece com [ e termine com ].`;
+
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ system: PROMPT_SISTEMA, prompt: promptUsuario }),
+        body: JSON.stringify({ system: PROMPT_SISTEMA, prompt: promptConstruido }),
       });
 
       if (!response.ok) {
@@ -944,6 +1127,10 @@ const ImportadorPro = () => {
         .reduce((max, q) => Math.max(max, typeof q.numeroQuestao === "number" ? q.numeroQuestao : 0), 0);
       const proximoNumero = Math.max(proximoNumeroFirestore, maxLocal + 1);
 
+      // Resolve taxonomia final (pode ser custom ou selecionado da lista)
+      const temaMestreFinal = temaMestreGerador === "__novo__" ? temaMestreCustom.trim() : temaMestreGerador;
+      const subtemazFinal   = subtemaGerador    === "__novo__" ? subtemaCustom.trim()    : subtemaGerador;
+
       const listaFinal = lista.map((q, i) => {
         // NUNCA usa o numeroQuestao sugerido pela IA — a IA sempre retorna 1,2,3
         // e causaria sobrescrita de documentos já existentes no Firestore.
@@ -958,8 +1145,20 @@ const ImportadorPro = () => {
           provaId:        isSA ? "" : provaEdicao,  // provaId vazio = isolamento módulo INEP
           isOficial:      isSA ? false : isOficial,
           imagemUrl:      q.imagemUrl || "",
-          // Status de atualização de diretriz — automático, sem ação do admin
-          status_atualizacao: calcularStatusAtualizacao(q.ano_diretriz),
+          // ── TAXONOMIA CONTROLADA: sobrescreve qualquer valor gerado pela IA ──
+          materia:      materiaGerador,
+          tema_mestre:  temaMestreFinal,
+          subtema:      subtemazFinal,
+          // ── DIRETRIZ CONTROLADA: se detectada, sobrescreve fonte e ano ────────
+          // Garante que o banco reflita a diretriz real injetada no prompt,
+          // independente do que a IA preencheu nesses campos.
+          ...(diretrizAtual ? {
+            fonte_diretriz:     diretrizAtual.fonte,
+            ano_diretriz:       diretrizAtual.ano,
+            status_atualizacao: "atual",
+          } : {
+            status_atualizacao: calcularStatusAtualizacao(q.ano_diretriz),
+          }),
           // Normaliza `alts`: aceita tanto o formato nested (alts.a.texto)
           // quanto o formato flat (alternativaA / justificativaA) por retrocompatibilidade
           alts: q.alts || {
@@ -982,8 +1181,12 @@ const ImportadorPro = () => {
       // ── FIM DA INTEGRAÇÃO REAL ───────────────────────────────────────────────
 
       setQuestoes(prev => [...prev, ...listaFinal]);
+      // Se o admin criou um tema/subtema novo, persiste no Firestore para futuras gerações
+      if (temaMestreGerador === "__novo__" || subtemaGerador === "__novo__") {
+        persistirTaxonomia(materiaGerador, temaMestreFinal, subtemazFinal);
+      }
       setAbaInterna("manual");
-      setPromptUsuario("");
+      setPromptUsuario(""); // limpa apenas o foco adicional; taxonomia permanece para próxima geração
     } catch (e) {
       setErroIA(e.message || "Erro ao gerar questões. Tente novamente ou use o modo JSON.");
       console.error("[gerarViaIA]", e);
@@ -1210,6 +1413,30 @@ const ImportadorPro = () => {
           )}
         </div>
 
+        {/* GUIA EDITORIAL */}
+        <button
+          onClick={() => setShowGuia(true)}
+          style={{
+            background: "rgba(129,140,248,0.08)",
+            border: "1px solid rgba(129,140,248,0.18)",
+            color: "#818cf8",
+            padding: "8px 14px",
+            borderRadius: "10px",
+            cursor: "pointer",
+            fontWeight: "700",
+            fontSize: "11px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            transition: "0.15s",
+          }}
+          title="Central Editorial — padrão pedagógico, checklist, exemplos"
+        >
+          📘 Guia Editorial
+        </button>
+
         {/* PUBLICAR */}
         <button onClick={publicarLote} disabled={publicando || questoes.length === 0} style={{
           ...st.btnFinal,
@@ -1267,18 +1494,178 @@ const ImportadorPro = () => {
             </div>
           ) : (
             <div>
-              <div style={{ ...st.infoCard, borderColor: "rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.08)" }}>
-                <FaMagic color="#818cf8" size={14} />
-                <span style={{ color: "#94a3b8", fontSize: "12px", lineHeight: 1.5 }}>
-                  Descreva o que quer gerar e a IA cria as questões automaticamente no formato do RevalidaPro.
-                </span>
+              {/* ── TAXONOMIA CONTROLADA ─────────────────────────────────── */}
+              <div style={st.taxonomiaBox}>
+                <p style={st.taxonomiaTitulo}>
+                  📚 Taxonomia Controlada
+                  <span style={st.taxonomiaSub}>A IA gera o conteúdo; você define onde a questão se encaixa.</span>
+                </p>
+
+                {/* LINHA 1: Matéria */}
+                <div style={st.taxonomiaRow}>
+                  <div style={st.taxonomiaField}>
+                    <label style={st.taxonomiaLabel}>MATÉRIA</label>
+                    <select
+                      value={materiaGerador}
+                      onChange={e => {
+                        setMateriaGerador(e.target.value);
+                        setTemaMestreGerador("");
+                        setTemaMestreCustom("");
+                        setSubtemaGerador("");
+                        setSubtemaCustom("");
+                      }}
+                      style={st.taxonomiaSelect}
+                    >
+                      {[...MATERIAS_VALIDAS].sort((a, b) => a.localeCompare(b, "pt-BR")).map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* LINHA 2: Tema Mestre */}
+                <div style={st.taxonomiaRow}>
+                  <div style={st.taxonomiaField}>
+                    <label style={st.taxonomiaLabel}>TEMA MESTRE</label>
+                    <select
+                      value={temaMestreGerador}
+                      onChange={e => {
+                        setTemaMestreGerador(e.target.value);
+                        setSubtemaGerador("");
+                        setSubtemaCustom("");
+                        if (e.target.value !== "__novo__") setTemaMestreCustom("");
+                      }}
+                      style={{
+                        ...st.taxonomiaSelect,
+                        borderColor: !temaMestreGerador ? "rgba(251,191,36,0.5)" : "#334155",
+                      }}
+                    >
+                      <option value="">Selecionar tema mestre...</option>
+                      {getTemasMestresGer(materiaGerador).map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                      <option value="__novo__">+ Novo tema...</option>
+                    </select>
+                    {temaMestreGerador === "__novo__" && (
+                      <input
+                        value={temaMestreCustom}
+                        onChange={e => setTemaMestreCustom(e.target.value)}
+                        placeholder="Ex: Toxicologia Clínica"
+                        style={{ ...st.taxonomiaInput, marginTop: "6px" }}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+
+                  {/* LINHA 3: Subtema */}
+                  <div style={st.taxonomiaField}>
+                    <label style={st.taxonomiaLabel}>SUBTEMA</label>
+                    <select
+                      value={subtemaGerador}
+                      onChange={e => {
+                        setSubtemaGerador(e.target.value);
+                        if (e.target.value !== "__novo__") setSubtemaCustom("");
+                      }}
+                      disabled={!temaMestreGerador}
+                      style={{
+                        ...st.taxonomiaSelect,
+                        borderColor: !subtemaGerador ? "rgba(251,191,36,0.5)" : "#334155",
+                        opacity: !temaMestreGerador ? 0.4 : 1,
+                      }}
+                    >
+                      <option value="">Selecionar subtema...</option>
+                      {getSubtemasGer(materiaGerador, temaMestreGerador).map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                      {temaMestreGerador && <option value="__novo__">+ Novo subtema...</option>}
+                    </select>
+                    {subtemaGerador === "__novo__" && (
+                      <input
+                        value={subtemaCustom}
+                        onChange={e => setSubtemaCustom(e.target.value)}
+                        placeholder="Ex: Hipertensão Portal"
+                        style={{ ...st.taxonomiaInput, marginTop: "6px" }}
+                        autoFocus
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* LINHA 4: Quantidade */}
+                <div style={{ marginTop: "12px" }}>
+                  <label style={st.taxonomiaLabel}>QUANTIDADE</label>
+                  <div style={{ display: "flex", gap: "8px", marginTop: "6px" }}>
+                    {[1, 3, 5, 10].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => setQtdGerador(n)}
+                        style={{
+                          ...st.qtdBtn,
+                          ...(qtdGerador === n ? st.qtdBtnActive : {}),
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                    <span style={{ fontSize: "11px", color: "#475569", alignSelf: "center", marginLeft: "4px" }}>
+                      questão{qtdGerador > 1 ? "ões" : ""}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Preview da taxonomia selecionada */}
+                {temaMestreGerador && subtemaGerador && (
+                  <div style={st.taxonomiaPreview}>
+                    <span style={{ color: "#818cf8" }}>{materiaGerador}</span>
+                    <span style={{ color: "#475569" }}> › </span>
+                    <span style={{ color: "#c084fc" }}>
+                      {temaMestreGerador === "__novo__" ? temaMestreCustom || "..." : temaMestreGerador}
+                    </span>
+                    <span style={{ color: "#475569" }}> › </span>
+                    <span style={{ color: "#10b981" }}>
+                      {subtemaGerador === "__novo__" ? subtemaCustom || "..." : subtemaGerador}
+                    </span>
+                    <span style={{ color: "#475569", marginLeft: "10px", fontSize: "10px" }}>
+                      × {qtdGerador}
+                    </span>
+                  </div>
+                )}
+
+                {/* Badge de Diretriz Controlada — aparece quando o tema é sensível */}
+                {diretrizDetectada && (
+                  <div style={st.diretrizBadge}>
+                    <span style={{ fontSize: "13px", flexShrink: 0 }}>🛡️</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "11px", fontWeight: "800", color: "#34d399" }}>
+                          Diretriz Controlada Detectada
+                        </span>
+                        <span style={{
+                          fontSize: "10px", fontWeight: "700",
+                          background: "rgba(16,185,129,0.12)", color: "#10b981",
+                          padding: "2px 8px", borderRadius: "6px", border: "1px solid rgba(16,185,129,0.2)",
+                          flexShrink: 0,
+                        }}>
+                          {diretrizDetectada.ano}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: "11px", color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {diretrizDetectada.fonte}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* ── FOCO PEDAGÓGICO OPCIONAL ─────────────────────────────── */}
+              <label style={{ ...st.taxonomiaLabel, display: "block", marginBottom: "6px" }}>
+                FOCO ADICIONAL <span style={{ color: "#334155", fontWeight: "400", textTransform: "none" }}>(opcional)</span>
+              </label>
               <textarea
                 value={promptUsuario}
                 onChange={e => setPromptUsuario(e.target.value)}
-                placeholder="Ex: Gere 3 questões de Cardiologia sobre Insuficiência Cardíaca Congestiva, nível de dificuldade moderado, com foco em diagnóstico e conduta..."
-                style={{ ...st.areaLote, minHeight: "120px", borderColor: "rgba(124,58,237,0.3)" }}
+                placeholder="Ex: ênfase em paciente gestante, diagnóstico diferencial com AVC hemorrágico, contexto de UPA sem recursos avançados..."
+                style={{ ...st.areaLote, minHeight: "80px", borderColor: "rgba(124,58,237,0.25)" }}
               />
 
               {erroIA && (
@@ -1292,25 +1679,33 @@ const ImportadorPro = () => {
                   ⏳ Aguarde {cooldownRestante}s para gerar novamente (limite de uso)
                 </div>
               )}
-              <button
-                onClick={gerarViaIA}
-                disabled={gerandoIA || cooldownRestante > 0 || !promptUsuario.trim()}
-                style={{
-                  ...st.btnProcessar,
-                  marginTop: "14px",
-                  background: cooldownRestante > 0
-                    ? "linear-gradient(135deg, #374151, #1e293b)"
-                    : "linear-gradient(135deg, #7c3aed, #4f46e5)",
-                  opacity: (gerandoIA || cooldownRestante > 0 || !promptUsuario.trim()) ? 0.6 : 1
-                }}
-              >
-                {gerandoIA
-                  ? <><FaSpinner size={12} style={{ animation: "spin 1s linear infinite" }} /> GERANDO QUESTÕES...</>
-                  : cooldownRestante > 0
-                  ? <>⏳ AGUARDE {cooldownRestante}s...</>
-                  : <><FaMagic size={12} /> GERAR COM IA</>
-                }
-              </button>
+
+              {(() => {
+                const temaMestreReal = temaMestreGerador === "__novo__" ? temaMestreCustom.trim() : temaMestreGerador;
+                const subtemaReal    = subtemaGerador    === "__novo__" ? subtemaCustom.trim()    : subtemaGerador;
+                const pronto = !!temaMestreReal && !!subtemaReal;
+                return (
+                  <button
+                    onClick={gerarViaIA}
+                    disabled={gerandoIA || cooldownRestante > 0 || !pronto}
+                    style={{
+                      ...st.btnProcessar,
+                      marginTop: "14px",
+                      background: cooldownRestante > 0
+                        ? "linear-gradient(135deg, #374151, #1e293b)"
+                        : "linear-gradient(135deg, #7c3aed, #4f46e5)",
+                      opacity: (gerandoIA || cooldownRestante > 0 || !pronto) ? 0.5 : 1,
+                    }}
+                  >
+                    {gerandoIA
+                      ? <><FaSpinner size={12} style={{ animation: "spin 1s linear infinite" }} /> GERANDO {qtdGerador} QUESTÃO{qtdGerador > 1 ? "ÕES" : ""}...</>
+                      : cooldownRestante > 0
+                      ? <>⏳ AGUARDE {cooldownRestante}s...</>
+                      : <><FaMagic size={12} /> GERAR {qtdGerador} QUESTÃO{qtdGerador > 1 ? "ÕES" : ""}</>
+                    }
+                  </button>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1618,6 +2013,325 @@ const ImportadorPro = () => {
         </div>
       )}
 
+      {/* ─── MODAL: CENTRAL EDITORIAL ─────────────────────────── */}
+      {showGuia && (
+        <div
+          className="modal-overlay"
+          onClick={e => e.target === e.currentTarget && setShowGuia(false)}
+        >
+          <div style={{
+            background: "#0f172a",
+            borderRadius: "24px",
+            width: "100%",
+            maxWidth: "860px",
+            maxHeight: "90vh",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            border: "1px solid rgba(99,102,241,0.2)",
+            boxShadow: "0 32px 80px rgba(0,0,0,0.85)",
+          }}>
+
+            {/* HEADER */}
+            <div style={{
+              padding: "26px 32px 22px",
+              background: "linear-gradient(135deg, rgba(79,70,229,0.12) 0%, rgba(124,58,237,0.08) 100%)",
+              borderBottom: "1px solid rgba(99,102,241,0.15)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexShrink: 0,
+            }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "5px" }}>
+                  <span style={{ fontSize: "20px" }}>📘</span>
+                  <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "800", color: "#f1f5f9", letterSpacing: "-0.3px" }}>
+                    Central Editorial RevalidaPRO
+                  </h2>
+                </div>
+                <p style={{ margin: 0, fontSize: "12px", color: "#475569" }}>
+                  Padrão pedagógico · Taxonomia controlada · Governança do banco · Checklist editorial
+                </p>
+              </div>
+              <button
+                onClick={() => setShowGuia(false)}
+                style={{
+                  background: "rgba(239,68,68,0.08)",
+                  border: "1px solid rgba(239,68,68,0.2)",
+                  color: "#ef4444",
+                  width: "34px",
+                  height: "34px",
+                  borderRadius: "10px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <FaTimes size={13} />
+              </button>
+            </div>
+
+            {/* CORPO SCROLLÁVEL */}
+            <div style={{ overflowY: "auto", padding: "28px 32px", display: "flex", flexDirection: "column", gap: "20px" }}>
+
+              {/* ── S1: GERAR COM IA ── */}
+              <div style={st.guiaCard}>
+                <div style={st.guiaCardHeader}>
+                  <span style={{ ...st.guiaBadge, background: "rgba(124,58,237,0.15)", color: "#c084fc", borderColor: "rgba(124,58,237,0.25)" }}>✨ 01</span>
+                  <span style={st.guiaCardTitle}>Gerar com IA</span>
+                  <span style={st.guiaSubline}>fluxo completo de geração automática</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {[
+                    { n: "1", label: "Selecione Matéria → Tema Mestre → Subtema", desc: "A taxonomia é controlada e persistente — novos temas criados ficam salvos no Firestore e reaparecem em todas as próximas gerações." },
+                    { n: "2", label: "Adicione foco pedagógico opcional", desc: 'Campo texto para instruções específicas: "abordagem PCDT 2024", "foco em manejo ambulatorial", "paciente idoso com comorbidades".' },
+                    { n: "3", label: "Escolha a quantidade: 1, 3, 5 ou 10", desc: "Lotes menores = maior controle editorial. Lotes maiores = produção em escala. Recomendado: 3 questões por geração." },
+                    { n: "4", label: "Clique em Gerar e aguarde", desc: "A IA recebe o prompt com taxonomia controlada e regras pedagógicas do RevalidaPRO. Os campos matéria, tema_mestre e subtema são sobrescritos na saída — a IA nunca controla esses valores." },
+                    { n: "5", label: "Revise em REVISÃO", desc: "Expanda cada questão, leia o enunciado, verifique alternativas, confira a justificativa da correta. Edite o que precisar antes de publicar." },
+                    { n: "6", label: "Publique com destino correto", desc: "Selecione INEP, Banco Geral ou Super Apostas antes de publicar. O destino define em quais módulos a questão aparece para o aluno." },
+                  ].map(step => (
+                    <div key={step.n} style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                      <span style={{
+                        width: "22px", height: "22px", borderRadius: "50%",
+                        background: "rgba(124,58,237,0.2)", border: "1px solid rgba(124,58,237,0.4)",
+                        color: "#c084fc", fontSize: "10px", fontWeight: "800",
+                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: "1px",
+                      }}>{step.n}</span>
+                      <div>
+                        <div style={{ fontSize: "13px", fontWeight: "700", color: "#e2e8f0", marginBottom: "3px" }}>{step.label}</div>
+                        <div style={{ fontSize: "12px", color: "#64748b", lineHeight: 1.5 }}>{step.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── S2: COLAR JSON ── */}
+              <div style={st.guiaCard}>
+                <div style={st.guiaCardHeader}>
+                  <span style={{ ...st.guiaBadge, background: "rgba(59,130,246,0.12)", color: "#60a5fa", borderColor: "rgba(59,130,246,0.2)" }}>🗂️ 02</span>
+                  <span style={st.guiaCardTitle}>Colar JSON</span>
+                  <span style={st.guiaSubline}>importação manual e conversão de provas reais</span>
+                </div>
+                <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: "200px" }}>
+                    <div style={st.guiaMiniTitle}>Quando usar</div>
+                    {["Questões escritas fora da plataforma (Word, ChatGPT, Claude)", "Conversão de provas INEP em formato digital", "Importação de bancos legados", "Questões altamente personalizadas que a IA não conseguiria gerar diretamente"].map((t, i) => (
+                      <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "6px", alignItems: "flex-start" }}>
+                        <span style={{ color: "#60a5fa", fontSize: "11px", marginTop: "2px", flexShrink: 0 }}>›</span>
+                        <span style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.4 }}>{t}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ flex: 1, minWidth: "240px" }}>
+                    <div style={st.guiaMiniTitle}>Estrutura mínima obrigatória</div>
+                    <pre style={{
+                      background: "#020617", color: "#60a5fa", padding: "12px 14px",
+                      borderRadius: "10px", fontSize: "10px", lineHeight: 1.7,
+                      overflowX: "auto", border: "1px solid rgba(59,130,246,0.15)",
+                      margin: 0,
+                    }}>{`[{
+  "materia": "Clínica Médica",
+  "subtema": "Cardiologia / IAM",
+  "enunciado": "Paciente...",
+  "alts": {
+    "a": { "texto": "...", "nota": "..." },
+    "b": { "texto": "...", "nota": "..." },
+    "c": { "texto": "...", "nota": "..." },
+    "d": { "texto": "...", "nota": "..." },
+    "e": { "texto": "...", "nota": "..." }
+  },
+  "gabarito": "b",
+  "raciocinio": "...",
+  "tto": "...",
+  "dicaMestre": "..."
+}]`}</pre>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── S3: PADRÃO PEDAGÓGICO ── */}
+              <div style={st.guiaCard}>
+                <div style={st.guiaCardHeader}>
+                  <span style={{ ...st.guiaBadge, background: "rgba(8,145,178,0.12)", color: "#38bdf8", borderColor: "rgba(8,145,178,0.2)" }}>🎓 03</span>
+                  <span style={st.guiaCardTitle}>Padrão Pedagógico</span>
+                  <span style={st.guiaSubline}>o que define uma questão RevalidaPRO de qualidade</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+                  {[
+                    { icon: "🧠", label: "Raciocínio progressivo", desc: "Dados chegam em etapas, como um plantão real. O aluno constrói o diagnóstico ao longo do enunciado." },
+                    { icon: "🔍", label: "Diagnóstico não entregue cedo", desc: "O 1º parágrafo nunca revela a patologia. O aluno precisa interpretar para chegar lá." },
+                    { icon: "❓", label: "Pergunta final obrigatória", desc: "Toda questão termina com pergunta clínica explícita, natural e variada — não mecânica." },
+                    { icon: "🎯", label: "Distratores inteligentes", desc: "Alternativas erradas são plausíveis e testam diferenciais reais, não erros absurdos." },
+                    { icon: "📚", label: "Justificativa correta = mini aula", desc: "Explica o raciocínio, cita a diretriz, ensina o porquê da escolha. Nunca genérico." },
+                    { icon: "📏", label: "Enunciado denso (≥80 palavras)", desc: "Contexto clínico rico, sem atalhos. Paciente, contexto, exame, dados evolutivos." },
+                  ].map((item, i) => (
+                    <div key={i} style={{
+                      background: "rgba(8,145,178,0.04)",
+                      border: "1px solid rgba(8,145,178,0.12)",
+                      borderRadius: "12px",
+                      padding: "14px 16px",
+                    }}>
+                      <div style={{ fontSize: "18px", marginBottom: "6px" }}>{item.icon}</div>
+                      <div style={{ fontSize: "12px", fontWeight: "700", color: "#38bdf8", marginBottom: "4px" }}>{item.label}</div>
+                      <div style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.5 }}>{item.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── S4: CHECKLIST EDITORIAL ── */}
+              <div style={st.guiaCard}>
+                <div style={st.guiaCardHeader}>
+                  <span style={{ ...st.guiaBadge, background: "rgba(16,185,129,0.12)", color: "#34d399", borderColor: "rgba(16,185,129,0.2)" }}>✅ 04</span>
+                  <span style={st.guiaCardTitle}>Checklist Editorial</span>
+                  <span style={st.guiaSubline}>confira antes de publicar</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "8px" }}>
+                  {[
+                    "Enunciado contextualizado com paciente, queixa, exame e evolução?",
+                    "Pergunta final presente, natural e alinhada ao objetivo cognitivo?",
+                    "Dificuldade adequada ao padrão Revalida moderno?",
+                    "Justificativa da correta explica raciocínio + cita diretriz + consolida aprendizado?",
+                    "Alternativas são plausíveis e testam diferenciais reais?",
+                    "Taxonomia (matéria / tema mestre / subtema) está correta e controlada?",
+                    "Diretriz atualizada ou marcada corretamente para revisão?",
+                  ].map((item, i) => (
+                    <div key={i} style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "10px",
+                      padding: "10px 12px",
+                      background: "rgba(16,185,129,0.04)",
+                      border: "1px solid rgba(16,185,129,0.12)",
+                      borderRadius: "10px",
+                    }}>
+                      <span style={{ color: "#34d399", fontSize: "14px", flexShrink: 0, marginTop: "1px" }}>☑</span>
+                      <span style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.4 }}>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── S5: ERROS PROIBIDOS ── */}
+              <div style={st.guiaCard}>
+                <div style={st.guiaCardHeader}>
+                  <span style={{ ...st.guiaBadge, background: "rgba(239,68,68,0.1)", color: "#f87171", borderColor: "rgba(239,68,68,0.2)" }}>🚫 05</span>
+                  <span style={st.guiaCardTitle}>Erros Proibidos</span>
+                  <span style={st.guiaSubline}>padrões que rebaixam a qualidade do banco</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "8px" }}>
+                  {[
+                    { erro: "Diagnóstico entregue no 1º parágrafo", ex: '"Paciente com pneumonia chega ao PS…"' },
+                    { erro: "Alternativas absurdas ou obviamente erradas", ex: '"Amputar o membro para tratar HAS"' },
+                    { erro: "Enunciado muito curto ou genérico", ex: '"Paciente com febre. Qual o diagnóstico?"' },
+                    { erro: "Pergunta final mecânica ou ausente", ex: '"Qual o diagnóstico?" como única pergunta' },
+                    { erro: "Subtema fora da taxonomia controlada", ex: 'Subtema livre que quebra os filtros do banco' },
+                    { erro: "Justificativa correta genérica", ex: '"CORRETA: conduta adequada" — sem explicação' },
+                    { erro: "Diretriz desatualizada sem aviso", ex: 'Protocolo revogado sem tag "revisar"' },
+                    { erro: "Questão baseada em memorização pura", ex: '"Qual a dose de AAS?" sem contexto clínico' },
+                  ].map((item, i) => (
+                    <div key={i} style={{
+                      padding: "10px 12px",
+                      background: "rgba(239,68,68,0.04)",
+                      border: "1px solid rgba(239,68,68,0.12)",
+                      borderRadius: "10px",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "7px", marginBottom: "4px" }}>
+                        <span style={{ color: "#f87171", fontSize: "11px" }}>✗</span>
+                        <span style={{ fontSize: "12px", fontWeight: "700", color: "#fca5a5" }}>{item.erro}</span>
+                      </div>
+                      <div style={{ fontSize: "11px", color: "#475569", fontStyle: "italic", lineHeight: 1.4 }}>{item.ex}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── S6: EXEMPLO VISUAL ── */}
+              <div style={st.guiaCard}>
+                <div style={st.guiaCardHeader}>
+                  <span style={{ ...st.guiaBadge, background: "rgba(251,191,36,0.12)", color: "#fbbf24", borderColor: "rgba(251,191,36,0.2)" }}>🔬 06</span>
+                  <span style={st.guiaCardTitle}>Exemplo Visual</span>
+                  <span style={st.guiaSubline}>questão fraca vs questão padrão RevalidaPRO</span>
+                </div>
+                <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+
+                  {/* FRACA */}
+                  <div style={{ flex: 1, minWidth: "240px" }}>
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: "7px", marginBottom: "10px",
+                      padding: "6px 12px", background: "rgba(239,68,68,0.08)", borderRadius: "8px",
+                      border: "1px solid rgba(239,68,68,0.2)", width: "fit-content",
+                    }}>
+                      <span style={{ color: "#f87171", fontWeight: "800", fontSize: "12px" }}>❌  Questão Fraca</span>
+                    </div>
+                    <div style={{
+                      background: "rgba(239,68,68,0.04)",
+                      border: "1px solid rgba(239,68,68,0.15)",
+                      borderRadius: "12px",
+                      padding: "16px",
+                      fontSize: "12px",
+                      color: "#94a3b8",
+                      lineHeight: 1.6,
+                    }}>
+                      <p style={{ margin: "0 0 10px", color: "#fca5a5", fontWeight: "600" }}>Enunciado:</p>
+                      <p style={{ margin: "0 0 10px", fontStyle: "italic" }}>"Paciente com febre, dispneia e tosse. Qual o diagnóstico mais provável?"</p>
+                      <p style={{ margin: "0 0 6px", color: "#475569", fontSize: "11px", fontWeight: "700" }}>ALTERNATIVAS:</p>
+                      <p style={{ margin: 0, fontSize: "11px" }}>A) Pneumonia &nbsp;B) Gripe &nbsp;C) Covid &nbsp;D) Tuberculose &nbsp;E) Asma</p>
+                      <div style={{ marginTop: "12px", padding: "8px 10px", background: "rgba(239,68,68,0.08)", borderRadius: "8px" }}>
+                        <p style={{ margin: 0, fontSize: "11px", color: "#f87171" }}>⚠ Enunciado com 7 palavras · Sem contexto · Diagnóstico implícito · Pergunta mecânica · Alternativas sem substância</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* PADRÃO REVALIDAPRO */}
+                  <div style={{ flex: 1, minWidth: "240px" }}>
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: "7px", marginBottom: "10px",
+                      padding: "6px 12px", background: "rgba(16,185,129,0.08)", borderRadius: "8px",
+                      border: "1px solid rgba(16,185,129,0.2)", width: "fit-content",
+                    }}>
+                      <span style={{ color: "#34d399", fontWeight: "800", fontSize: "12px" }}>✅  Padrão RevalidaPRO</span>
+                    </div>
+                    <div style={{
+                      background: "rgba(16,185,129,0.03)",
+                      border: "1px solid rgba(16,185,129,0.15)",
+                      borderRadius: "12px",
+                      padding: "16px",
+                      fontSize: "12px",
+                      color: "#94a3b8",
+                      lineHeight: 1.6,
+                    }}>
+                      <p style={{ margin: "0 0 10px", color: "#34d399", fontWeight: "600" }}>Enunciado:</p>
+                      <p style={{ margin: "0 0 10px", fontStyle: "italic", color: "#cbd5e1" }}>"Homem, 67 anos, tabagista 40 anos-maço, admitido com dispneia progressiva há 3 dias, febre 38,8°C, tosse com escarro esverdeado. SpO₂ 91%, FR 26 irpm, crepitações em base direita. Radiografia: infiltrado lobar inferior direito com broncograma aéreo. Em uso de enalapril e metformina. Qual é a conduta terapêutica inicial mais adequada para este paciente?"</p>
+                      <div style={{ marginTop: "10px", padding: "8px 10px", background: "rgba(16,185,129,0.07)", borderRadius: "8px" }}>
+                        <p style={{ margin: 0, fontSize: "11px", color: "#34d399" }}>✓ Contexto rico · Dados progressivos · Pergunta de conduta · Diagnóstico construído pelo raciocínio · &gt;80 palavras</p>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* RODAPÉ */}
+              <div style={{
+                textAlign: "center",
+                padding: "16px",
+                borderTop: "1px solid #1e293b",
+                marginTop: "4px",
+              }}>
+                <p style={{ margin: 0, fontSize: "11px", color: "#334155" }}>
+                  RevalidaPRO Central Editorial · Padrão INEP/ENAMED · Taxonomia pedagógica controlada
+                </p>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         * { box-sizing: border-box; }
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; }
@@ -1684,6 +2398,27 @@ const st = {
   destinoBtn: { background: "none", border: "none", color: "#64748b", padding: "6px 12px", borderRadius: "8px", cursor: "pointer", fontWeight: "700", fontSize: "11px", display: "flex", alignItems: "center", gap: "5px", transition: "0.15s" },
   destinoBtnActive: { background: "rgba(79,70,229,0.15)", border: "1px solid rgba(79,70,229,0.4)", color: "#818cf8", borderRadius: "8px", padding: "6px 12px", fontWeight: "800", fontSize: "11px", display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", transition: "0.15s" },
   destinoBtnSA: { background: "rgba(234,179,8,0.12)", border: "1px solid rgba(234,179,8,0.35)", color: "#fbbf24", borderRadius: "8px", padding: "6px 12px", fontWeight: "800", fontSize: "11px", display: "flex", alignItems: "center", gap: "5px", cursor: "pointer", transition: "0.15s" },
+  // ─── TAXONOMIA CONTROLADA ────────────────────────────────────────────────────
+  taxonomiaBox: { background: "rgba(15,23,42,0.8)", border: "1px solid rgba(124,58,237,0.25)", borderRadius: "16px", padding: "18px 20px", marginBottom: "16px" },
+  taxonomiaTitulo: { color: "#c084fc", fontSize: "13px", fontWeight: "800", margin: "0 0 14px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+  taxonomiaSub: { color: "#475569", fontSize: "11px", fontWeight: "400" },
+  taxonomiaRow: { display: "flex", gap: "12px", flexWrap: "wrap", marginBottom: "10px" },
+  taxonomiaField: { display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: "180px" },
+  taxonomiaLabel: { fontSize: "10px", fontWeight: "800", color: "#64748b", letterSpacing: "0.5px", textTransform: "uppercase" },
+  taxonomiaSelect: { background: "#0f172a", color: "#fff", border: "1px solid #334155", padding: "9px 12px", borderRadius: "10px", fontSize: "12px", cursor: "pointer", outline: "none", width: "100%" },
+  taxonomiaInput: { background: "#0f172a", border: "1px solid rgba(124,58,237,0.4)", color: "#c084fc", padding: "8px 12px", borderRadius: "8px", fontSize: "12px", outline: "none", width: "100%", boxSizing: "border-box" },
+  taxonomiaPreview: { display: "flex", alignItems: "center", gap: "2px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: "8px", padding: "7px 12px", marginTop: "12px", flexWrap: "wrap", fontSize: "12px", fontWeight: "700" },
+  qtdBtn: { background: "#0f172a", border: "1px solid #334155", color: "#64748b", padding: "7px 16px", borderRadius: "8px", cursor: "pointer", fontWeight: "800", fontSize: "13px", transition: "0.15s" },
+  qtdBtnActive: { background: "rgba(124,58,237,0.2)", border: "1px solid rgba(124,58,237,0.5)", color: "#c084fc" },
+  // ─── DIRETRIZ CONTROLADA ─────────────────────────────────────────────────────
+  diretrizBadge: { display: "flex", alignItems: "flex-start", gap: "10px", background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "10px", padding: "10px 14px", marginTop: "8px" },
+  // ─── CENTRAL EDITORIAL ───────────────────────────────────────────────────────
+  guiaCard: { background: "#1e293b", border: "1px solid #1e3251", borderRadius: "16px", padding: "20px 22px" },
+  guiaCardHeader: { display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" },
+  guiaCardTitle: { fontSize: "15px", fontWeight: "800", color: "#f1f5f9", letterSpacing: "-0.2px" },
+  guiaSubline: { fontSize: "11px", color: "#334155", fontWeight: "600" },
+  guiaBadge: { fontSize: "10px", fontWeight: "800", padding: "4px 10px", borderRadius: "20px", border: "1px solid", letterSpacing: "0.3px", flexShrink: 0 },
+  guiaMiniTitle: { fontSize: "10px", fontWeight: "800", color: "#475569", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px" },
 };
 
 export default ImportadorPro;

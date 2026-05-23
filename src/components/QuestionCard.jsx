@@ -1,11 +1,12 @@
 import React from "react";
-import { FaImage, FaAward, FaCalendarAlt, FaStethoscope } from "react-icons/fa";
+import { FaImage, FaAward, FaCalendarAlt, FaStethoscope, FaShieldAlt } from "react-icons/fa";
 
 export default function QuestionCard({ questao }) {
   if (!questao) return null;
 
   return (
-    <div style={st.card}>
+    <div style={st.card} className="question-card">
+      <style>{`.question-card:hover { border-color: rgba(79,70,229,0.3); box-shadow: 0 12px 35px rgba(0,0,0,0.15); }`}</style>
       {/* HEADER DO CARD COM ÍCONES E BADGES */}
       <div style={st.header}>
         <div style={st.badgeGroup}>
@@ -33,6 +34,17 @@ export default function QuestionCard({ questao }) {
           <small style={st.imgTag}><FaImage /> Imagem de Referência</small>
         </div>
       )}
+
+      {/* BADGE DE DIRETRIZ — visível ao aluno quando o campo existe */}
+      {questao.fonte_diretriz && (
+        <div style={st.diretrizBadge}>
+          <FaShieldAlt size={10} style={{ flexShrink: 0 }} />
+          <span>
+            Baseado em <strong>{questao.fonte_diretriz}</strong>
+            {questao.ano_diretriz ? ` · ${questao.ano_diretriz}` : ""}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -45,7 +57,7 @@ const st = {
     border: "1px solid #334155",
     marginBottom: "25px",
     boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
-    transition: "0.3s"
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
   },
   header: {
     display: "flex",
@@ -118,5 +130,18 @@ const st = {
     fontSize: "10px",
     color: "#475569",
     fontWeight: "bold"
+  },
+  diretrizBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    marginTop: "14px",
+    padding: "6px 12px",
+    background: "rgba(16,185,129,0.06)",
+    border: "1px solid rgba(16,185,129,0.15)",
+    borderRadius: "8px",
+    fontSize: "11px",
+    color: "#64748b",
+    lineHeight: 1.4,
   }
 };
