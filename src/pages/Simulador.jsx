@@ -8,10 +8,41 @@ import {
   FaStethoscope, FaFlask, FaLightbulb, FaSignOutAlt, FaQuestionCircle,
   FaArrowLeft, FaArrowRight, FaChevronLeft, FaChevronRight,
   FaTrophy, FaCheckCircle, FaTimesCircle, FaFilePdf, FaBolt,
-  FaEye, FaListOl
+  FaEye, FaListOl, FaShieldAlt
 } from "react-icons/fa";
-import { registrarRespostaIndividual, gravarDesempenhoFinalLote, atualizarStreakDiario, atualizarEstatisticasFinais } from "../modules/simulador/simuladorLogic";
+import { registrarRespostaIndividual, gravarDesempenhoFinalLote, atualizarStreakDiario, atualizarEstatisticasFinais, registrarAnalyticsCognitivo } from "../modules/simulador/simuladorLogic";
 import TeoriaModal from "../components/TeoriaModal";
+import { classificarPorRegras } from "../utils/resumoEngine";
+
+// ─── HELPERS DE EXPERIÊNCIA COGNITIVA ────────────────────────────────────────
+const BADGES_COGNITIVOS = {
+  "CONFUSÃO DIAGNÓSTICA":   { cor: "#f97316", bg: "rgba(249,115,22,0.12)"  },
+  "TIMING INCORRETO":       { cor: "#3b82f6", bg: "rgba(59,130,246,0.12)"  },
+  "TRATAMENTO INCOMPLETO":  { cor: "#8b5cf6", bg: "rgba(139,92,246,0.12)"  },
+  "DIRETRIZ ANTIGA":        { cor: "#6366f1", bg: "rgba(99,102,241,0.12)"  },
+  "ARMADILHA DE CLASSE":    { cor: "#ec4899", bg: "rgba(236,72,153,0.12)"  },
+  "EXCESSO DE INTERVENÇÃO": { cor: "#ef4444", bg: "rgba(239,68,68,0.12)"   },
+};
+
+const parseBadgeCognitivo = (nota) => {
+  if (!nota) return { tipo: null, texto: "" };
+  const upper = nota.toUpperCase();
+  for (const tipo of Object.keys(BADGES_COGNITIVOS)) {
+    if (upper.startsWith(tipo)) {
+      return { tipo, texto: nota.slice(tipo.length).replace(/^[:\.\,\s]+/, "").trim() };
+    }
+  }
+  return { tipo: null, texto: nota };
+};
+
+const parseRaciocinio = (texto) => {
+  if (!texto) return null;
+  const result = {};
+  const matches = [...texto.matchAll(/\b(PADRÃO|DIFERENCIAL|DECISÃO|ARMADILHA):\s*([^→]+)/gi)];
+  if (matches.length < 2) return null;
+  matches.forEach(m => { result[m[1].toUpperCase()] = m[2].trim().replace(/\s*→\s*$/, ""); });
+  return result;
+};
 
 const Simulador = () => {
   const location = useLocation();
@@ -306,8 +337,13 @@ const Simulador = () => {
     if (respostasSalvas[indice] || mostrarResultados) return;
     const novas = { ...respostasSalvas, [indice]: letra };
     setRespostasSalvas(novas);
-    // Auto-save: persiste cada resposta imediatamente (fire-and-forget)
     salvarProgresso(novas, indice);
+    const qAtual = questoes[indice];
+    const gabarito = (qAtual?.gabarito || qAtual?.correta || "").toString().toLowerCase();
+    const modulo = provaId ? "simulado_oficial"
+      : qAtual?.modulo === "super_apostas" ? "super_apostas"
+      : "estudo_livre";
+    registrarAnalyticsCognitivo(qAtual, letra, letra.toLowerCase() === gabarito, modulo);
   };
 
   const finalizarESalvar = async () => {
@@ -414,6 +450,7 @@ const Simulador = () => {
   const respondeu = respostasSalvas[indice];
   const gabaritoCerto = (q.gabarito || q.correta || "").toString().toLowerCase();
   const acertouAtual = respondeu && respondeu.toLowerCase() === gabaritoCerto;
+  const racioParseado = parseRaciocinio(q?.raciocinio);
 
   return (
     <div className="sim-wrapper" style={{ ...st.container, background: modoFoco ? "#000" : "#020617" }}>
@@ -811,6 +848,12 @@ const Simulador = () => {
               textColor = "#fecaca";
             }
 
+            const nota = respondida && !modoOficial
+              ? (q.alts?.[letra]?.nota || q[`justificativa${letra.toUpperCase()}`] || "")
+              : "";
+            const { tipo: tipoErro, texto: notaTxt } = parseBadgeCognitivo(nota);
+            const badgeErro = tipoErro ? BADGES_COGNITIVOS[tipoErro] : null;
+
             return (
               <button
                 key={letra}
@@ -828,14 +871,37 @@ const Simulador = () => {
                   </span>
                 </div>
 
-                {/* JUSTIFICATIVA INLINE (após responder — oculta em modoOficial) */}
-                {respondida && !modoOficial && q[`justificativa${letra.toUpperCase()}`] && (
+                {/* BADGE COGNITIVO + JUSTIFICATIVA */}
+                {nota && (
                   <div style={{
-                    ...st.notaInLine,
-                    borderLeftColor: isCorreta ? "#10b981" : marcada ? "#ef4444" : "#334155",
-                    background: isCorreta ? "rgba(16,185,129,0.05)" : marcada ? "rgba(239,68,68,0.05)" : "rgba(0,0,0,0.2)"
+                    marginTop: "10px", padding: "10px 14px",
+                    background: isCorreta ? "rgba(16,185,129,0.06)" : "rgba(0,0,0,0.22)",
+                    borderRadius: "10px",
+                    borderLeft: `3px solid ${isCorreta ? "#10b981" : badgeErro?.cor || "#475569"}`,
                   }}>
-                    {q[`justificativa${letra.toUpperCase()}`]}
+                    {isCorreta && (
+                      <div style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        padding: "2px 9px", borderRadius: "5px",
+                        background: "rgba(16,185,129,0.1)", color: "#10b981",
+                        fontSize: "9px", fontWeight: "900", letterSpacing: "0.5px",
+                        marginBottom: "6px", border: "1px solid rgba(16,185,129,0.3)"
+                      }}>✓ CORRETA</div>
+                    )}
+                    {tipoErro && !isCorreta && (
+                      <div style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        padding: "2px 9px", borderRadius: "5px",
+                        background: badgeErro.bg, color: badgeErro.cor,
+                        fontSize: "9px", fontWeight: "900", letterSpacing: "0.5px",
+                        marginBottom: "6px", textTransform: "uppercase",
+                        border: `1px solid ${badgeErro.cor}40`
+                      }}>{tipoErro}</div>
+                    )}
+                    <p style={{ margin: 0, fontSize: "13px", lineHeight: 1.55,
+                      color: isCorreta ? "#a7f3d0" : "#94a3b8" }}>
+                      {isCorreta ? nota.replace(/^CORRETA[.\s:]+/i, "").trim() : notaTxt}
+                    </p>
                   </div>
                 )}
               </button>
@@ -858,21 +924,72 @@ const Simulador = () => {
               }
             </div>
 
-            {/* BLOCOS DO PROFESSOR */}
-            <div className="expert-row" style={st.expertRow}>
-              <div style={{ ...st.expertBox, borderTop: "3px solid #4f46e5" }}>
-                <div style={st.expertLabel}><FaStethoscope size={11} color="#818cf8" /> RACIOCÍNIO CLÍNICO</div>
-                <p style={st.expertText}>{q.raciocinio || "Consulte o preceptor para esta explicação."}</p>
+            {/* ─── 🧠 RACIOCÍNIO CLÍNICO ESTRUTURADO ─── */}
+            {q.raciocinio && (
+              <div style={st.racioBox}>
+                <div style={st.racioHeader}>
+                  <FaStethoscope size={10} color="#818cf8" /> 🧠 RACIOCÍNIO CLÍNICO
+                </div>
+                {racioParseado ? (
+                  <div className="expert-row" style={st.racioGrid}>
+                    {[
+                      { key: "PADRÃO",      cor: "#3b82f6", icon: "🔍" },
+                      { key: "DIFERENCIAL", cor: "#f97316", icon: "⚖" },
+                      { key: "DECISÃO",     cor: "#10b981", icon: "✓"  },
+                      { key: "ARMADILHA",   cor: "#ef4444", icon: "⚠"  },
+                    ].filter(e => racioParseado[e.key]).map(({ key, cor, icon }) => (
+                      <div key={key} style={{
+                        padding: "10px 13px", background: "#020617",
+                        borderRadius: "10px", borderTop: `2px solid ${cor}`,
+                      }}>
+                        <div style={{ fontSize: "9px", fontWeight: "900", color: cor,
+                          marginBottom: "5px", letterSpacing: "0.5px" }}>
+                          {icon} {key}
+                        </div>
+                        <p style={{ fontSize: "13px", color: "#cbd5e1", margin: 0, lineHeight: 1.55 }}>
+                          {racioParseado[key]}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={st.expertText}>{q.raciocinio}</p>
+                )}
               </div>
+            )}
+
+            {/* ─── 💊 CONDUTA ATUALIZADA ─── */}
+            {q.tto && (
               <div style={{ ...st.expertBox, borderTop: "3px solid #10b981" }}>
-                <div style={st.expertLabel}><FaFlask size={11} color="#10b981" /> CONDUTA</div>
-                <p style={st.expertText}>{q.tto || "Protocolo oficial do serviço."}</p>
+                <div style={{ ...st.expertLabel, justifyContent: "space-between" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                    <FaFlask size={11} color="#10b981" /> CONDUTA ATUALIZADA
+                  </span>
+                  {q.fonte_diretriz && (
+                    <span style={{
+                      display: "flex", alignItems: "center", gap: "4px",
+                      fontSize: "9px", color: "#10b981", fontWeight: "700",
+                      background: "rgba(16,185,129,0.08)", padding: "2px 8px",
+                      borderRadius: "5px", border: "1px solid rgba(16,185,129,0.2)",
+                      whiteSpace: "nowrap"
+                    }}>
+                      <FaShieldAlt size={8} /> {q.fonte_diretriz}{q.ano_diretriz ? ` · ${q.ano_diretriz}` : ""}
+                    </span>
+                  )}
+                </div>
+                <p style={st.expertText}>{q.tto}</p>
               </div>
-              <div style={{ ...st.expertBox, borderTop: "3px solid #fbbf24" }}>
-                <div style={st.expertLabel}><FaLightbulb size={11} color="#fbbf24" /> DICA DO MESTRE</div>
-                <p style={st.expertText}>{q.dicaMestre || "Atenção máxima a este tema."}</p>
+            )}
+
+            {/* ─── 🎯 DICA MESTRE PREMIUM ─── */}
+            {q.dicaMestre && (
+              <div style={st.dicaMestreBox}>
+                <div style={st.dicaMestreLabel}>
+                  <FaLightbulb size={12} color="#fbbf24" /> 🎯 DICA MESTRE
+                </div>
+                <p style={st.dicaMestreText}>{q.dicaMestre}</p>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -1131,7 +1248,7 @@ const Simulador = () => {
       {showTeoria && q && (
         <TeoriaModal
           tema_mestre={q.tema_mestre}
-          subcontexto_clinico={q.subcontexto_clinico}
+          subcontexto_clinico={q.subcontexto_clinico || classificarPorRegras(q)}
           materia={q.materia}
           subtema={q.subtema}
           onClose={() => setShowTeoria(false)}
@@ -1229,6 +1346,12 @@ const st = {
   expertBox: { padding: "14px", borderRadius: "14px", background: "#0f172a" },
   expertLabel: { fontSize: "10px", fontWeight: "800", color: "#fff", marginBottom: "8px", display: "flex", alignItems: "center", gap: "5px", letterSpacing: "0.5px", textTransform: "uppercase" },
   expertText: { fontSize: "13px", color: "#f1f5f9", margin: 0, lineHeight: 1.6 },
+  racioBox: { background: "#0f172a", padding: "14px", borderRadius: "14px", borderTop: "3px solid #4f46e5" },
+  racioHeader: { fontSize: "10px", fontWeight: "900", color: "#818cf8", display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px", letterSpacing: "0.5px", textTransform: "uppercase" },
+  racioGrid: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" },
+  dicaMestreBox: { background: "linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(251,191,36,0.02) 100%)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: "14px", padding: "16px 18px" },
+  dicaMestreLabel: { fontSize: "11px", fontWeight: "900", color: "#fbbf24", display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", letterSpacing: "0.5px" },
+  dicaMestreText: { fontSize: "15px", color: "#fef3c7", margin: 0, lineHeight: 1.65, fontStyle: "italic", fontWeight: "500" },
   bottomNav: { marginTop: "28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #334155", paddingTop: "18px", gap: "10px" },
   navCenter: { flex: 1, textAlign: "center" },
   btnNav: { color: "#fff", border: "none", padding: "12px 20px", borderRadius: "12px", fontWeight: "700", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", transition: "0.2s", whiteSpace: "nowrap" },

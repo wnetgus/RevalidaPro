@@ -13,6 +13,17 @@ import {
 } from "react-icons/fa";
 import { doc as fsDoc, getDoc as fsGetDoc, setDoc as fsSetDoc } from "firebase/firestore";
 import { SUPER_APOSTAS_CONFIG } from "../config/superApostasConfig";
+import {
+  CICLO_NIVEIS_SA, atribuirNivelAposta, calcularStatusAtualizacao,
+  extrairJSONDoTexto,
+  MAPA_TEMA_MESTRE, PADROES_FRAGMENTADOS, estaFragmentado, normalizarTemaMestre,
+  PROMPT_SISTEMA_ROBO, normalizarRaciocinio,
+} from "../utils/promptEngine";
+import { gerarESalvarResumo } from "../utils/resumoEngine";
+import {
+  DIRETRIZES_CONTROLADAS,
+  detectarDiretriz, detectarDiretrizDinamica, montarBlocoDiretriz,
+} from "../config/diretrizesControladas";
 
 // ─── CONSTANTES DE TEMPORIZAÇÃO ────────────────────────────────────────────────
 // 90s entre temas: buffer para a Cloud Function (timeout 180s) e evitar
@@ -22,18 +33,7 @@ const DELAY_RETRY_MS        = 45_000;  // 45 segundos antes da retentativa (buff
 const MAX_RETRIES           = 3;       // tentativas por tema: 1 original + 2 retries
 const QUESTOES_POR_TEMA     = 3;       // questões geradas por tema
 
-// ─── HELPERS (mesma lógica do ImportadorPro) ──────────────────────────────────
-const CICLO_NIVEIS_SA = ["BAIXO", "MEDIO", "ALTO"];
-
-const atribuirNivelAposta = (indexQuestao, totalQuestoes) => {
-  if (totalQuestoes <= 3) return CICLO_NIVEIS_SA[(3 - totalQuestoes) + indexQuestao];
-  return CICLO_NIVEIS_SA[indexQuestao % 3];
-};
-
-const calcularStatusAtualizacao = (ano_diretriz) => {
-  if (!ano_diretriz || typeof ano_diretriz !== "number") return "revisar";
-  return ano_diretriz >= 2024 ? "atual" : "revisar";
-};
+// CICLO_NIVEIS_SA, atribuirNivelAposta, calcularStatusAtualizacao → importados de promptEngine.js
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
@@ -56,134 +56,11 @@ const obterProximoNumeroSA = async (saEdicao) => {
   }
 };
 
-// ─── EXTRAÇÃO ROBUSTA DE JSON (idêntica ao ImportadorPro) ────────────────────
-const extrairJSONDoTexto = (str) => {
-  const idxArray = str.indexOf("[");
-  const idxObj   = str.indexOf("{");
-  const abridor  = idxArray === -1 ? "{" : idxObj === -1 || idxArray < idxObj ? "[" : "{";
-  const fechador  = abridor === "[" ? "]" : "}";
-  const inicio   = abridor === "[" ? idxArray : idxObj;
-  if (inicio === -1) return null;
-
-  let profundidade = 0;
-  let emString     = false;
-  let escapeNext   = false;
-
-  for (let i = inicio; i < str.length; i++) {
-    const c = str[i];
-    if (escapeNext)        { escapeNext = false; continue; }
-    if (c === "\\")        { escapeNext = true;  continue; }
-    if (c === '"')         { emString = !emString; continue; }
-    if (emString)          continue;
-    if (c === abridor)     profundidade++;
-    else if (c === fechador) {
-      profundidade--;
-      if (profundidade === 0) {
-        const trecho = str.slice(inicio, i + 1);
-        const parsed = JSON.parse(trecho);
-        return Array.isArray(parsed) ? parsed : [parsed];
-      }
-    }
-  }
-  return null;
-};
+// extrairJSONDoTexto → importado de promptEngine.js
 
 // ─── PROMPT DO SISTEMA ───────────────────────────────────────────────────────
-// IMPORTANTE: os limites de tamanho abaixo são OBRIGATÓRIOS para caber em
-// max_tokens: 8192. Sem eles, 3 questões completas ultrapassam o limite e o
-// JSON fica truncado (erro "JSON não encontrado").
-const PROMPT_SISTEMA = `Você é um especialista em engenharia pedagógica de questões médicas para o Revalida INEP/ENAMED.
-Responda SOMENTE com um array JSON. Nenhum texto antes. Nenhum texto depois. Sem markdown. Sem explicações.
-Sua resposta deve começar com [ e terminar com ].
-
-═══ INTERPRETAÇÃO INTELIGENTE DO TEMA ═══
-O campo "tema" pode conter diferentes níveis de detalhe. Interprete assim:
-
-TEMA SIMPLES (ex: "Hipertensão arterial sistêmica"):
-→ Gere questões variadas cobrindo diferentes aspectos clínicos do tema.
-
-TEMA COM DETALHAMENTO (ex: "HAS — classificação, tratamento farmacológico e crise hipertensiva"):
-→ IDENTIFIQUE os subtemas e direcionamentos no texto.
-→ PRIORIZE esses elementos: cada questão deve cobrir uma parte diferente do detalhamento OU integrar múltiplos itens em um caso clínico.
-→ NUNCA ignore elementos após vírgulas, hífens ou parênteses.
-→ NUNCA gere questões genéricas quando houver detalhamento explícito.
-
-TEMA INFORMAL/ABREVIADO (ex: "HAS - tto / complicações / crise"):
-→ Converta mentalmente em subtemas clínicos e aplique normalmente.
-
-ESTRATÉGIA DE DISTRIBUIÇÃO quando houver múltiplos subtemas:
-- 1 questão por subtema, OU
-- Integrar múltiplos temas em um único caso clínico, OU
-- Mistura das duas abordagens — sempre priorizando o mais cobrado em prova.
-
-═══ REGRA 1 — NÃO ENTREGUE O DIAGNÓSTICO PRECOCEMENTE ═══
-O enunciado deve apresentar dados clínicos progressivamente, como um plantão real.
-PROIBIDO: iniciar com diagnóstico fechado ("Paciente diabético..."). O aluno deve construir o raciocínio.
-CORRETO: sintomas → sinais → exames → contexto → forçar tomada de decisão.
-Use linguagem de plantão: "chega ao PS com...", "comparece à UBS referindo...", "é admitido na enfermaria...".
-Inclua sempre: idade, sexo, contexto clínico (UBS/UPA/PS/enfermaria), sinais vitais relevantes, exames pertinentes.
-
-═══ REGRA 2 — DISTRATORES POR TIPO DE ERRO COGNITIVO ═══
-Cada alternativa errada deve explorar um erro cognitivo específico. Use estes tipos:
-• CONFUSÃO DIAGNÓSTICA: conduta correta para doença semelhante
-• TIMING INCORRETO: exame ou conduta corretos, porém no momento inadequado
-• TRATAMENTO INCOMPLETO: conduta parcialmente certa, faltando passo essencial
-• DIRETRIZ ANTIGA: conduta que foi padrão mas está desatualizada (ex: morfina na IC aguda)
-• ARMADILHA DE CLASSE: dois fármacos similares — um indicado, outro contraindicado neste caso
-• EXCESSO DE INTERVENÇÃO: mais invasivo do que o necessário para o estágio atual
-No campo "nota" de cada alternativa: nomeie o TIPO DE ERRO no início e explique brevemente.
-
-═══ REGRA 3 — RACIOCÍNIO CLÍNICO EM ETAPAS ═══
-O campo "raciocinio" deve seguir OBRIGATORIAMENTE esta estrutura:
-PADRÃO: [achados que identificam o caso] → DIFERENCIAL: [o que confundiria e por quê é excluído] → DECISÃO: [conduta e justificativa neste momento] → ARMADILHA: [erro mais comum que o aluno comete]
-Máximo 100 palavras. Objetivo, sem repetir dados do enunciado.
-
-═══ REGRA 4 — GLOSSÁRIO INLINE ═══
-Na PRIMEIRA aparição de sigla ou termo técnico pouco familiar, adicione explicação entre parênteses:
-"DPOC (doença pulmonar obstrutiva crônica)", "ortopneia (falta de ar ao deitar)",
-"CURB-65 (escore de gravidade da pneumonia)", "TRAb (anticorpo anti-receptor de TSH)"
-NÃO explicar: PA, FC, FR, febre, dor, UBS, PS, UTI, VO, IV, SC. Não repetir na mesma questão.
-
-═══ REGRA 5 — NÍVEL COGNITIVO ═══
-Exigir APLICAÇÃO ou ANÁLISE clínica, não memorização.
-PROIBIDO: "Qual o diagnóstico?" quando os dados tornam a resposta óbvia isoladamente.
-Use: "Qual a conduta imediata?", "Qual o próximo passo?", "O que diferencia este caso de X?",
-"Qual o erro mais grave aqui?" Varie os comandos entre questões do mesmo lote.
-
-═══ REGRA 6 — CONTEXTO SUS/APS ═══
-Alterne: UBS/ESF (APS, encaminhamento) | UPA/PS (urgência) | Enfermaria | Pré-natal/GO.
-Linguagem clínica humana. Contextualize narrativamente, evite listas de sintomas.
-
-═══ DIRETRIZES ATUALIZADAS ═══
-- Use preferencialmente: MS/SUS 2023-2025, PCDT, FEBRASGO, CFM, SBC, SBPT, SBEM.
-- Se a conduta for de diretriz anterior a 2023, indique no "raciocinio": "Conforme diretriz [ANO]...".
-- Condutas de APS devem refletir os Cadernos de Atenção Primária vigentes.
-
-═══ LIMITES DE TAMANHO OBRIGATÓRIOS ═══
-- enunciado: máximo 200 palavras
-- alts[x].texto: máximo 22 palavras por alternativa
-- alts[x].nota: máximo 55 palavras por justificativa
-- raciocinio: máximo 100 palavras
-- tto: máximo 110 palavras
-- dicaMestre: máximo 38 palavras
-Seja técnico e conciso. Não use frases introdutórias.
-
-Estrutura de cada questão no array:
-{"materia":"string","tema_mestre":"Nome da doença principal sem tipagem e sem abreviação","subtema":"string","banca":"Revalida INEP","ano":"2025","numeroQuestao":1,"enunciado":"caso progressivo sem diagnóstico prematuro","imagemUrl":"","alts":{"a":{"texto":"","nota":"TIPO ERRO: explicação"},"b":{"texto":"","nota":"TIPO ERRO: explicação"},"c":{"texto":"","nota":""},"d":{"texto":"","nota":""},"e":{"texto":"","nota":""}},"gabarito":"letra_correta","raciocinio":"PADRÃO: ... → DIFERENCIAL: ... → DECISÃO: ... → ARMADILHA: ...","tto":"conduta completa atualizada","dicaMestre":"regra de ouro","ano_diretriz":2024,"fonte_diretriz":"MS/SUS 2024"}
-
-Regras de campos:
-- tema_mestre: OBRIGATÓRIO. Nome clínico padronizado da doença principal.
-  ✅ "Asma", "Hipertensão arterial sistêmica", "Diabetes mellitus", "Insuficiência cardíaca"
-  ❌ contexto: "Diabetes em gestante", "Asma pediátrica", "HAS no idoso"
-  ❌ subtema: "Asma — crise aguda", "HAS — classificação"
-  ❌ abreviação: "HAS", "DM2", "IC", "IAM"
-  REGRA: nome da DOENÇA, sem contexto clínico e sem subtema. Derive do conteúdo, NÃO do prompt.
-  NUNCA use tipagem (tipo 1, tipo 2): "Diabetes mellitus" agrupa DM1, DM2, cetoacidose e complicações.
-- gabarito: apenas a letra (a, b, c, d ou e)
-- ano_diretriz: número inteiro do ano da diretriz (ex: 2024). Obrigatório.
-- fonte_diretriz: fonte da diretriz (ex: "MS/SUS 2024", "SBC 2025"). Obrigatório.
-- JAMAIS ultrapasse os limites de tamanho definidos acima.
-- Responda APENAS com o array JSON, começando em [ e terminando em ]`;
+// Importado de promptEngine.js como PROMPT_SISTEMA_ROBO.
+// Limites menores que o ImportadorPro: cabe 3 questões no max_tokens:8192.
 
 // ─── PROMPT DE MIGRAÇÃO tema_mestre ────────────────────────────────────────
 // Sistema separado: classifica/corrige tema_mestre sem gerar questões.
@@ -270,133 +147,8 @@ Regras:
 - Usar diretrizes MS/SUS/PCDT 2022-2025
 - Foco em tomada de decisão clínica, não em decoreba`;
 
-// ─── MAPA DE NORMALIZAÇÃO LOCAL (safety net pós-IA) ─────────────────────
-// Corrige os casos mais frequentes sem depender 100% da IA.
-const MAPA_TEMA_MESTRE = {
-  // Diabetes
-  "diabetes mellitus tipo 1":             "Diabetes mellitus",
-  "diabetes mellitus tipo 2":             "Diabetes mellitus",
-  "diabetes mellitus tipo i":             "Diabetes mellitus",
-  "diabetes mellitus tipo ii":            "Diabetes mellitus",
-  "cetoacidose diabética":                "Diabetes mellitus",
-  "estado hiperosmolar hiperglicêmico":   "Diabetes mellitus",
-  "nefropatia diabética":                 "Diabetes mellitus",
-  "retinopatia diabética":                "Diabetes mellitus",
-  "neuropatia diabética":                 "Diabetes mellitus",
-  "pé diabético":                         "Diabetes mellitus",
-  "dm1": "Diabetes mellitus", "dm2": "Diabetes mellitus",
-  "dm tipo 1": "Diabetes mellitus", "dm tipo 2": "Diabetes mellitus",
-  // Hipertensão — doença base + todas as manifestações/complicações
-  "has":                                  "Hipertensão arterial sistêmica",
-  "has grave":                            "Hipertensão arterial sistêmica",
-  "has leve":                             "Hipertensão arterial sistêmica",
-  "hipertensão gestacional":              "Hipertensão arterial sistêmica",
-  "pré-eclâmpsia":                        "Hipertensão arterial sistêmica",
-  "eclâmpsia":                            "Hipertensão arterial sistêmica",
-  "hellp":                                "Hipertensão arterial sistêmica",
-  "síndrome hellp":                       "Hipertensão arterial sistêmica",
-  "crise hipertensiva":                   "Hipertensão arterial sistêmica",
-  "urgência hipertensiva":                "Hipertensão arterial sistêmica",
-  "emergência hipertensiva":              "Hipertensão arterial sistêmica",
-  "encefalopatia hipertensiva":           "Hipertensão arterial sistêmica",
-  "retinopatia hipertensiva":             "Hipertensão arterial sistêmica",
-  "nefroesclerose hipertensiva":          "Hipertensão arterial sistêmica",
-  "hipertensão resistente":               "Hipertensão arterial sistêmica",
-  "hipertensão acelerada":                "Hipertensão arterial sistêmica",
-  "hipertensão maligna":                  "Hipertensão arterial sistêmica",
-  "hipertensão secundária":               "Hipertensão arterial sistêmica",
-  // Cardíaca
-  "icc":                                  "Insuficiência cardíaca",
-  "icc descompensada":                    "Insuficiência cardíaca",
-  "insuficiência cardíaca sistólica":     "Insuficiência cardíaca",
-  "insuficiência cardíaca diastólica":    "Insuficiência cardíaca",
-  "insuficiência cardíaca aguda":         "Insuficiência cardíaca",
-  "iam":                                  "Infarto agudo do miocárdio",
-  "sca com supra":                        "Infarto agudo do miocárdio",
-  "angina instável":                      "Doença arterial coronariana",
-  "sca sem supra":                        "Doença arterial coronariana",
-  "síndrome coronariana aguda":           "Doença arterial coronariana",
-  "insuficiência coronariana":            "Doença arterial coronariana",
-  // Respiratório
-  "dpoc":                                 "Doença pulmonar obstrutiva crônica",
-  "dpoc exacerbado":                      "Doença pulmonar obstrutiva crônica",
-  "asma grave":                           "Asma",
-  "asma pediátrica":                      "Asma",
-  "asma brônquica":                       "Asma",
-  "pac":                                  "Pneumonia",
-  "pneumonia adquirida na comunidade":    "Pneumonia",
-  "pneumonia bacteriana":                 "Pneumonia",
-  "pneumonia viral":                      "Pneumonia",
-  // Sepse
-  "sepse grave":                          "Sepse",
-  "sepse neonatal":                       "Sepse",
-  "choque séptico":                       "Sepse",
-  // Outros
-  "ivas":                                 "Infecção das vias aéreas superiores",
-};
-
-// ─── PADRÕES DE FRAGMENTAÇÃO ─────────────────────────────────────────────
-// Detecta tema_mestre com tipagem, qualificadores ou abreviações proibidas.
-const PADROES_FRAGMENTADOS = [
-  /\btipo\s+(1|2|3|i|ii|iii|iv)\b/i,
-  /\s*[-—]\s*(tratamento|diagnóstico|complicaç|classificaç|crise|controle|manejo|rastreamento)/i,
-  /\s+(pediátric[ao]|neonatal|no idoso|gestacional|em gestante|na gravidez)\b/i,
-  /\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao]|agud[ao]|avançad[ao])\s*$/i,
-  /^(has|dm2?|dm1|icc|iam|dpoc|pac|ivas|sca)$/i,          // abreviação pura
-  /hipertensiv[ao]/i,      // "encefalopatia hipertensiva", "crise hipertensiva" etc.
-  /diabétic[ao]/i,         // "pé diabético", "retinopatia diabética" etc.
-  /^\s*(crise|exacerbação|emergência|urgência)\s+(de|da|do|das|dos)\s+/i,  // "crise de asma"
-  /\b(crise|exacerbação)\s*$/i,   // sufixo: "asma em crise", "DPOC em exacerbação"
-];
-
-const estaFragmentado = (tema) => {
-  if (!tema || tema === "INDEFINIDO") return false;
-  return PADROES_FRAGMENTADOS.some(p => p.test(tema));
-};
-
-/**
- * Normalização local como safety net após resposta da IA.
- * Ordem: mapa exato → remoção regex de sufixos → devolve original.
- */
-const normalizarTemaMestre = (tema) => {
-  if (!tema || tema === "INDEFINIDO") return tema;
-  const low = tema.toLowerCase().trim();
-
-  // 1. Mapa exato (cobre os casos mais frequentes)
-  if (MAPA_TEMA_MESTRE[low]) return MAPA_TEMA_MESTRE[low];
-
-  // 2. Adjetivos de origem — alta confiança, independem do mapa
-  //    "encefalopatia hipertensiva" → HAS  |  "pé diabético" → DM
-  if (/hipertensiv[ao]/i.test(low)) return "Hipertensão arterial sistêmica";
-  if (/diabétic[ao]/i.test(low))    return "Diabetes mellitus";
-
-  // 3. Remove prefixo de contexto clínico
-  //    "crise de asma" → "asma"  |  "emergência hipertensiva" já cai no step 2
-  let norm = tema.replace(/^\s*(crise|exacerbação|urgência|emergência)\s+(de\s+|da\s+|do\s+|das\s+|dos\s+)?/gi, "").trim();
-
-  // 4. Remove sufixo de contexto clínico
-  //    "asma em crise" → "Asma"  |  "DPOC em exacerbação" → "DPOC"
-  norm = norm.replace(/\s+(em\s+|na\s+|no\s+)?(crise|exacerbação|emergência|urgência)\s*$/gi, "").trim();
-
-  // 5. Remove tipagem: "tipo 1", "tipo 2", "tipo I", "tipo II"
-  norm = norm.replace(/\s+tipo\s+(1|2|3|i|ii|iii|iv)\b/gi, "").trim();
-
-  // 6. Remove subtópico após traço/travessão
-  norm = norm.replace(/\s*[-—]\s*(tratamento|diagnóstico|complicaç\w*|classificaç\w*|crise|manejo|conduta|rastreamento|prevenção|controle)\b.*/gi, "").trim();
-
-  // 7. Remove qualificadores de faixa etária/contexto
-  norm = norm.replace(/\s+(pediátric[ao]|neonatal|no idoso|da gestante|gestacional|em gestante|na gravidez|do adulto|no adulto)\b.*/gi, "").trim();
-
-  // 8. Remove qualificadores de gravidade/evolução no final
-  norm = norm.replace(/\s+(grave|leve|moderada|descompensad[ao]|exacerbad[ao]|agud[ao]|crônic[ao]|avançad[ao])\s*$/gi, "").trim();
-
-  // 9. Segunda passagem no mapa (após limpeza dos qualificadores)
-  //    "asma aguda" limpada para "asma" → verifica mapa novamente
-  const low2 = norm.toLowerCase();
-  if (low2 !== low && MAPA_TEMA_MESTRE[low2]) return MAPA_TEMA_MESTRE[low2];
-
-  return norm || tema; // nunca retorna string vazia
-};
+// MAPA_TEMA_MESTRE, PADROES_FRAGMENTADOS, estaFragmentado, normalizarTemaMestre
+// → importados de promptEngine.js
 
 // ─── COMPONENTE PRINCIPAL ────────────────────────────────────────────────────
 /**
@@ -447,6 +199,12 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   const abortRef      = useRef(false);
   const countdownRef  = useRef(null);  // guarda o resolve() atual para resolver externamente
   const logEndRef     = useRef(null);  // âncora para auto-scroll do log
+
+  // ── Cache de diretrizes dinâmicas (sessão) ────────────────────────────────
+  // diretrizesRef: lista carregada do Firestore (null = não carregado ainda nesta sessão)
+  // diretrizCacheRef: tema.toLowerCase() → diretriz detectada (evita re-detecção em retries)
+  const diretrizesRef    = useRef(null);
+  const diretrizCacheRef = useRef(new Map());
 
   // ── Auto-scroll do log ────────────────────────────────────────────────────
   useEffect(() => {
@@ -501,7 +259,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ system: PROMPT_SISTEMA, prompt: promptUsuario }),
+      body: JSON.stringify({ system: PROMPT_SISTEMA_ROBO, prompt: promptUsuario }),
     });
 
     if (!response.ok) {
@@ -558,7 +316,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
         enunciado:   q.enunciado    || "",
         imagemUrl:   q.imagemUrl    || "",
         gabarito:    q.gabarito     || "",
-        raciocinio:  q.raciocinio   || "",
+        raciocinio:  normalizarRaciocinio(q.raciocinio) || "",
         tto:         q.tto          || "",
         dicaMestre:  q.dicaMestre   || "",
         ano_diretriz:   q.ano_diretriz   || null,
@@ -595,6 +353,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       };
 
       await setDoc(doc(db, "questoes", docId), finalData);
+      gerarESalvarResumo(finalData).catch(() => {});
     }
   }, []);
 
@@ -701,6 +460,21 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     addLog(`🤖 Robô iniciado — ${listasTemas.length} tema(s) | Edição: ${edicaoAtual} | Área: ${areaAtual}`, "sistema");
     addLog(`⚙️  ${QUESTOES_POR_TEMA} questões/tema · ${DELAY_ENTRE_TEMAS_MS/1000}s entre temas · ${MAX_RETRIES} tentativas máx.`, "sistema");
 
+    // ── Carrega diretrizes ativas (uma vez por sessão) ────────────────────
+    if (diretrizesRef.current === null) {
+      try {
+        const snapDir = await getDocs(collection(db, "diretrizes"));
+        const ativas = snapDir.docs.map(d => d.data()).filter(d => d.ativa);
+        diretrizesRef.current = ativas.length > 0
+          ? ativas
+          : DIRETRIZES_CONTROLADAS.filter(d => d.ativa);
+        addLog(`📋 ${diretrizesRef.current.length} diretriz(es) carregada(s).`, "detalhe");
+      } catch (_e) {
+        diretrizesRef.current = DIRETRIZES_CONTROLADAS.filter(d => d.ativa);
+        addLog("⚠️  Diretrizes: usando lista estática (Firestore indisponível).", "aviso");
+      }
+    }
+
     // ── Carrega subtemas já existentes (anti-duplicação) ──────────────────
     addLog("🔍 Verificando subtemas já cobertos no banco…", "info");
     let subtemasExistentes = new Set();
@@ -753,12 +527,22 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
           // Detecta se o tema tem detalhamento explícito (parênteses, vírgulas, hífens com subtemas)
           const temDetalhamento = /[(),;]|—|-{1,2}|\b(incluindo|especialmente|tratamento|diagnóstico|classificação|complicaç|abordagem|conduta|farmacológ|não.farmacológ|critério)\b/i.test(tema);
 
+          // ── Diretriz dinâmica (cache por tema para não repetir em retries) ─
+          const temaKey = tema.toLowerCase();
+          if (!diretrizCacheRef.current.has(temaKey)) {
+            const d = detectarDiretrizDinamica(diretrizesRef.current, tema, "")
+                   || detectarDiretriz(tema, "");
+            diretrizCacheRef.current.set(temaKey, d);
+          }
+          const diretrizTema = diretrizCacheRef.current.get(temaKey);
+          const blocoDir = diretrizTema ? montarBlocoDiretriz(diretrizTema) : "";
+
           const promptTema =
 `Gere exatamente ${QUESTOES_POR_TEMA} questões de múltipla escolha para o Revalida INEP.
 
 Área: ${areaAtual}
 Tema: ${tema}
-${temDetalhamento ? `
+${blocoDir}${temDetalhamento ? `
 ⚠️ TEMA COM DETALHAMENTO EXPLÍCITO DETECTADO:
 Identifique todos os subtemas e direcionamentos presentes no texto acima.
 Distribua as ${QUESTOES_POR_TEMA} questões cobrindo partes DIFERENTES do detalhamento.

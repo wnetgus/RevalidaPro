@@ -1,7 +1,15 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
 import { db } from "../firebase";
+import { normalizarMateriaEstrita, pertenceAMateria } from "../utils/normalizarMateria";
+import { getQuestoes, invalidarCacheQuestoes } from "../utils/questoesCache";
+import { PROMPT_SISTEMA_RESUMO } from "../utils/promptEngine";
+import { classificarPorRegras } from "../utils/resumoEngine";
 import {
-  collection, getDocs, doc, setDoc, deleteDoc, updateDoc, serverTimestamp
+  DIRETRIZES_CONTROLADAS,
+  detectarDiretriz, detectarDiretrizDinamica, montarBlocoDiretriz,
+} from "../config/diretrizesControladas";
+import {
+  collection, getDocs, doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp
 } from "firebase/firestore";
 import {
   FaBookOpen, FaSync, FaRobot, FaTrash, FaCheckCircle,
@@ -63,30 +71,12 @@ Dado um enunciado de questão médica, identifique:
 RETORNE APENAS JSON válido (sem texto, sem markdown):
 { "tema_mestre": "...", "subcontexto_clinico": "..." }`;
 
-// ── Prompt: GERAÇÃO — resumo contextualizado 10 pontos ───────────────────────
-const PROMPT_RESUMO = `Você é um preceptor de Medicina especializado na prova Revalida (INEP/SUS).
-Gere um resumo clínico em exatamente 10 pontos para o tema e contexto informados.
-TODO o conteúdo deve ser coerente com o contexto clínico (ex: se "gestante", use medicações seguras na gestação; se "pediátrico", use critérios e doses pediátricas).
-RETORNE APENAS JSON válido (sem markdown, sem código, sem texto extra):
-{
-  "titulo": "Nome do tema — Contexto (ex: Hipertensão arterial — Gestante)",
-  "pontos": [
-    { "label": "Definição", "texto": "1-2 frases objetivas" },
-    { "label": "Critérios diagnósticos", "texto": "..." },
-    { "label": "Classificação", "texto": "ou Epidemiologia se não aplicável" },
-    { "label": "Conduta inicial", "texto": "específica para o contexto" },
-    { "label": "Tratamento", "texto": "1ª linha SUS/MS para este contexto" },
-    { "label": "Complicações", "texto": "principais neste contexto" },
-    { "label": "Situações de prova", "texto": "pegadinhas e pontos frequentes no Revalida para este contexto" },
-    { "label": "Quando encaminhar", "texto": "critérios de encaminhamento neste contexto" },
-    { "label": "Dica prática", "texto": "ponto-chave que o avaliador quer ver" },
-    { "label": "Erros comuns", "texto": "equívocos frequentes neste contexto" }
-  ]
-}
-Regras: máximo 2-3 frases por ponto · diretrizes MS/SUS · nunca inventar dados · contexto obrigatório em todo o conteúdo`;
+// PROMPT_RESUMO → centralizado em src/utils/promptEngine.js como PROMPT_SISTEMA_RESUMO
 
 const DELAY_MIG_MS  = 8000;  // 8s entre chamadas de migração (respostas pequenas)
 const DELAY_GER_MS  = 20000; // 20s entre geração de resumos (respostas grandes)
+
+// classificarPorRegras importado de resumoEngine.js
 
 // ── Extrai JSON robusto de texto ──────────────────────────────────────────────
 const extrairJSON = (texto) => {
@@ -128,8 +118,10 @@ const ResumoGerador = () => {
   const [logs, setLogs]                 = useState([]);
   const [expandedLogs, setExpandedLogs] = useState(true);
 
-  const stopRef = useRef(false);
-  const logRef  = useRef(null);
+  const stopRef          = useRef(false);
+  const logRef           = useRef(null);
+  const diretrizesRef    = useRef(null);   // lista ativa — carregada uma vez por sessão
+  const diretrizCacheRef = useRef(new Map()); // tema.toLowerCase() → diretriz | null
 
   const addLog = useCallback((msg, tipo = "info") => {
     const hora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -142,12 +134,12 @@ const ResumoGerador = () => {
     setLoading(true);
     addLog("Carregando questões e resumos...", "info");
     try {
-      const [snapQ, snapT] = await Promise.all([
-        getDocs(collection(db, "questoes")),
+      // getQuestoes() usa cache de sessão — lê o Firestore apenas na 1ª chamada
+      const [docs, snapT] = await Promise.all([
+        getQuestoes(),
         getDocs(collection(db, "teorias")),
       ]);
 
-      const docs = snapQ.docs.map(d => ({ id: d.id, ...d.data() }));
       setQuestoes(docs);
 
       // Agrupa por (tema_mestre || subtema) + subcontexto_clinico
@@ -241,6 +233,82 @@ const ResumoGerador = () => {
     setProgMig({ atual: 0, total: 0 });
   };
 
+  // ── MIGRAÇÃO RÁPIDA: classifica subcontexto_clinico por palavras-chave ───────
+  // Custo ZERO de IA — usa somente batched writes no Firestore.
+  // Firestore batch suporta até 500 ops por lote.
+  const classificarTodaPorRegras = async () => {
+    const pendentes = questoes.filter(q => !q.subcontexto_clinico);
+    if (pendentes.length === 0) {
+      addLog("✅ Todas as questões já têm contexto clínico.", "info");
+      return;
+    }
+
+    setMigrando(true);
+    stopRef.current = false;
+    setProgMig({ atual: 0, total: pendentes.length });
+    addLog(`Classificando ${pendentes.length} questões por palavras-chave (0 chamadas à IA)...`, "info");
+
+    const BATCH_SIZE = 450; // margem de segurança abaixo do limite de 500
+    let processadas = 0;
+    const contagem  = {};
+    const novoCtxMap = {}; // id → ctx, para atualizar estado sem re-fetch
+
+    try {
+      for (let i = 0; i < pendentes.length; i += BATCH_SIZE) {
+        if (stopRef.current) { addLog("Classificação interrompida.", "aviso"); break; }
+
+        const lote = pendentes.slice(i, i + BATCH_SIZE);
+        const batch = writeBatch(db);
+
+        lote.forEach(q => {
+          const ctx = classificarPorRegras(q);
+          batch.update(doc(db, "questoes", q.id), { subcontexto_clinico: ctx });
+          contagem[ctx]    = (contagem[ctx] || 0) + 1;
+          novoCtxMap[q.id] = ctx; // guarda para atualização em memória
+        });
+
+        await batch.commit();
+        processadas += lote.length;
+        setProgMig({ atual: processadas, total: pendentes.length });
+        addLog(`Lote ${Math.ceil(processadas / BATCH_SIZE)}: ${processadas}/${pendentes.length} classificadas`, "sucesso");
+      }
+
+      // ── Atualiza estado em memória (sem re-fetch no Firestore) ──────────────
+      // Isso faz o filtro de contexto aparecer IMEDIATAMENTE após a migração.
+      const questoesAtualizadas = questoes.map(q =>
+        novoCtxMap[q.id] ? { ...q, subcontexto_clinico: novoCtxMap[q.id] } : q
+      );
+
+      // Reconstrói temas a partir dos dados atualizados (mesma lógica de carregar)
+      const mapa = {};
+      questoesAtualizadas.forEach(q => {
+        const tema = (q.tema_mestre && q.tema_mestre !== "INDEFINIDO") ? q.tema_mestre : q.subtema;
+        if (!tema) return;
+        const ctx = q.subcontexto_clinico || "";
+        const key = toDocId(tema, ctx);
+        if (!mapa[key]) mapa[key] = { key, tema_mestre: tema, subcontexto_clinico: ctx, materia: q.materia || "Geral", qtd: 0 };
+        mapa[key].qtd++;
+      });
+      const listaAtualizada = Object.values(mapa).sort((a, b) => {
+        const cmp = a.tema_mestre.localeCompare(b.tema_mestre, "pt");
+        return cmp !== 0 ? cmp : a.subcontexto_clinico.localeCompare(b.subcontexto_clinico, "pt");
+      });
+
+      setQuestoes(questoesAtualizadas); // dispara recompute de questoesSemContexto
+      setTemas(listaAtualizada);        // dispara recompute de contextos (useMemo)
+      invalidarCacheQuestoes();         // próximo getDocs vai reler dados frescos
+
+      const resumo = Object.entries(contagem).map(([k, v]) => `${k}: ${v}`).join(" · ");
+      addLog(`✅ Concluído — ${processadas} questões classificadas. ${resumo}`, "sucesso");
+      addLog("✨ Filtro de contexto atualizado automaticamente!", "info");
+    } catch (e) {
+      addLog("Erro durante a classificação: " + e.message, "erro");
+    }
+
+    setMigrando(false);
+    setProgMig({ atual: 0, total: 0 });
+  };
+
   // ── GERAR: resumo contextualizado para UMA combinação ─────────────────────
   const gerarUm = useCallback(async (tema_mestre, subcontexto_clinico, materia) => {
     const key   = toDocId(tema_mestre, subcontexto_clinico);
@@ -248,6 +316,29 @@ const ResumoGerador = () => {
     setGerandoKey(key);
     addLog(`Gerando: ${label}...`, "info");
     try {
+      // ── Carregar diretrizes ativas (uma vez por sessão) ───────────────────
+      if (diretrizesRef.current === null) {
+        try {
+          const snapDir = await getDocs(collection(db, "diretrizes"));
+          const ativas = snapDir.docs.map(d => d.data()).filter(d => d.ativa);
+          diretrizesRef.current = ativas.length > 0
+            ? ativas
+            : DIRETRIZES_CONTROLADAS.filter(d => d.ativa);
+        } catch (_e) {
+          diretrizesRef.current = DIRETRIZES_CONTROLADAS.filter(d => d.ativa);
+        }
+      }
+
+      // ── Detectar diretriz para o tema (cache por tema) ───────────────────
+      const temaKey = tema_mestre.toLowerCase();
+      if (!diretrizCacheRef.current.has(temaKey)) {
+        const d = detectarDiretrizDinamica(diretrizesRef.current, tema_mestre, "")
+               || detectarDiretriz(tema_mestre, "");
+        diretrizCacheRef.current.set(temaKey, d);
+      }
+      const diretrizTema = diretrizCacheRef.current.get(temaKey);
+      const blocoDir = diretrizTema ? montarBlocoDiretriz(diretrizTema) : "";
+
       const contextoTexto = subcontexto_clinico
         ? `Contexto clínico OBRIGATÓRIO: "${subcontexto_clinico}" — todo o conteúdo deve ser específico para este contexto.`
         : "Contexto: adulto padrão.";
@@ -256,8 +347,8 @@ const ResumoGerador = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: PROMPT_RESUMO,
-          prompt: `Tema: "${tema_mestre}"\n${contextoTexto}\nÁrea: ${materia || "Medicina Geral"}`,
+          system: PROMPT_SISTEMA_RESUMO,
+          prompt: `Tema: "${tema_mestre}"\n${contextoTexto}\n${blocoDir}Área: ${materia || "Medicina Geral"}`,
         }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -324,13 +415,13 @@ const ResumoGerador = () => {
 
   // ── DADOS DERIVADOS ───────────────────────────────────────────────────────
   const questoesSemContexto = useMemo(() => questoes.filter(q => !q.subcontexto_clinico), [questoes]);
-  const materias  = useMemo(() => ["Todas", ...new Set(temas.map(t => t.materia).filter(Boolean))], [temas]);
+  const materias  = useMemo(() => ["Todas", ...new Set(temas.map(t => normalizarMateriaEstrita(t.materia)).filter(Boolean))], [temas]);
   const contextos = useMemo(() => ["Todos", ...new Set(temas.map(t => t.subcontexto_clinico).filter(Boolean))], [temas]);
 
   const temasFiltrados = useMemo(() => temas.filter(t => {
     if (filtroStatus === "gerado"   && !existentes.has(t.key)) return false;
     if (filtroStatus === "pendente" && existentes.has(t.key))  return false;
-    if (filtroMat !== "Todas" && t.materia !== filtroMat) return false;
+    if (filtroMat !== "Todas" && !pertenceAMateria(t.materia, filtroMat)) return false;
     if (filtroCtx !== "Todos" && t.subcontexto_clinico !== filtroCtx) return false;
     if (busca && !t.tema_mestre.toLowerCase().includes(busca.toLowerCase())) return false;
     return true;
@@ -374,8 +465,7 @@ const ResumoGerador = () => {
                 {questoesSemContexto.length} questões sem contexto clínico classificado
               </p>
               <p style={{ margin: "6px 0 0", fontSize: "11px", color: "#7f1d1d", lineHeight: 1.6 }}>
-                A IA vai ler cada enunciado e identificar automaticamente: idade, sexo e cenário clínico.
-                <br />Isso corrige associações incorretas como "Hipertensão → apenas Ginecologia".
+                Classifique por palavras-chave (grátis, instantâneo) ou com IA (mais preciso, usa créditos).
                 {migrando && progMig.total > 0 && (
                   <strong style={{ color: "#fca5a5" }}> — {progMig.atual}/{progMig.total} processadas</strong>
                 )}
@@ -386,9 +476,16 @@ const ResumoGerador = () => {
                 <FaStop size={10} /> Interromper
               </button>
             ) : (
-              <button onClick={migrarTodas} style={btnStyle("#ef4444")}>
-                <FaRobot size={11} /> Classificar com IA ({questoesSemContexto.length} questões)
-              </button>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {/* OPÇÃO 1: classificação por palavras-chave — zero custo de IA */}
+                <button onClick={classificarTodaPorRegras} style={btnStyle("#10b981")}>
+                  🔍 Por palavras-chave (grátis)
+                </button>
+                {/* OPÇÃO 2: classificação por IA — mais precisa, usa créditos */}
+                <button onClick={migrarTodas} style={{ ...btnStyle("#ef4444"), opacity: 0.75 }}>
+                  <FaRobot size={11} /> IA ({questoesSemContexto.length} questões)
+                </button>
+              </div>
             )}
           </div>
           {migrando && progMig.total > 0 && (
@@ -494,98 +591,96 @@ const ResumoGerador = () => {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: "13px", fontWeight: "700", color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {t.tema_mestre}
-                    </p>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px" }}>
-                      <span style={{ fontSize: "10px", color: "#475569" }}>{t.materia}</span>
-                      {t.subcontexto_clinico
-                        ? <span style={{ fontSize: "9px", fontWeight: "800", padding: "2px 8px", borderRadius: "5px", background: `${corCtx}18`, color: corCtx, border: `1px solid ${corCtx}30` }}>{t.subcontexto_clinico}</span>
-                        : <span style={{ fontSize: "9px", color: "#ef4444", fontWeight: "700" }}>⚠ sem contexto</span>
-                      }
-                      <span style={{ fontSize: "10px", color: "#334155" }}>· {t.qtd}q</span>
-                    </div>
-                  </div>
-                  <span style={{ padding: "3px 10px", borderRadius: "6px", fontSize: "10px", fontWeight: "700", flexShrink: 0, background: temTeoria ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)", color: temTeoria ? "#10b981" : "#f59e0b" }}>
-                    {temTeoria ? "Gerado" : "Pendente"}
-                  </span>
-                  <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
-                    <button
-                      onClick={() => gerarUm(t.tema_mestre, t.subcontexto_clinico, t.materia)}
-                      disabled={gerando || migrando || esteGerando}
-                      style={{
-                        background: temTeoria ? "rgba(79,70,229,0.1)" : "rgba(16,185,129,0.1)",
-                        border: `1px solid ${temTeoria ? "rgba(79,70,229,0.2)" : "rgba(16,185,129,0.2)"}`,
-                        color: temTeoria ? "#818cf8" : "#10b981",
-                        borderRadius: "8px", padding: "6px 10px", fontSize: "11px", fontWeight: "700",
-                        cursor: (gerando || migrando) ? "not-allowed" : "pointer",
-                        opacity: (gerando || migrando) && !esteGerando ? 0.4 : 1,
-                        display: "flex", alignItems: "center", gap: "5px"
-                      }}
-                    >
-                      <FaRobot size={10} /> {temTeoria ? "Re-gerar" : "Gerar"}
-                    </button>
-                    {temTeoria && (
-                      <button onClick={() => excluir(t.key, label)} disabled={gerando || migrando}
-                        style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: "#ef4444", borderRadius: "8px", padding: "6px 8px", cursor: "pointer", opacity: (gerando || migrando) ? 0.4 : 1 }}>
-                        <FaTrash size={10} />
-                      </button>
-                    )}
-                  </div>
+                    {label}
+                  </p>
+                  <p style={{ margin: "2px 0 0", fontSize: "10px", color: "#475569" }}>
+                    {t.materia} · {t.qtd} questão{t.qtd !== 1 ? "ões" : ""}
+                  </p>
+                  {t.subcontexto_clinico && (
+                    <span style={{
+                      display: "inline-block", marginTop: "4px",
+                      fontSize: "9px", fontWeight: "700", padding: "1px 7px",
+                      borderRadius: "4px", textTransform: "uppercase", letterSpacing: "0.5px",
+                      background: `${corCtx}18`, color: corCtx, border: `1px solid ${corCtx}35`,
+                    }}>
+                      {t.subcontexto_clinico}
+                    </span>
+                  )}
                 </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {/* ── ESTADO INICIAL ── */}
-      {!carregado && !loading && (
-        <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "16px", padding: "48px 32px", textAlign: "center" }}>
-          <FaBookOpen size={36} color="#1e293b" style={{ marginBottom: "16px" }} />
-          <p style={{ color: "#475569", fontSize: "15px", fontWeight: "700", margin: "0 0 8px" }}>Banco de Resumos vazio</p>
-          <p style={{ color: "#334155", fontSize: "12px", lineHeight: 1.7, margin: 0 }}>
-            Clique em <strong style={{ color: "#818cf8" }}>Carregar Dados</strong> para escanear as questões.
-          </p>
+                <button
+                  onClick={() => gerarUm(t.tema_mestre, t.subcontexto_clinico, t.materia)}
+                  disabled={esteGerando}
+                  style={btnStyle(temTeoria ? "#10b981" : "#818cf8", esteGerando)}
+                >
+                  <FaRobot size={11} />
+                  {esteGerando ? "Gerando..." : temTeoria ? "Regenerar" : "Gerar"}
+                </button>
+              </div>
+            );
+          })}
         </div>
-      )}
 
-      {/* ── LOGS ── */}
-      {logs.length > 0 && (
-        <div style={{ background: "#020617", border: "1px solid #1e293b", borderRadius: "12px", overflow: "hidden" }}>
-          <button onClick={() => setExpandedLogs(e => !e)} style={{ width: "100%", background: "transparent", border: "none", color: "#64748b", padding: "10px 16px", fontSize: "12px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span>Log de execução ({logs.length})</span>
-            {expandedLogs ? <FaChevronUp size={10} /> : <FaChevronDown size={10} />}
-          </button>
-          {expandedLogs && (
-            <div ref={logRef} style={{ maxHeight: "200px", overflowY: "auto", padding: "8px 16px 12px", display: "flex", flexDirection: "column", gap: "3px" }}>
-              {logs.map((l, i) => (
-                <p key={i} style={{ margin: 0, fontSize: "11px", lineHeight: 1.5, fontFamily: "monospace",
-                  color: l.tipo === "sucesso" ? "#10b981" : l.tipo === "erro" ? "#ef4444" : l.tipo === "aviso" ? "#f59e0b" : "#64748b" }}>
-                  <span style={{ color: "#334155" }}>[{l.hora}]</span> {l.msg}
-                </p>
-              ))}
+        {/* ── LOG ── */}
+        {logs.length > 0 && (
+          <div style={{ background: "#0a1628", border: "1px solid #1e293b", borderRadius: "14px", padding: "16px 20px" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px", cursor: "pointer" }}
+              onClick={() => setExpandedLogs(v => !v)}
+            >
+              <p style={{ margin: 0, fontSize: "11px", fontWeight: "800", color: "#475569", textTransform: "uppercase", letterSpacing: "1px" }}>
+                Log ({logs.length})
+              </p>
+              {expandedLogs ? <FaChevronUp size={10} color="#475569" /> : <FaChevronDown size={10} color="#475569" />}
             </div>
-          )}
-        </div>
-      )}
-
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-    </div>
+            {expandedLogs && (
+              <div ref={logRef} style={{ maxHeight: "200px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "3px" }}>
+                {[...logs].reverse().map((l, i) => (
+                  <p key={i} style={{
+                    margin: 0, fontSize: "10px", lineHeight: 1.5, fontFamily: "monospace",
+                    color: l.tipo === "erro" ? "#ef4444" : l.tipo === "aviso" ? "#f59e0b" : l.tipo === "sucesso" ? "#10b981" : "#64748b",
+                  }}>
+                    <span style={{ color: "#334155" }}>{l.hora} </span>{l.msg}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </>
+    )}
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  </div>
   );
 };
 
-// ── Helpers de estilo ─────────────────────────────────────────────────────────
-const btnStyle = (bg, disabled = false) => ({
-  background: disabled ? "#1e293b" : bg, border: "none",
-  color: disabled ? "#475569" : "#fff", borderRadius: "10px",
-  padding: "10px 18px", fontWeight: "700", fontSize: "13px",
-  cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.6 : 1,
-  display: "flex", alignItems: "center", gap: "8px"
+// ── Estilos auxiliares ────────────────────────────────────────────
+const btnStyle = (cor, disabled = false) => ({
+  background: `${cor}18`,
+  border: `1px solid ${cor}44`,
+  color: cor,
+  padding: "8px 14px",
+  borderRadius: "10px",
+  fontSize: "11px",
+  fontWeight: "700",
+  cursor: disabled ? "not-allowed" : "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  transition: "all .15s",
+  opacity: disabled ? 0.5 : 1,
+  flexShrink: 0,
 });
 
 const selStyle = {
-  background: "#0f172a", border: "1px solid #1e293b", borderRadius: "10px",
-  color: "#94a3b8", fontSize: "12px", padding: "8px 14px", cursor: "pointer"
+  background: "#0f172a",
+  border: "1px solid #1e293b",
+  borderRadius: "8px",
+  color: "#e2e8f0",
+  padding: "8px 12px",
+  fontSize: "12px",
+  outline: "none",
+  cursor: "pointer",
+  width: "auto",
 };
 
 export default ResumoGerador;

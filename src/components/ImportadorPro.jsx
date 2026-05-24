@@ -11,6 +11,12 @@ import {
   FaMagic, FaSpinner, FaFire, FaBan
 } from "react-icons/fa";
 import { SUPER_APOSTAS_CONFIG } from "../config/superApostasConfig";
+import {
+  CICLO_NIVEIS_SA, atribuirNivelAposta, calcularStatusAtualizacao,
+  extrairJSONDoTexto, PROMPT_SISTEMA_IMPORTADOR as PROMPT_SISTEMA,
+  normalizarRaciocinio,
+} from "../utils/promptEngine";
+import { gerarESalvarResumo } from "../utils/resumoEngine";
 import { TAXONOMIA_BASE, getTemasMestres, getSubtemas } from "../config/taxonomiaPedagogica";
 import { MATERIAS_VALIDAS } from "../utils/normalizarMateria";
 import {
@@ -55,137 +61,13 @@ const obterProximoNumeroQuestao = async (provaId, saEdicao = null) => {
   }
 };
 
-// ─── AUTO-DISTRIBUIÇÃO DE NÍVEL DE APOSTA (Super Apostas) ────────────────────
-// Ciclo sempre: BAIXO → MEDIO → ALTO → BAIXO → ...
-// Para lotes menores que 3, usa os últimos N do ciclo:
-//   1 questão → ALTO
-//   2 questões → MEDIO, ALTO
-//   3+ questões → BAIXO, MEDIO, ALTO, BAIXO, MEDIO, ALTO, ...
-const CICLO_NIVEIS_SA = ["BAIXO", "MEDIO", "ALTO"];
-const atribuirNivelAposta = (indexQuestao, totalQuestoes) => {
-  if (totalQuestoes <= 3) {
-    return CICLO_NIVEIS_SA[(3 - totalQuestoes) + indexQuestao];
-  }
-  return CICLO_NIVEIS_SA[indexQuestao % 3];
-};
-
-// ─── STATUS DE ATUALIZAÇÃO DE DIRETRIZ ───────────────────────────────────────
-// ano_diretriz >= 2024 → "atual" | < 2024 ou ausente → "revisar"
-const calcularStatusAtualizacao = (ano_diretriz) => {
-  if (!ano_diretriz || typeof ano_diretriz !== "number") return "revisar";
-  return ano_diretriz >= 2024 ? "atual" : "revisar";
-};
-
 // ─── NORMALIZAÇÃO PARA DEDUPLICAÇÃO SEMÂNTICA ────────────────────────────────
 // Remove separadores comuns (traço, barra, vírgula), colapsa espaços e lowercase.
 // Previne duplicatas como "Sepse - Grave" / "sepse grave" / "SEPSE GRAVE".
 const normChave = (s) =>
   String(s).trim().toLowerCase().replace(/[-_/,]/g, " ").replace(/\s+/g, " ").trim();
 
-// ─── PROMPT PARA A IA GERAR QUESTÕES ───────────────────────────
-const PROMPT_SISTEMA = `Você é um especialista em engenharia pedagógica de questões médicas para o Revalida INEP/ENAMED.
-Responda SOMENTE com um array JSON. Nenhum texto antes. Nenhum texto depois. Sem markdown. Sem explicações.
-Sua resposta deve começar com [ e terminar com ].
-
-═══ REGRA 1 — NÃO ENTREGUE O DIAGNÓSTICO PRECOCEMENTE ═══
-O enunciado deve apresentar dados clínicos progressivamente, como um plantão real.
-PROIBIDO: iniciar com diagnóstico fechado ("Paciente diabético em uso de insulina, qual a conduta?").
-CORRETO: sintomas → sinais → exames → contexto → forçar tomada de decisão.
-Use linguagem de plantão: "chega ao PS com...", "comparece à UBS referindo...", "é admitido na enfermaria com...".
-Inclua sempre: idade, sexo, contexto clínico (UBS/UPA/PS/enfermaria), sinais vitais relevantes, exames pertinentes.
-
-═══ REGRA 2 — DISTRATORES E JUSTIFICATIVA PEDAGÓGICA ═══
-Cada alternativa errada deve explorar um erro cognitivo específico. Use estes tipos:
-• CONFUSÃO DIAGNÓSTICA: conduta correta para doença semelhante (ex: trata IC como pneumonia)
-• TIMING INCORRETO: exame ou conduta corretos, porém no momento inadequado para o caso
-• TRATAMENTO INCOMPLETO: conduta parcialmente certa, faltando passo essencial
-• DIRETRIZ ANTIGA: conduta que foi padrão mas está desatualizada (ex: morfina na IC aguda)
-• ARMADILHA DE CLASSE: dois fármacos similares — um indicado, outro contraindicado neste caso
-• EXCESSO DE INTERVENÇÃO: conduta mais invasiva do que o necessário para o estágio atual
-No campo "nota" de cada alternativa INCORRETA: nomeie o TIPO DE ERRO no início e explique brevemente.
-
-ALTERNATIVA CORRETA — nota obrigatoriamente pedagógica:
-A nota da alternativa correta NÃO pode ser genérica. São exemplos PROIBIDOS:
-  ✗ "CORRETA: conduta adequada." | ✗ "CORRETA: segue diretriz." | ✗ "CORRETA: diagnóstico correto."
-A nota DEVE funcionar como um mini reforço de aprendizado. Deve conter:
-  1. O MOTIVO clínico da escolha (o que nos dados do caso leva a esta resposta)
-  2. A DIRETRIZ ou fundamento que sustenta a conduta (com nome da fonte quando possível)
-  3. O DETALHE que consolida o aprendizado (dose, critério, periodicidade, contraindicação relevante, nuance)
-Exemplos CORRETOS de nota da alternativa certa:
-  ✓ "CORRETA. Fluconazol 150 mg dose única é a 1ª escolha para candidíase não complicada (FEBRASGO 2023). O pH ácido e o corrimento caseoso confirmam o diagnóstico; o antibiótico prévio explica a quebra da microbiota."
-  ✓ "CORRETA. Bundle 1h da Surviving Sepsis: hemoculturas → ATB em ≤1h → cristaloide 30 mL/kg. Lactato ≥4 mmol/L caracteriza choque séptico críptico mesmo sem hipotensão."
-  ✓ "CORRETA. Rastreamento de câncer de colo uterino pelo MS: início aos 25 anos, citologia a cada 3 anos após 2 exames anuais negativos. Não iniciar antes dos 25 mesmo com vida sexual ativa."
-Em temas de Preventiva, APS, rastreamento, vacinação e pré-natal a nota DEVE incluir:
-  critério de indicação + periodicidade ou dose + fundamento (MS/SUS, PCDT ou diretriz nomeada).
-
-═══ REGRA 3 — RACIOCÍNIO CLÍNICO EM ETAPAS ═══
-O campo "raciocinio" deve seguir OBRIGATORIAMENTE esta estrutura sequencial:
-PADRÃO: [achados que identificam o caso] → DIFERENCIAL: [o que confundiria e por quê é excluído] → DECISÃO: [conduta e justificativa neste momento] → ARMADILHA: [erro mais comum que o aluno comete]
-Máximo 110 palavras. Objetivo, sem repetir dados do enunciado.
-
-═══ REGRA 4 — GLOSSÁRIO INLINE ═══
-Na PRIMEIRA aparição de sigla ou termo técnico pouco familiar, adicione explicação entre parênteses:
-"DPOC (doença pulmonar obstrutiva crônica)", "ortopneia (falta de ar ao deitar que melhora ao sentar)",
-"CURB-65 (escore de gravidade da pneumonia adquirida na comunidade)", "TRAb (anticorpo anti-receptor de TSH)"
-NÃO explicar termos básicos: PA, FC, FR, febre, dor, náusea, UBS, PS, UTI, VO, IV, SC. Não repetir na mesma questão.
-
-═══ REGRA 5 — NÍVEL COGNITIVO E DIFICULDADE ═══
-Exigir APLICAÇÃO ou ANÁLISE clínica. Memorização pura não é aceita.
-PROIBIDO: enunciado curto que entrega o diagnóstico em uma frase ("Paciente com DM2 em CAD, qual a primeira conduta?").
-PROIBIDO: pergunta cujo gabarito é obtível sem raciocinar o caso (triagem por palavra-chave isolada).
-OBRIGATÓRIO: o aluno deve integrar pelo menos 3 dados clínicos antes de chegar à resposta.
-Dificuldade-alvo: igual ou superior ao Revalida INEP moderno. Não é prova de residência irreal, mas exige raciocínio clínico genuíno.
-Priorizar nesta ordem: 1) tomada de decisão no momento exato | 2) interpretação de exames em contexto | 3) diagnóstico diferencial com exclusão ativa | 4) classificação com impacto de conduta.
-
-═══ REGRA 6 — CONTEXTO SUS/APS OBRIGATÓRIO ═══
-Alterne entre: UBS/ESF (APS, conduta inicial, critério de encaminhamento) | UPA/PS (urgência, estabilização)
-Enfermaria (interpretação de exames, piora clínica, alta) | Pré-natal/GO (contexto obstétrico realista).
-Linguagem clínica humana. Contextualize narrativamente — evite listas de sintomas sem contexto.
-
-═══ REGRA 7 — PERGUNTA DE FECHAMENTO OBRIGATÓRIA ═══
-O enunciado DEVE terminar com uma pergunta clínica explícita, em linguagem natural, alinhada ao objetivo cognitivo da questão.
-A pergunta cria a tensão clínica que força o raciocínio. Sem ela o enunciado é inválido.
-
-BANCO DE FECHAMENTOS — alterne naturalmente, nunca repita a mesma estrutura em questões consecutivas do mesmo lote:
-• "Qual é a conduta mais adequada neste momento?"
-• "Qual deve ser a abordagem inicial neste caso?"
-• "Qual é o próximo passo diagnóstico mais adequado?"
-• "Qual exame deve ser solicitado prioritariamente?"
-• "Qual é o diagnóstico mais provável?"
-• "O que melhor explica o quadro clínico apresentado?"
-• "Qual é a classificação de gravidade deste paciente?"
-• "O que deve ser feito segundo as diretrizes atuais?"
-• "Qual seria o erro mais grave na abordagem deste caso?"
-• "O que diferencia este caso de [condição similar] e muda a conduta?"
-• "Qual a conduta preconizada pelo Ministério da Saúde para este cenário?"
-• "Qual o fator mais importante que determina a conduta neste momento?"
-
-PROIBIDO:
-• Enunciado sem pergunta explícita no final
-• Reutilizar a mesma estrutura de pergunta em questões do mesmo lote
-• Perguntas que entregam o gabarito na própria formulação ("Qual o tratamento de escolha do IAM com supra?")
-• "Qual o diagnóstico?" quando a tríade diagnóstica está explícita e óbvia no enunciado
-
-═══ DIRETRIZES ATUALIZADAS ═══
-Priorizar: MS/SUS 2023-2025, PCDT, FEBRASGO, CFM, SBC, SBPT, SBEM.
-Se usar conduta de diretriz anterior a 2023, sinalizar no raciocinio: "Conforme diretriz [ANO]..."
-Condutas de APS devem seguir os Cadernos de Atenção Primária vigentes.
-
-═══ LIMITES DE TAMANHO OBRIGATÓRIOS ═══
-enunciado: mín 80 palavras, máx 220 palavras | alts[x].texto: máx 22 palavras | alts[x].nota: máx 55 palavras
-raciocinio: máx 110 palavras | tto: máx 120 palavras | dicaMestre: máx 40 palavras
-
-Estrutura obrigatória de cada questão no array:
-{"materia":"string","tema_mestre":"Nome da doença principal sem tipagem e sem abreviação","subtema":"string","banca":"Revalida INEP","ano":"2025","numeroQuestao":1,"enunciado":"caso progressivo sem diagnóstico prematuro","imagemUrl":"","alts":{"a":{"texto":"","nota":"TIPO ERRO: explicação"},"b":{"texto":"","nota":"TIPO ERRO: explicação"},"c":{"texto":"","nota":""},"d":{"texto":"","nota":""},"e":{"texto":"","nota":""}},"gabarito":"letra","raciocinio":"PADRÃO: ... → DIFERENCIAL: ... → DECISÃO: ... → ARMADILHA: ...","tto":"conduta completa atualizada com doses quando pertinente","dicaMestre":"regra de ouro objetiva","ano_diretriz":2024,"fonte_diretriz":"MS/SUS 2024"}
-
-REGRAS FINAIS:
-- tema_mestre: nome clínico padronizado da doença principal, sem tipagem, sem subtema, sem abreviação
-  ✅ "Hipertensão arterial sistêmica" | ✅ "Insuficiência cardíaca" | ✅ "Diabetes mellitus"
-  ❌ "HAS", "Crise hipertensiva", "HAS em gestante", "DM tipo 2", "ICC descompensada"
-- gabarito: apenas letra minúscula (a, b, c, d ou e)
-- ano_diretriz: número inteiro (ex: 2024). Obrigatório.
-- fonte_diretriz: string com fonte (ex: "MS/SUS 2024", "FEBRASGO 2023"). Obrigatório.
-- Responda APENAS com o array JSON, começando em [ e terminando em ]`;
+// PROMPT_SISTEMA importado de promptEngine.js como PROMPT_SISTEMA_IMPORTADOR.
 
 // ─── MOCK INTELIGENTE BASEADO EM PALAVRAS-CHAVE ───────────────
 // Mock inteligente baseado em palavras-chave — substituir por IA real posteriormente
@@ -1051,47 +933,8 @@ const ImportadorPro = () => {
       const texto = (data.content || []).map(c => c.text || "").join("").trim();
       if (!texto) throw new Error("A IA retornou uma resposta vazia. Tente reformular o prompt.");
 
-      // ── EXTRAÇÃO ROBUSTA DO JSON ──────────────────────────────────────────────
-      // Usa contagem de colchetes para encontrar o JSON exato,
-      // independente de texto antes/depois ou cercas markdown.
+      // extrairJSONDoTexto importado de promptEngine.js
       let dados;
-
-      const extrairJSONDoTexto = (str) => {
-        // Procura o primeiro '[' ou '{' — onde o JSON realmente começa
-        const idxArray = str.indexOf("[");
-        const idxObj   = str.indexOf("{");
-
-        // Escolhe o que aparecer primeiro
-        const abridor = (idxArray === -1) ? "{" : (idxObj === -1 || idxArray < idxObj) ? "[" : "{";
-        const fechador = abridor === "[" ? "]" : "}";
-        const inicio   = abridor === "[" ? idxArray : idxObj;
-
-        if (inicio === -1) return null;
-
-        // Conta colchetes/chaves para encontrar o fechamento exato
-        let profundidade = 0;
-        let emString = false;
-        let escapeNext = false;
-
-        for (let i = inicio; i < str.length; i++) {
-          const c = str[i];
-          if (escapeNext) { escapeNext = false; continue; }
-          if (c === "\\") { escapeNext = true; continue; }
-          if (c === '"') { emString = !emString; continue; }
-          if (emString) continue;
-          if (c === abridor) profundidade++;
-          else if (c === fechador) {
-            profundidade--;
-            if (profundidade === 0) {
-              const trecho = str.slice(inicio, i + 1);
-              const parsed = JSON.parse(trecho); // lança se inválido
-              return Array.isArray(parsed) ? parsed : [parsed];
-            }
-          }
-        }
-        return null; // JSON incompleto (truncado)
-      };
-
       try {
         dados = extrairJSONDoTexto(texto);
         if (!dados) throw new Error("JSON não encontrado ou truncado na resposta da IA.");
@@ -1268,6 +1111,7 @@ const ImportadorPro = () => {
         const q = questoes[i];
         const finalData = {
           ...q,
+          raciocinio: normalizarRaciocinio(q.raciocinio) || q.raciocinio || "",
           alternativaA: q.alternativaA || q.alts?.a?.texto || "",
           alternativaB: q.alternativaB || q.alts?.b?.texto || "",
           alternativaC: q.alternativaC || q.alts?.c?.texto || "",
@@ -1310,6 +1154,7 @@ const ImportadorPro = () => {
 
         console.log(`[publicar] Salvando questão ${i + 1}/${questoes.length} → id: ${qId}`);
         await setDoc(doc(db, "questoes", qId), finalData);
+        gerarESalvarResumo(finalData).catch(() => {});
         setPublicados(i + 1);
       }
       invalidarCacheQuestoes(); // força releitura na próxima vez que algum componente precisar

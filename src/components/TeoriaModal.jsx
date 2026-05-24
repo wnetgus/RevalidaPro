@@ -53,19 +53,9 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
       setResumo(null);
       setTeoria(null);
       setFonte(null);
-      try {
-        // ── 0ª tentativa: resumos_temas (novo schema plano) — prioridade máxima
-        if (tema_mestre) {
-          const snap = await getDoc(doc(db, "resumos_temas", toResDocId(tema_mestre)));
-          if (snap.exists()) {
-            setResumo(snap.data());
-            setFonte("resumos_temas");
-            setCarregando(false);
-            return;
-          }
-        }
 
-        // ── 1ª tentativa: tema_mestre + contexto via getDoc (O(1)) ──────────
+      try {
+        // ── 1ª tentativa: teorias/{tema}--{contexto} — schema rico + específico
         if (tema_mestre && subcontexto_clinico) {
           const snap = await getDoc(doc(db, "teorias", toDocId(tema_mestre, subcontexto_clinico)));
           if (snap.exists()) {
@@ -76,7 +66,7 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
           }
         }
 
-        // ── 2ª tentativa: tema_mestre sem contexto (O(1)) ────────────────────
+        // ── 2ª tentativa: teorias/{tema} — schema rico sem contexto
         if (tema_mestre) {
           const snap = await getDoc(doc(db, "teorias", toDocId(tema_mestre, "")));
           if (snap.exists()) {
@@ -87,7 +77,18 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
           }
         }
 
-        // ── 3ª tentativa: subtema query (backward-compat) ─────────────────────
+        // ── 3ª tentativa: resumos_temas/{tema} — fallback legacy (schema plano)
+        if (tema_mestre) {
+          const snap = await getDoc(doc(db, "resumos_temas", toResDocId(tema_mestre)));
+          if (snap.exists()) {
+            setResumo(snap.data());
+            setFonte("resumos_temas");
+            setCarregando(false);
+            return;
+          }
+        }
+
+        // ── 4ª tentativa: subtema query (backward-compat)
         if (subtema) {
           const q1 = query(collection(db, "teorias"), where("subtema", "==", subtema));
           const s1 = await getDocs(q1);
@@ -99,7 +100,7 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
           }
         }
 
-        // ── 4ª tentativa: matéria genérica ────────────────────────────────────
+        // ── 5ª tentativa: matéria genérica (backward-compat)
         if (materia) {
           const q2 = query(
             collection(db, "teorias"),
@@ -187,8 +188,18 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
               <p style={s.loadTxt}>Buscando resumo...</p>
             </div>
 
+          ) : teoria ? (
+            /* ── Schema rico (teorias — pontos array) ─────────────── */
+            <>
+              {teoria.titulo && <h3 style={s.tituloTeoria}>{teoria.titulo}</h3>}
+              <ul style={s.lista}>
+                {(teoria.pontos || []).map(renderPonto)}
+              </ul>
+              {teoria.fonte && <p style={s.fonte}>Fonte: {teoria.fonte}</p>}
+            </>
+
           ) : resumo ? (
-            /* ── Schema plano (resumos_temas) ─────────────────────── */
+            /* ── Schema plano legacy (resumos_temas) ──────────────── */
             <div>
               {[
                 { key: "definicao",   label: "Definição",   color: "#818cf8" },
@@ -236,16 +247,6 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
                 </div>
               )}
             </div>
-
-          ) : teoria ? (
-            /* ── Schema rico (teorias — pontos array) ─────────────── */
-            <>
-              {teoria.titulo && <h3 style={s.tituloTeoria}>{teoria.titulo}</h3>}
-              <ul style={s.lista}>
-                {(teoria.pontos || []).map(renderPonto)}
-              </ul>
-              {teoria.fonte && <p style={s.fonte}>Fonte: {teoria.fonte}</p>}
-            </>
 
           ) : (
             /* ── Fallback: nenhum resumo encontrado ───────────────── */
