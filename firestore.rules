@@ -39,6 +39,13 @@ service cloud.firestore {
           && (request.auth.uid == userId
               || request.auth.token.email == "drweynesouza@gmail.com");
       }
+
+      // Subcoleção de rastreamento cognitivo (Fase 5 — Analytics Pedagógico)
+      match /analyticsCognitivo/{docId} {
+        allow read, write: if request.auth != null
+          && (request.auth.uid == userId
+              || request.auth.token.email == "drweynesouza@gmail.com");
+      }
     }
 
     // ─── CADERNO DE ERROS
@@ -68,7 +75,23 @@ service cloud.firestore {
         && request.auth.token.email == "drweynesouza@gmail.com";
     }
 
-    // ─── TEORIAS (resumos teóricos por subtema — complemento ao simulador)
+    // ─── RESUMOS POR TEMA (novo schema plano — gerados pelo RoboGerador)
+    // Leitura: qualquer aluno autenticado (exibido no TeoriaModal durante simulado)
+    // Escrita: apenas admin (gerado e salvo pelo AdminPainel)
+    match /resumos_temas/{resumoId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.token.email == "drweynesouza@gmail.com";
+    }
+
+    // ─── TAXONOMIA PEDAGÓGICA (temas e subtemas persistidos pelo ImportadorPro)
+    match /taxonomiaPedagogica/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.token.email == "drweynesouza@gmail.com";
+    }
+
+    // ─── TEORIAS (coleção legada — mantida para compatibilidade)
     match /teorias/{teoriaId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null

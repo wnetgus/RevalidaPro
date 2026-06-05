@@ -636,6 +636,7 @@ const ImportadorPro = () => {
   const [promptUsuario, setPromptUsuario] = useState("");
   const [gerandoIA, setGerandoIA] = useState(false);
   const [erroIA, setErroIA] = useState("");
+  const [progressoGeracaoIA, setProgressoGeracaoIA] = useState("");
   // Cooldown de 30s entre chamadas — protege contra uso excessivo de tokens de IA
   const [cooldownRestante, setCooldownRestante] = useState(0);
   const cooldownIntervalRef = React.useRef(null);
@@ -880,13 +881,11 @@ const ImportadorPro = () => {
     if (!temaMestreReal) return alert("Selecione ou digite o Tema Mestre antes de gerar.");
     if (!subtemaReal)    return alert("Selecione ou digite o Subtema antes de gerar.");
     if (!provaEdicao && isOficial && destino === "inep") return alert("Selecione a Edição INEP primeiro.");
-    if (cooldownRestante > 0) return; // proteção contra cliques rápidos
+    if (cooldownRestante > 0) return;
     setGerandoIA(true);
     setErroIA("");
+    setProgressoGeracaoIA("");
     try {
-      // ── INTEGRAÇÃO REAL — Anthropic via Cloud Function ──────────────────────
-      // Em desenvolvimento (localhost) usa o proxy do Vite (/functions/...) para
-      // contornar CORS. Em produção usa o URL direto da Cloud Function.
       const isDev = window.location.hostname === "localhost" ||
                     window.location.hostname === "127.0.0.1";
       const endpoint = isDev
@@ -894,59 +893,80 @@ const ImportadorPro = () => {
         : (import.meta.env.VITE_FUNCTIONS_BASE_URL ||
            "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/gerarQuestoesIA";
 
-      // Prompt com taxonomia controlada: a IA recebe os campos exatos e deve usá-los.
-      // Os campos também são sobrescritos no resultado (dupla garantia).
       const temaMestreReal2 = temaMestreGerador === "__novo__" ? temaMestreCustom.trim() : temaMestreGerador;
       const subtemaReal2    = subtemaGerador    === "__novo__" ? subtemaCustom.trim()    : subtemaGerador;
 
-      // Diretriz vigente: Firestore se carregado, estática como fallback.
       const diretrizAtual = diretrizesAtivas.length > 0
         ? detectarDiretrizDinamica(diretrizesAtivas, temaMestreReal2, subtemaReal2)
         : detectarDiretriz(temaMestreReal2, subtemaReal2);
 
-      const promptConstruido =
-        `Gere ${qtdGerador} questão(ões) de múltipla escolha para o Revalida INEP/ENAMED.\n\n` +
-        `TAXONOMIA CONTROLADA — use EXATAMENTE estes valores nos campos do JSON:\n` +
-        `"materia": "${materiaGerador}"\n` +
-        `"tema_mestre": "${temaMestreReal2}"\n` +
-        `"subtema": "${subtemaReal2}"\n\n` +
-        (diretrizAtual ? montarBlocoDiretriz(diretrizAtual) : "") +
-        (promptUsuario.trim()
-          ? `FOCO PEDAGÓGICO ADICIONAL:\n${promptUsuario.trim()}\n\n`
-          : "") +
-        `Retorne um array JSON com exatamente ${qtdGerador} questão(ões). Comece com [ e termine com ].`;
+      // ── AUTO-BATCHING ────────────────────────────────────────────────────────
+      // Lotes > 5 questões são divididos em chamadas de até 5 para evitar
+      // truncamento por limite de tokens do modelo (max_tokens: 8192 ≈ 5 questões).
+      // O mapeamento ocorre UMA VEZ sobre o array combinado — preserva índices
+      // corretos para nivel_aposta (SA) e numeroQuestao sequencial.
+      const TAMANHO_LOTE = 5;
+      const lotes = [];
+      let restante = qtdGerador;
+      while (restante > 0) { lotes.push(Math.min(TAMANHO_LOTE, restante)); restante -= TAMANHO_LOTE; }
+      const totalLotes = lotes.length;
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ system: PROMPT_SISTEMA, prompt: promptConstruido }),
-      });
+      let listaRawTotal = [];
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.erro || err.error || `Erro ${response.status} da API de IA. Tente novamente em alguns segundos.`);
+      for (let idxLote = 0; idxLote < totalLotes; idxLote++) {
+        const qtdLote = lotes[idxLote];
+
+        if (totalLotes > 1) {
+          setProgressoGeracaoIA(
+            `Gerando lote ${idxLote + 1}/${totalLotes} — ${listaRawTotal.length}/${qtdGerador} questões prontas`
+          );
+        }
+
+        const promptConstruido =
+          `Gere ${qtdLote} questão(ões) de múltipla escolha para o Revalida INEP/ENAMED.\n\n` +
+          `TAXONOMIA CONTROLADA — use EXATAMENTE estes valores nos campos do JSON:\n` +
+          `"materia": "${materiaGerador}"\n` +
+          `"tema_mestre": "${temaMestreReal2}"\n` +
+          `"subtema": "${subtemaReal2}"\n\n` +
+          (diretrizAtual ? montarBlocoDiretriz(diretrizAtual) : "") +
+          (promptUsuario.trim()
+            ? `FOCO PEDAGÓGICO ADICIONAL:\n${promptUsuario.trim()}\n\n`
+            : "") +
+          `Retorne um array JSON com exatamente ${qtdLote} questão(ões). Comece com [ e termine com ].`;
+
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ system: PROMPT_SISTEMA, prompt: promptConstruido }),
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.erro || err.error || `Erro ${response.status} da API de IA. Tente novamente em alguns segundos.`);
+        }
+
+        const data = await response.json();
+        const texto = (data.content || []).map(c => c.text || "").join("").trim();
+        if (!texto) throw new Error(`A IA retornou resposta vazia no lote ${idxLote + 1}. Tente novamente.`);
+
+        let dados;
+        try {
+          dados = extrairJSONDoTexto(texto);
+          if (!dados) throw new Error("JSON não encontrado ou truncado na resposta da IA.");
+        } catch (eExtract) {
+          console.error(`[gerarViaIA] Lote ${idxLote + 1} — erro:`, eExtract?.message);
+          throw new Error("Não foi possível extrair o JSON da resposta. Tente novamente.");
+        }
+
+        const listaLote = Array.isArray(dados) ? dados : [dados];
+        if (listaLote.length === 0) throw new Error(`Nenhuma questão foi gerada no lote ${idxLote + 1}.`);
+        listaRawTotal = [...listaRawTotal, ...listaLote];
       }
 
-      const data = await response.json();
+      setProgressoGeracaoIA("");
+      if (listaRawTotal.length === 0) throw new Error("Nenhuma questão foi gerada. Reformule o prompt.");
 
-      // Extrai o texto — a Cloud Function retorna o formato Anthropic (content[].text)
-      const texto = (data.content || []).map(c => c.text || "").join("").trim();
-      if (!texto) throw new Error("A IA retornou uma resposta vazia. Tente reformular o prompt.");
-
-      // extrairJSONDoTexto importado de promptEngine.js
-      let dados;
-      try {
-        dados = extrairJSONDoTexto(texto);
-        if (!dados) throw new Error("JSON não encontrado ou truncado na resposta da IA.");
-      } catch {
-        console.error("[gerarViaIA] Falha ao extrair JSON. Primeiros 400 chars:", texto.substring(0, 400));
-        throw new Error("Não foi possível extrair o JSON da resposta. Tente um prompt mais curto (ex: 'Gere 1 questão de Cardiologia sobre IAM').");
-      }
-
-      const lista = Array.isArray(dados) ? dados : [dados];
-      if (lista.length === 0) throw new Error("Nenhuma questão foi gerada. Reformule o prompt.");
-
-      // Super Apostas: usa prefixo "SA_" para isolamento total de IDs INEP
+      // ── MAPEAMENTO ÚNICO sobre o array total combinado ───────────────────────
       const isSA    = destino === "super_apostas";
       const idChave = isSA ? `SA_${edicaoSuperApostas}` : (provaEdicao || "");
 
@@ -974,7 +994,7 @@ const ImportadorPro = () => {
       const temaMestreFinal = temaMestreGerador === "__novo__" ? temaMestreCustom.trim() : temaMestreGerador;
       const subtemazFinal   = subtemaGerador    === "__novo__" ? subtemaCustom.trim()    : subtemaGerador;
 
-      const listaFinal = lista.map((q, i) => {
+      const listaFinal = listaRawTotal.map((q, i) => {
         // NUNCA usa o numeroQuestao sugerido pela IA — a IA sempre retorna 1,2,3
         // e causaria sobrescrita de documentos já existentes no Firestore.
         // O número sequencial SEMPRE é calculado a partir do banco + lote local.
@@ -1016,21 +1036,21 @@ const ImportadorPro = () => {
             modulo: "super_apostas",
             edicao: edicaoSuperApostas,
             // Auto-distribuição de nível: BAIXO→MEDIO→ALTO em ciclo por lote
-            nivel_aposta: atribuirNivelAposta(i, lista.length),
+            nivel_aposta: atribuirNivelAposta(i, listaRawTotal.length),
             origem_prova: "IA",
           } : {}),
         };
       });
-      // ── FIM DA INTEGRAÇÃO REAL ───────────────────────────────────────────────
 
       setQuestoes(prev => [...prev, ...listaFinal]);
       // Se o admin criou um tema/subtema novo, persiste no Firestore para futuras gerações
       if (temaMestreGerador === "__novo__" || subtemaGerador === "__novo__") {
-        persistirTaxonomia(materiaGerador, temaMestreFinal, subtemazFinal);
+        await persistirTaxonomia(materiaGerador, temaMestreFinal, subtemazFinal);
       }
       setAbaInterna("manual");
       setPromptUsuario(""); // limpa apenas o foco adicional; taxonomia permanece para próxima geração
     } catch (e) {
+      setProgressoGeracaoIA("");
       setErroIA(e.message || "Erro ao gerar questões. Tente novamente ou use o modo JSON.");
       console.error("[gerarViaIA]", e);
     } finally {
@@ -1543,7 +1563,9 @@ const ImportadorPro = () => {
                     }}
                   >
                     {gerandoIA
-                      ? <><FaSpinner size={12} style={{ animation: "spin 1s linear infinite" }} /> GERANDO {qtdGerador} QUESTÃO{qtdGerador > 1 ? "ÕES" : ""}...</>
+                      ? progressoGeracaoIA
+                        ? <><FaSpinner size={12} style={{ animation: "spin 1s linear infinite" }} /> {progressoGeracaoIA.toUpperCase()}</>
+                        : <><FaSpinner size={12} style={{ animation: "spin 1s linear infinite" }} /> GERANDO {qtdGerador} QUESTÃO{qtdGerador > 1 ? "ÕES" : ""}...</>
                       : cooldownRestante > 0
                       ? <>⏳ AGUARDE {cooldownRestante}s...</>
                       : <><FaMagic size={12} /> GERAR {qtdGerador} QUESTÃO{qtdGerador > 1 ? "ÕES" : ""}</>
