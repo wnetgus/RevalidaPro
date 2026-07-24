@@ -281,6 +281,45 @@ export const atualizarEstatisticasFinais = async (tempoEstudadoSegundos = 0) => 
 };
 
 /**
+ * RASTREAMENTO COGNITIVO — fire-and-forget, não bloqueia UI
+ * Subcoleção: usuarios/{uid}/analyticsCognitivo/{docId}
+ */
+export const registrarAnalyticsCognitivo = (questao, letraSelecionada, acertou, modulo = "estudo_livre") => {
+  if (!auth.currentUser) return;
+  const uid = auth.currentUser.uid;
+  const qId = questao.id || questao.documentId;
+  if (!qId) return;
+
+  const TIPOS_COGNITIVOS = [
+    "CONFUSÃO DIAGNÓSTICA", "TIMING INCORRETO", "TRATAMENTO INCOMPLETO",
+    "DIRETRIZ ANTIGA", "ARMADILHA DE CLASSE", "EXCESSO DE INTERVENÇÃO",
+  ];
+  const notaSelecionada = questao.alts?.[letraSelecionada]?.nota
+    || questao[`justificativa${letraSelecionada.toUpperCase()}`]
+    || "";
+  let erroCognitivo = acertou ? "CORRETA" : "NAO_CLASSIFICADO";
+  if (!acertou) {
+    const upper = notaSelecionada.toUpperCase();
+    for (const tipo of TIPOS_COGNITIVOS) {
+      if (upper.startsWith(tipo)) { erroCognitivo = tipo; break; }
+    }
+  }
+
+  addDoc(collection(db, "usuarios", uid, "analyticsCognitivo"), {
+    questaoId: qId,
+    acertou,
+    erro_cognitivo: erroCognitivo,
+    materia: questao.materia || "Geral",
+    tema_mestre: questao.tema_mestre || "",
+    subtema: questao.subtema || "",
+    fonte_diretriz: questao.fonte_diretriz || "",
+    ano_diretriz: questao.ano_diretriz || null,
+    modulo,
+    createdAt: serverTimestamp(),
+  }).catch(() => {});
+};
+
+/**
  * RESET TOTAL DE CICLO - Limpa todo o histórico do aluno
  */
 export const resetarHistoricoMedico = async () => {
