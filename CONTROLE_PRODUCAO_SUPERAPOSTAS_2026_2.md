@@ -313,7 +313,75 @@ Comunicação de más notícias e conduta diante de erro médico
 
 **Motivo da escolha:** após 4 falhas consecutivas por conteúdo numérico (mesmo em recortes categóricos e/ou grounded), este é o primeiro recorte ALTO/LIBERADO/PENDENTE **inteiramente comunicacional/ético**, sem nenhum parâmetro clínico quantificável em jogo (não há dose, escore, corte, meta glicêmica, intervalo de seguimento ou índice laboratorial envolvido) — o conteúdo é sobre *como/quando comunicar*, não *o que prescrever/calcular*. Diversifica para Medicina Legal e Ética Médica, matéria ainda não tentada nesta rodada. Ressalva: já havia sido tentado uma vez em sessão anterior a esta rodada oficial e bloqueado por "afirmação absoluta" — mas esse é exatamente o modo de falha que o fallback Haiku→Haiku→Opus com REGRA SA-4 já demonstrou saber contornar (ex.: R021/`SA_2026_2_Q2`, aprovada no Opus após 2 rejeições por termo absoluto).
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q4` se aprovado, já que R003 não consumiu nenhum número).
+**Status:** ✅ **PRODUÇÃO OFICIAL — APROVADA E2E — CONTA PARA AS 120.**
+
+### R010 — encerramento (2026-07-24)
+
+**Área operacional usada no RoboGerador:** PREVENTIVA (matéria original do Mapa Mestre — Medicina Legal e Ética Médica — mapeada para uma das 5 grandes áreas; ver regra abaixo).
+
+**Questão:** `SA_2026_2_Q4` — **APROVADA E SALVA**.
+- Modelos: Haiku → Haiku → Opus. Chamadas: 3. Retry: SIM.
+- Tentativa 1 (Haiku): rejeitada — alternativa correta destacada em comprimento + única composta/múltiplas cláusulas (REGRA SA-1) + ano/fonte de diretriz preenchidos sem grounding controlado.
+- Tentativa 2 (Haiku): rejeitada — mesma pista estrutural (REGRA SA-1).
+- Tentativa 3 (Opus, fallback): **APROVADA**.
+
+**Resumo do Tema** (`Comunicação de más notícias e conduta diante de erro médico--pós-operatório`): tentativa 1 rejeitada → retry corretivo 1/1 → tentativa 2 **APROVADA E SALVA** (7 blocos).
+
+**Verificação visual manual:** **PASS.** Questão, feedback, cards pedagógicos, Estratégia da Aposta e Resumo do Tema abriram normalmente, conteúdo coerente.
+
+**Status para as 120:** `PASS E2E COMPLETO EM PRODUÇÃO` — **CONTA.**
+
+---
+
+## REGRA OPERACIONAL OBRIGATÓRIA — 5 GRANDES ÁREAS (vigente a partir de 2026-07-24)
+
+A plataforma trabalha operacionalmente **apenas** com estas 5 grandes áreas no campo "Área" do RoboGerador:
+
+1. Clínica Médica
+2. Pediatria
+3. Ginecologia e Obstetrícia
+4. Cirurgia
+5. Preventiva
+
+Todo recorte Rxxx selecionado deve ser mapeado para uma dessas 5 antes de ser entregue para geração. Matérias secundárias do Mapa Mestre (Medicina Legal e Ética Médica, Epidemiologia, Infectologia, Cardiologia, Neonatologia, Ortopedia etc.) continuam existindo como matéria/tema/subtema pedagógico, mas nunca são a "Área" operacional — apenas uma das 5 acima. Exemplo confirmado: Medicina Legal e Ética Médica → PREVENTIVA (R010).
+
+## CONTAGEM ATUAL — QUESTÕES OFICIAIS VÁLIDAS PARA AS 120
+
+| # | ID | Recorte | Status |
+|---|---|---|---|
+| 1 | `SA_2026_2_Q1` | R034 | CONTA — PASS E2E |
+| 2 | `SA_2026_2_Q2` | R021 | CONTA (resumo pendente/revisão) |
+| 3 | `SA_2026_2_Q3` | R030 | CONTA (resumo reaproveitado) |
+| 4 | `SA_2026_2_Q4` | R010 | CONTA — PASS E2E completo |
+
+**Total confirmado: 4 de 120.** Não contam (falha pontual, não retentados): R002, R024, R019, R003. Excluído (revisão humana): R041.
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R015 — Sífilis (estadiamento e esquema de penicilina benzatina)
+
+**Matéria original do Mapa Mestre:** Ginecologia e Obstetrícia.
+
+**Área operacional:** GINECOLOGIA E OBSTETRÍCIA (já é uma das 5 grandes áreas — sem necessidade de mapeamento).
+
+**Tema:** Sífilis — estadiamento clínico e escolha do esquema de penicilina benzatina por fase.
+
+**Texto exato para colar no RoboGerador:**
+```
+Sífilis — estadiamento clínico e escolha do esquema de penicilina benzatina por fase
+```
+
+**Decisão (Mapa Mestre):** Escolher dose/duração da penicilina conforme o estágio (primária/secundária/latente/terciária).
+
+**Armadilha (Mapa Mestre):** Usar esquema de dose única em sífilis latente tardia ou terciária.
+
+**Grounding obrigatório:** SIM (diretriz `sifilis`, já carregada em `diretrizesControladas.js`). **Grounding disponível/auto-injetável:** SIM.
+
+**Prioridade:** ALTO.
+
+**Motivo da escolha:** GO ainda não teve sucesso nesta rodada (R024 falhou) — diversidade pendente. É um recorte inerentemente dose/estágio-dependente, mas diferente de R003 (metas glicêmicas/cardiorrenais, terreno amplo e pouco delimitado), o esquema de penicilina benzatina por estágio de sífilis é o conteúdo **nuclear e mais básico** de qualquer diretriz de sífilis — maior probabilidade de estar bem coberto em `pontosCriticos` do que parâmetros mais periféricos (ex.: R016, sífilis congênita/seguimento sorológico, que falhou por grounding numérico insuficiente em tema mais periférico). Risco residual reconhecido e não eliminado — não há recorte ALTO/LIBERADO/PENDENTE totalmente livre de conteúdo numérico nas 5 áreas restantes com fonte disponível nesta sessão (R025/R029/R038 têm risco numérico igual ou maior, sem grounding).
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q5` se aprovado, já que Q1–Q4 já foram consumidos).
 
 ---
 
