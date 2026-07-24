@@ -436,7 +436,62 @@ Trombose venosa profunda — Escore de Wells e conduta anticoagulante inicial
 
 **Motivo da escolha:** Clínica Médica é a única das 5 grandes áreas ainda sem nenhum sucesso (0/2 tentativas) — prioridade de equilíbrio. Reexaminando o recorte: a decisão central não exige citar os pontos exatos do Escore de Wells, e sim a **lógica de sequência diagnóstica** (usar probabilidade pré-teste antes de escolher entre D-dímero e imagem) — estrutura de decisão sequencial/categórica, mais próxima do perfil que já funcionou em R034/R021/R024(tentativa)/R030, e não uma exigência de posologia/protocolo terapêutico como em R002/R003. `Grounding: não` é consistente com essa leitura (não há necessidade de citar valor normativo externo). Risco residual reconhecido: se a IA optar por enumerar pontuações específicas do escore, ainda há risco de rejeição por número sem grounding — decisão tomada por representatividade clínica (TVP é tema de alta relevância INEP) e equilíbrio de área, não por busca de "tema fácil".
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q6` se aprovado, já que Q1–Q5 já foram consumidos).
+**Status:** ✅ **PRODUÇÃO OFICIAL — APROVADA — CONTA PARA AS 120** (resumo em revisão, ver abaixo).
+
+### R029 — encerramento (2026-07-24)
+
+**Questão:** `SA_2026_2_Q6` — **APROVADA E SALVA**.
+- Modelos: Haiku → Haiku (**sem escalonar para Opus** — primeiro recorte desta rodada resolvido só com Haiku). Chamadas: 2. Retry: SIM.
+- Tentativa 1 (Haiku): rejeitada — campo `tto` com posologia numérica sem diretriz controlada (REGRA SA-3) + termo absoluto/percentual/"desde AAAA" sem diretriz controlada (REGRA SA-4).
+- Tentativa 2 (Haiku): **APROVADA**. Modo validação (teto 3, parou em 2 por já ter aprovado).
+
+**Resumo do Tema** (`Trombose venosa profunda--adulto`): tentativa 1 rejeitada → retry corretivo 1/1 → tentativa 2 **também rejeitada** — **REVISÃO** (número clínico "6" sem diretriz controlada injetada; regra numérica vale para qualquer corte/limiar/contagem, não só posologia). Resumo não salvo.
+
+**Verificação visual manual:** não fornecida nesta rodada (registro só por log do RoboGerador, conforme regra "confirmação final = log + Firestore + painel" — pendente de conferência visual quando conveniente, não bloqueia a contagem).
+
+**Status para as 120:** `QUESTÃO APROVADA / RESUMO REJEITADO-REVISÃO` — **CONTA** (Caso B da regra operacional).
+
+## CONTAGEM ATUAL — QUESTÕES OFICIAIS VÁLIDAS PARA AS 120 (atualizada)
+
+| # | ID | Recorte | Área operacional | Status |
+|---|---|---|---|---|
+| 1 | `SA_2026_2_Q1` | R034 | Cirurgia | CONTA — PASS E2E |
+| 2 | `SA_2026_2_Q2` | R021 | Pediatria | CONTA (resumo pendente/revisão) |
+| 3 | `SA_2026_2_Q3` | R030 | Pediatria | CONTA (resumo reaproveitado) |
+| 4 | `SA_2026_2_Q4` | R010 | Preventiva | CONTA — PASS E2E |
+| 5 | `SA_2026_2_Q5` | R015 | Ginecologia e Obstetrícia | CONTA — PASS E2E |
+| 6 | `SA_2026_2_Q6` | R029 | Clínica Médica | CONTA (resumo em revisão) |
+
+**Total confirmado: 6 de 120.** Não contam (falha pontual, IDs não consumidos): R002, R024, R019, R003. Excluído (revisão humana): R041.
+
+**Balanço por área até aqui:** Cirurgia 1 · Pediatria 2 · Preventiva 1 · Ginecologia e Obstetrícia 1 · Clínica Médica 1 — **todas as 5 áreas já têm ao menos 1 sucesso.**
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R025 — Gravidez ectópica
+
+**Matéria original do Mapa Mestre:** Ginecologia e Obstetrícia.
+
+**Área operacional:** GINECOLOGIA E OBSTETRÍCIA (já é uma das 5 grandes áreas — sem necessidade de mapeamento).
+
+**Tema:** Gravidez ectópica — diagnóstico precoce e decisão cirúrgica vs. expectante/medicamentosa.
+
+**Texto exato para colar no RoboGerador:**
+```
+Gravidez ectópica — diagnóstico precoce e decisão cirúrgica vs. expectante/medicamentosa
+```
+
+**Decisão (Mapa Mestre):** Escolher conduta (metotrexato, laparoscopia, expectante) pela estabilidade hemodinâmica e critérios de elegibilidade, não automaticamente cirurgia.
+
+**Armadilha (Mapa Mestre):** Indicar laparotomia de urgência em paciente estável com critérios para conduta medicamentosa.
+
+**Grounding obrigatório:** NÃO. **Grounding disponível/auto-injetável:** NÃO.
+
+**Prioridade:** ALTO.
+
+**Motivo da escolha:** todas as 5 áreas já têm 1+ sucesso; entre as opções com fonte sourced disponível nesta sessão, restam apenas R025 (GO, 1 sucesso) e R038 (Pediatria, 2 sucessos) — R025 favorece melhor o equilíbrio progressivo (evita concentrar ainda mais em Pediatria). Estrutura de decisão é sequencial/categórica (avaliar estabilidade → escolher conduta), no mesmo perfil que acabou de funcionar em R029 apesar da tentação de citar critérios numéricos (beta-hCG, tamanho do saco gestacional) — risco residual reconhecido e não eliminado.
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q7` se aprovado, já que Q1–Q6 já foram consumidos).
 
 ---
 
