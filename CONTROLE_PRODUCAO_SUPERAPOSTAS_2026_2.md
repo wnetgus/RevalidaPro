@@ -277,7 +277,43 @@ Diabetes mellitus tipo 2 — metas glicêmicas e escolha de 2ª droga além da m
 
 **Motivo da escolha:** a decisão central é **categórica** (qual classe de fármaco priorizar — iSGLT2/GLP-1 vs. sulfonilureia/insulina — por perfil cardiorrenal), não uma dose/intervalo/limiar numérico específico, e há grounding controlado disponível para sustentar qualquer afirmação sobre a diretriz `dm`, reduzindo o risco de invenção de fonte. Descartados: R015 (esquema de penicilina por fase — inerentemente dose/duração-dependente, mesmo com grounding); R025 (critérios de elegibilidade para MTX sem grounding formal); R029 (Escore de Wells — pontuação numérica explícita); R038 (índices hematimétricos — valores de referência numéricos). Diversifica para Clínica Médica, matéria ainda sem sucesso nesta rodada (R002 falhou).
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q4` se aprovado, já que R019 não consumiu nenhum número).
+**Status:** `REVISÃO / FALHOU NA GERAÇÃO EM PRODUÇÃO`. **`SA_2026_2_Q4` NÃO foi consumido — nenhum documento foi salvo.**
+
+### R003 — encerramento da tentativa (2026-07-24)
+
+- Tentativa 1 (Haiku): rejeitada — números 8, 12, 6 não suportados pelo grounding.
+- Tentativa 2 (Haiku): rejeitada — números 8, 12 não suportados pelo grounding.
+- Tentativa 3 (Opus, fallback): rejeitada — pista estrutural (alternativa correta mais longa e única com números/qualificadores, REGRA SA-1).
+- Teto de 3 chamadas respeitado. Nenhuma questão inválida salva.
+
+**Decisão:** não retentar R003 agora; não abrir hotfix; não alterar prompt/validador. Caso C (falha pontual) — segue para o próximo recorte.
+
+**`SA_2026_2_Q4` continua livre.**
+
+**Nota:** confirma que `Grounding: sim` **não é suficiente por si só** — mesmo com a diretriz `dm` carregada, o tema (metas glicêmicas, perfil cardiorrenal) convida a IA a citar valores (metas de HbA1c, TFG, faixas de risco) mais granulares do que os `pontosCriticos` atualmente injetados cobrem. **4 falhas consecutivas em produção (R002, R024, R019, R003)** compartilham o mesmo padrão raiz: qualquer conteúdo clínico que admita precisão quantitativa — mesmo categórico na intenção, mesmo com grounding disponível — arrisca introduzir um número não coberto. Critério reforçado: a partir de agora, priorizar recortes **comportamentais/comunicacionais/éticos**, sem nenhum parâmetro clínico quantificável (nem "dado do caso", nem "coberto por diretriz"), sobre qualquer recorte com conteúdo clínico numérico, mesmo grounded.
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R010 — Comunicação de más notícias / conduta diante de erro médico
+
+**Matéria:** Medicina Legal e Ética Médica.
+
+**Tema:** Comunicação de más notícias e conduta diante de erro médico.
+
+**Texto exato para colar no RoboGerador:**
+```
+Comunicação de más notícias e conduta diante de erro médico
+```
+
+**Decisão / Armadilha (Mapa Mestre):** **não disponível para reprodução fiel neste registro.** Diferente dos 12 recortes do Lote 003 (R041/R034/R002/R003/R015/R019/R021/R024/R025/R029/R030/R038), cujo `recorte`/`decisão`/`armadilha` foram reproduzidos na íntegra de `recortes_100_condensado.json`/`auditoria_100_final.json` nesta mesma sessão de trabalho, R010 só está presente na tabela-resumo (seção 4) deste documento, com apenas a coluna Tema/Recorte preenchida — sem `decisão`/`armadilha` extraídas do Mapa Mestre original, que não está disponível neste repositório. Não fabricado. Se o usuário tiver acesso a `recortes_100_condensado.json`, recomenda-se colar aqui a decisão/armadilha oficial antes ou depois da geração, só para registro — **não é necessário para a geração em si**, já que o RoboGerador recebe apenas o texto do tema, não os campos decisão/armadilha (usados só para curadoria/documentação humana).
+
+**Grounding obrigatório:** NÃO. **Grounding disponível/auto-injetável:** NÃO.
+
+**Prioridade:** ALTO.
+
+**Motivo da escolha:** após 4 falhas consecutivas por conteúdo numérico (mesmo em recortes categóricos e/ou grounded), este é o primeiro recorte ALTO/LIBERADO/PENDENTE **inteiramente comunicacional/ético**, sem nenhum parâmetro clínico quantificável em jogo (não há dose, escore, corte, meta glicêmica, intervalo de seguimento ou índice laboratorial envolvido) — o conteúdo é sobre *como/quando comunicar*, não *o que prescrever/calcular*. Diversifica para Medicina Legal e Ética Médica, matéria ainda não tentada nesta rodada. Ressalva: já havia sido tentado uma vez em sessão anterior a esta rodada oficial e bloqueado por "afirmação absoluta" — mas esse é exatamente o modo de falha que o fallback Haiku→Haiku→Opus com REGRA SA-4 já demonstrou saber contornar (ex.: R021/`SA_2026_2_Q2`, aprovada no Opus após 2 rejeições por termo absoluto).
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q4` se aprovado, já que R003 não consumiu nenhum número).
 
 ---
 
