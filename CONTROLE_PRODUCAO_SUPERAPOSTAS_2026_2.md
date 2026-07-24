@@ -200,7 +200,46 @@ Transtorno do Espectro Autista — sinais de alerta precoces e conduta de encami
 
 **Motivo da escolha:** aplicando o aprendizado de R024 — este é um recorte puramente comportamental/de reconhecimento de padrão (sinais de alerta do desenvolvimento), sem nenhuma dose, intervalo, protocolo terapêutico ou fonte normativa a citar — decisão é sobre *quando encaminhar*, não sobre *o que prescrever*. Avaliadas alternativas (R019 Epidemiologia — envolve raciocínio numérico/estatístico; R025 Gravidez ectópica — critérios de elegibilidade para MTX podem induzir dose/limiar; R029 TVP/Escore de Wells — sistema de pontuação numérico); R030 tem o menor risco de indução de precisão não sustentada entre os candidatos LIBERADO/ALTO/PENDENTE disponíveis. Diversifica matéria de volta para Pediatria (já usada em R021, mas ainda assim mais segura que reintroduzir Clínica Médica logo após a falha de R002/R024-adjacente).
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q3` se aprovado, já que R024 não consumiu o número).
+**Status:** ✅ **PRODUÇÃO OFICIAL — APROVADA — CONTA PARA AS 120.**
+
+### R030 — encerramento (2026-07-24)
+
+**Questão:** `SA_2026_2_Q3` — **APROVADA E SALVA**.
+- Modelos: Haiku → Haiku → Opus. Chamadas: 3. Retry: SIM.
+- Tentativa 1 (Haiku): rejeitada — pista estrutural + ano/fonte de diretriz inventados sem grounding.
+- Tentativa 2 (Haiku): rejeitada — `gabarito` undefined + `dicaMestre` ausente (falha de completude de schema, não de conteúdo).
+- Tentativa 3 (Opus, fallback): **APROVADA**.
+
+**Resumo do Tema:** `Transtorno do espectro autista--pediátrico` — **REAPROVEITADO** do Firestore (já existia, não precisou gerar novo).
+
+**Status para as 120:** `QUESTÃO APROVADA / RESUMO REAPROVEITADO` — **CONTA**. Verificação visual de PASS E2E (Q3 e resumo abrindo normalmente) pendente de confirmação do usuário — marcar quando confirmado.
+
+Não retentado, nenhum código alterado, nenhum deploy.
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R019 — Epidemiologia
+
+**Matéria:** Preventiva.
+
+**Tema:** Epidemiologia — cálculo e interpretação de sensibilidade, especificidade e valor preditivo.
+
+**Texto exato para colar no RoboGerador:**
+```
+Epidemiologia — cálculo e interpretação de sensibilidade, especificidade e valor preditivo
+```
+
+**Decisão (Mapa Mestre):** Interpretar VPP/VPN considerando a prevalência da doença na população testada, não só a acurácia do teste.
+
+**Armadilha (Mapa Mestre):** Aplicar VPP calculado em uma prevalência diferente da população do enunciado.
+
+**Grounding obrigatório:** NÃO. **Grounding disponível/auto-injetável:** NÃO.
+
+**Prioridade:** ALTO.
+
+**Motivo da escolha:** aplicando o aprendizado de R024 — os números deste recorte são **dados do próprio caso clínico** (sensibilidade/especificidade/prevalência fornecidos no enunciado para o raciocínio bayesiano), não citações de protocolo/posologia externa — perfil de "números reutilizados do caso", já validado como seguro pela engine, diferente do padrão que derrubou R002/R024 (números de fonte normativa não injetada). Descartados: R003 e R015 (grounding disponível mas ainda centrados em dose/esquema terapêutico — risco residual); R025 (critérios de elegibilidade para MTX podem induzir limiar não sustentado); R029 (Escore de Wells — pontuação numérica explícita); R038 (índices hematimétricos — valores de referência numéricos); R010 (qualitativo e sem risco numérico, mas o texto exato do recorte no Mapa Mestre — `recortes_100_condensado.json`/`auditoria_100_final.json` — não está disponível neste repositório para reprodução fiel; não inventar decisão/armadilha). Diversifica matéria para Preventiva, ainda não tentada nesta rodada oficial (R041 foi excluído previamente por outro motivo, não é uma tentativa formal de produção).
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q4` se aprovado, já que R024 não consumiu nenhum número).
 
 ---
 
