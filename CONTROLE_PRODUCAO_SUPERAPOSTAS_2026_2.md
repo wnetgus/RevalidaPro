@@ -15,28 +15,56 @@ Texto de cada recorte reproduzido **na íntegra** de `recortes_100_condensado.js
 
 ### VALIDAÇÃO REAL (2 primeiros — critério de homologação E2E, ver seção 5 abaixo)
 
-**1. R041 — Preventiva — Infecção por HIV**
+**1. R041 — Preventiva — Infecção por HIV** — ⛔ **REVISÃO HUMANA — GROUNDING INSUFICIENTE** (retirado da fila automática, ver seção abaixo)
 - **Recorte:** Indicação de PrEP e PEP conforme protocolo atual
 - **Decisão:** Indicar PrEP por critério de vulnerabilidade/exposição contínua e PEP dentro da janela de 72h pós-exposição de risco
 - **Armadilha:** Negar PEP por já terem se passado algumas horas, sem checar se ainda está dentro da janela de 72h
 - **Grounding:** sim (diretriz `hiv`) · **Prioridade:** ALTO
-- **Status:** PENDENTE — AGUARDANDO GERAÇÃO NO PAINEL *(já validado via chamada direta à função publicada nesta calibração — Opus, 3 chamadas, resumo 7/7 aprovado — mas NÃO gravado no Firestore ainda)*
 
-**2. R034 — Cirurgia — Hérnia**
+#### R041 — encerramento da tentativa (2026-07-23)
+
+**Status:** `REVISÃO HUMANA — GROUNDING INSUFICIENTE`. **Não conta como questão produzida das 120.**
+
+- Duas execuções reais recentes no RoboGerador DEV bloquearam corretamente por números de seguimento/janela temporal (última: "semana 0"/"semana 12"; anterior: "12" de "12 semanas") ausentes do grounding controlado `hiv` atualmente injetado.
+- O hotfix de falso positivo de números do próprio caso (reuso de dado do enunciado, ex. "36h") foi validado e está funcionando — não é a causa deste bloqueio.
+- O bloqueio residual é **legítimo**: a fonte controlada `hiv` (`src/config/diretrizesControladas.js`) não tem, nos `pontosCriticos` atuais, os marcos de seguimento sorológico pós-PEP/PrEP (ex. "semana 0", "semana 12" ou equivalente) que o tema naturalmente demanda.
+- Última tentativa real: **ID previsto `SA_2026_2_Q24`**, 1 chamada Haiku, 0 questão salva, nenhum Opus desperdiçado (bloqueio parou a cadeia antes de escalar, conforme o teto único de 3 chamadas). Também houve rejeição independente por REGRA SA-1 (alternativa correta destacada em 2 eixos: comprimento e composição/múltiplas cláusulas) — trava intacta, não é o foco deste registro.
+- **`SA_2026_2_Q24` NÃO foi consumido** — nenhuma escrita ocorreu no Firestore para este ID; ele permanece livre e será o próximo número sequencial real na próxima questão efetivamente salva (a numeração é derivada do maior `numeroQuestao` existente em `questoes`, não reservada antecipadamente).
+- **Próximo passo (não executado agora):** enriquecer `pontosCriticos` da diretriz `hiv` com os marcos de seguimento pós-exposição (auditoria documental própria, fonte oficial) antes de nova tentativa. Até lá, **não retentar R041 automaticamente**.
+- **Substituição:** R041 sai temporariamente da fila ativa de produção. Um recorte substituto (LIBERADO, não usado) pode ser selecionado depois, sem travar a produção dos demais 10 recortes deste lote — substituição específica ainda não escolhida nesta atualização.
+
+**2. R034 — Cirurgia — Hérnia** — ✅ **QUESTÃO APROVADA** (resumo em revisão, ver abaixo)
 - **Recorte:** Hérnia da parede abdominal — diferenciação encarcerada vs. estrangulada e conduta
 - **Decisão:** Indicar cirurgia de urgência na hérnia estrangulada (sinais de sofrimento vascular/sistêmicos), tentar redução manual só na encarcerada sem esses sinais
 - **Armadilha:** Tentar redução manual de hérnia com sinais de estrangulamento (dor intensa, eritema, sinais sistêmicos)
 - **Grounding:** não · **Prioridade:** ALTO
-- **Status:** PENDENTE — AGUARDANDO GERAÇÃO NO PAINEL *(já validado via chamada direta à função publicada nesta calibração — Haiku, 1 chamada, resumo 6/7 aprovado — mas NÃO gravado no Firestore ainda)*
+
+#### R034 — encerramento da tentativa (2026-07-24)
+
+**Questão:** `SA_2026_2_Q24` — **APROVADA E SALVA**. Modelo: Haiku. Chamadas da questão: 1 (sem retry, sem Opus). Estratégia da Aposta disponível.
+
+**Resumo do Tema** (`Hérnia da parede abdominal--idoso`): **REJEITADO após 2 tentativas Haiku** (teto do retry corrigível respeitado — nunca uma 3ª chamada, nunca Opus).
+- Tentativa 1: rejeitada — termo absoluto ("sempre"/"nunca") sem diretriz controlada injetada (SA-4). Retry corretivo 1/1 acionado com feedback específico.
+- Tentativa 2: rejeitada — número(s) clínico(s) (1, 2, 3, 4) sem diretriz controlada injetada (SA-4) — a tentativa 2 corrigiu a linguagem absoluta, mas introduziu números novos não cobertos pelas regras atuais de marcador de lista.
+- Resumo **não foi salvo** (candidata rejeitada nunca é persistida) — fica **PENDENTE/REVISÃO**, para lote de revisão separado. Não foi aberto novo hotfix para este caso pontual (decisão explícita — ver seção "Regra operacional oficial" abaixo).
+
+**Status para as 120:** `SA_2026_2_Q24` **CONTA COMO CANDIDATA VÁLIDA** — questão aprovada não é bloqueada por resumo em revisão.
 
 ### PRODUÇÃO (10 recortes seguintes — só iniciar após critério da seção 5 confirmado)
 
-**3. R002 — Clínica Médica — Hipertensão arterial sistêmica**
+**3. R002 — Clínica Médica — Hipertensão arterial sistêmica** — ✅ **QUESTÃO APROVADA** (resumo em revisão, ver abaixo)
 - **Recorte:** Crise hipertensiva — diferenciação urgência vs. emergência e conduta imediata
 - **Decisão:** Definir se há lesão de órgão-alvo aguda; só então indicar redução rápida de PA
 - **Armadilha:** Tratar toda PA muito elevada como emergência, reduzindo rápido demais sem sinal de lesão de órgão-alvo
-- **Grounding:** não (fonte controlada existe para o tema, mas este recorte específico não exige) · **Prioridade:** ALTO
-- **Status:** PENDENTE — AGUARDANDO GERAÇÃO NO PAINEL
+- **Grounding obrigatório:** não (`exige_grounding: false` no Mapa Mestre) · **Grounding disponível/auto-injetado:** sim (diretriz `has`, matching por tema) · **Prioridade:** ALTO
+
+#### R002 — encerramento da tentativa (2026-07-24)
+
+**Questão:** `SA_2026_2_Q25` — **APROVADA E SALVA**. Modelo: Haiku. Chamadas: 1. Retry: não.
+
+**Resumo do Tema** (`Hipertensão arterial sistêmica--emergência`): **REJEITADO POR GROUNDING** — rejeitado por introduzir números clínicos não presentes no grounding (180, 190, 110, 95). Não foi salvo (candidata rejeitada nunca é persistida). Fica **PENDENTE/REVISÃO**, para lote de revisão separado. Nenhum código/prompt/hotfix alterado por causa deste caso pontual.
+
+**Status para as 120:** `SA_2026_2_Q25` **CONTA COMO CANDIDATA VÁLIDA** — questão aprovada não é bloqueada por resumo em revisão (regra operacional oficial, Caso B).
 
 **4. R003 — Clínica Médica — Diabetes mellitus**
 - **Recorte:** DM tipo 2 — metas glicêmicas e escolha de 2ª droga além da metformina por perfil cardiorrenal
@@ -101,9 +129,21 @@ Texto de cada recorte reproduzido **na íntegra** de `recortes_100_condensado.js
 - **Grounding:** não · **Prioridade:** ALTO
 - **Status:** PENDENTE — AGUARDANDO GERAÇÃO NO PAINEL
 
-### Critério dos dois primeiros (R041, R034)
+### Critério dos dois primeiros (R041, R034) — ENCERRADO (2026-07-24)
 
-Se ambos forem gravados no Firestore, abrirem corretamente no painel, exibirem Estratégia da Aposta e Resumo do Tema, e estiverem pedagogicamente adequados → marcar **PIPELINE E2E REAL — HOMOLOGADO** e seguir imediatamente para os 10 restantes, sem nova discussão de arquitetura. Se um dos dois falhar, registrar o erro concreto e interromper **só aquele recorte** — não congelar o lote inteiro por problema de conteúdo isolado.
+Resultado: **R041** → `REVISÃO HUMANA — GROUNDING INSUFICIENTE`, não conta para as 120 neste momento. **R034** → `QUESTÃO APROVADA` (`SA_2026_2_Q24`), resumo em revisão, conta como candidata válida. Nenhum dos dois foi um bloqueio sistêmico do pipeline (grounding insuficiente de R041 é problema de fonte de UM tema; resumo de R034 é candidata pontual corrigível em lote futuro) — critério de homologação considerado satisfeito para liberar a produção dos 10 recortes restantes deste lote, sem nova discussão de arquitetura.
+
+### Regra operacional oficial (vigente a partir de 2026-07-24)
+
+Fase de hotfixes da engine SA encerrada. A partir de agora:
+- **Não reabrir arquitetura** por falha pontual de conteúdo de um recorte específico; não criar novos hotfixes automáticos; não mexer em retry/grounding/resumo/estratégia/validadores sem bug crítico **sistêmico** comprovado (afeta múltiplos recortes, não um caso isolado).
+- **Resumo rejeitado NÃO bloqueia questão aprovada.** Questão aprovada conta para as 120 mesmo com resumo em `PENDENTE/REVISÃO`.
+- Produção continua exclusivamente em `revalidapro-dev`.
+- Decisão por recorte (não interromper o lote inteiro por um único item):
+  - **Caso A** — questão aprovada + resumo aprovado → `APROVADO COMPLETO`, seguir.
+  - **Caso B** — questão aprovada + resumo rejeitado → `QUESTÃO APROVADA / RESUMO EM REVISÃO`, seguir.
+  - **Caso C** — questão rejeitada por problema pontual de geração → `REVISAR`/`REJEITADO`, seguir para o próximo recorte.
+  - **Caso D** — grounding estruturalmente insuficiente → `REVISÃO HUMANA — GROUNDING`, seguir.
 
 ### Dados a coletar por recorte (preencher aqui após cada geração real)
 
@@ -127,12 +167,14 @@ R005, R033, R048, R049, R051, R052, R055, R065
 
 Adicional (achado nesta calibração, fora dos 8 originais): **R016** (Sífilis congênita) — tentado 2x em produção, falhou por grounding numérico insuficiente (seguimento sorológico do RN). Já registrado em `src/config/recortesStatusSA.js` como `REVISAO_HUMANA`.
 
+Adicional (2026-07-23): **R041** (HIV — PrEP/PEP) — tentado 2x em produção (a mais recente, ID previsto `SA_2026_2_Q24`, não consumido), falhou por grounding numérico insuficiente (marcos de seguimento pós-exposição, "semana 0"/"semana 12", ausentes de `pontosCriticos`). Detalhamento completo na seção Lote 003. **Não registrado ainda em `src/config/recortesStatusSA.js`** — essa é uma alteração de código, fora do escopo desta atualização (só documentação).
+
 ## 4. Tabela completa R001–R120
 
 | ID | Matéria | Tema/Recorte | Prioridade | Grounding | Status Recorte | Questão | Modelo | Resumo | Obs. |
 |---|---|---|---|---|---|---|---|---|---|
 | R001 | Clínica Médica | Hipertensão arterial sistêmica: Diagnóstico por MRPA/MAPA e estratificação de risco cardiovascular par | ALTO | sim | LIBERADO | SA_2026_2_Q12 | opus | verificar | alto risco → revisão Opus |
-| R002 | Clínica Médica | Hipertensão arterial sistêmica: Crise hipertensiva — diferenciação urgência vs. emergência e conduta i | ALTO | não | LIBERADO | - | - | PENDENTE |  |
+| R002 | Clínica Médica | Hipertensão arterial sistêmica: Crise hipertensiva — diferenciação urgência vs. emergência e conduta i | ALTO | não | LIBERADO | SA_2026_2_Q25 | haiku | **REVISÃO** | Questão APROVADA (1 chamada Haiku, sem retry). Resumo rejeitado por grounding — números 180/190/110/95 não presentes na fonte. Conta como candidata válida para as 120. |
 | R003 | Clínica Médica | Diabetes mellitus: DM tipo 2 — metas glicêmicas e escolha de 2ª droga além da metformina  | ALTO | sim | LIBERADO | - | - | PENDENTE |  |
 | R004 | Ginecologia e Obstetrícia | Diabetes mellitus: Diabetes gestacional — rastreio por TOTG e manejo inicial não farmacol | ALTO | sim | LIBERADO | SA_2026_2_Q13 | opus | verificar |  |
 | R005 | Clínica Médica | Tuberculose: Diagnóstico (baciloscopia/GeneXpert) e esquema RIPE, sinais de falênci | ALTO | sim | REVISAO_HUMANA | - | - | PENDENTE |  |
@@ -164,14 +206,14 @@ Adicional (achado nesta calibração, fora dos 8 originais): **R016** (Sífilis 
 | R031 | Clínica Médica | DII: Diferenciação Crohn vs. retocolite ulcerativa e manejo do surto | ALTO | não | LIBERADO | - | - | PENDENTE |  |
 | R032 | Preventiva | Imunização: Calendário nacional de vacinação e principais contraindicações | ALTO | sim | LIBERADO | SA_2026_2_Q19 | opus | verificar |  |
 | R033 | Preventiva | Imunização: Situações especiais — imunossuprimidos, gestantes, viajantes | ALTO | sim | REVISAO_HUMANA | - | - | PENDENTE |  |
-| R034 | Cirurgia | Hérnia: Hérnia da parede abdominal — encarcerada vs. estrangulada | ALTO | não | LIBERADO | - | - | **VALIDADO (não salvo)** | validado nesta sessão (Haiku, 1 chamada, resumo 6/7 aprovado) — pronto para rodar no painel |
+| R034 | Cirurgia | Hérnia: Hérnia da parede abdominal — encarcerada vs. estrangulada | ALTO | não | LIBERADO | SA_2026_2_Q24 | haiku | **REVISÃO** | Questão APROVADA (1 chamada Haiku, sem retry). Resumo rejeitado após 2 tentativas Haiku (retry corretivo usado) — pendente revisão em lote separado. Conta como candidata válida para as 120. |
 | R035 | Clínica Médica | Distúrbios hidroeletrolíticos: Reconhecimento e correção de hipercalemia grave | ALTO | não | LIBERADO | - | - | PENDENTE |  |
 | R036 | Ginecologia e Obstetrícia | Distocia de ombro: Manobras sequenciais e fator de risco | ALTO | não | LIBERADO | - | - | PENDENTE |  |
 | R037 | Ginecologia e Obstetrícia | Endometriose: Suspeita clínica e abordagem escalonada | ALTO | não | LIBERADO | - | - | PENDENTE |  |
 | R038 | Pediatria | Anemia: Diagnóstico diferencial por índices hematimétricos | ALTO | não | LIBERADO | - | - | PENDENTE |  |
 | R039 | Clínica Médica | DRGE: Critérios de alarme e indicação de IBP vs. endoscopia | ALTO | não | LIBERADO | - | - | PENDENTE |  |
 | R040 | Geriatria | Osteoporose: Indicação de rastreio (densitometria) e início de tratamento | ALTO | sim | BLOQUEADO | - | - | PENDENTE |  |
-| R041 | Preventiva | HIV: Indicação de PrEP e PEP conforme protocolo atual | ALTO | sim | LIBERADO | - | - | **VALIDADO (não salvo)** | validado nesta sessão (Opus, 3 chamadas, resumo 7/7 aprovado) — pronto para rodar no painel |
+| R041 | Preventiva | HIV: Indicação de PrEP e PEP conforme protocolo atual | ALTO | sim | **REVISAO_HUMANA** | - | - | PENDENTE | **GROUNDING INSUFICIENTE** — 2 execuções reais bloquearam por marcos de seguimento (semana 0/12) ausentes de `pontosCriticos` (hiv); não conta para as 120; ver detalhamento na seção Lote 003 |
 | R042 | Ginecologia e Obstetrícia | HIV na gestação: TARV e prevenção de transmissão vertical | ALTO | sim | LIBERADO | - | - | PENDENTE |  |
 | R043 | Clínica Médica | Tuberculose: Tratamento da ILTB e populações prioritárias | ALTO | sim | LIBERADO | - | - | PENDENTE |  |
 | R044 | Clínica Médica | Sepse: Pacote da 1ª hora (Surviving Sepsis) e metas de ressuscitação | ALTO | sim | LIBERADO | - | - | PENDENTE |  |
@@ -288,7 +330,7 @@ Critério: categoria LIBERADO (1 ou 2), prioridade ALTO, `PENDENTE` (nunca tenta
 | R030 | Pediatria | TEA — sinais de alerta precoces e encaminhamento | não | ALTO |
 | R038 | Pediatria | Anemia — diagnóstico diferencial por índices hematimétricos | não | ALTO |
 
-Também prontos (validados nesta sessão, ainda não salvos): **R041** (HIV PrEP/PEP) e **R034** (Hérnia).
+Atualização (2026-07-24): **R002** e **R034** já foram gerados, aprovados e salvos (`SA_2026_2_Q25` e `SA_2026_2_Q24` — ver seção Lote 003 e tabela mestre). **R041** permanece REVISÃO HUMANA — GROUNDING INSUFICIENTE, não conta para as 120.
 
 ## 8. Como manter este arquivo atualizado
 
