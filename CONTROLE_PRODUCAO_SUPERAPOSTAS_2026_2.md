@@ -81,7 +81,52 @@ Auditoria pós-promoção encontrou uma lacuna: `StorageImage.jsx` (usado por `S
 
 Critério de escolha: LIBERADO, prioridade ALTO, não bloqueado, não revisão humana, sem dependência de precisão numérica (`Grounding: não` — evita exatamente o modo de falha de R002), já validado tecnicamente no DEV em 1 chamada Haiku sem retry (`SA_2026_2_Q24`, ver seção Lote 003).
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q1` se aprovado, já que R002 não consumiu o número).
+**Status:** ✅ **PRODUÇÃO OFICIAL — APROVADA E2E — CONTA PARA AS 120.**
+
+### Homologação E2E — `SA_2026_2_Q1` / R034 (2026-07-24)
+
+Confirmação manual do usuário no RevalidaPRO real (`revalidapro-f812e`): questão presente normalmente, alternativas renderizadas, fluxo de resposta funcionando, feedback/explicações funcionando, cards pedagógicos funcionando, Estratégia da Aposta funcionando, botão "Ver Resumo do Tema" funcionando, Resumo do Tema abriu com conteúdo. **PASS E2E completo.**
+
+**PIPELINE E2E DE PRODUÇÃO SUPER APOSTAS 2026.2 = HOMOLOGADO.**
+
+**Decisões vigentes a partir de agora:**
+- R002 permanece `REVISÃO` (falha pontual) — não retentar agora.
+- R041 permanece `REVISÃO HUMANA` (grounding insuficiente) — não retentar agora.
+- **Fase de engenharia/hotfix encerrada.** Não alterar prompt, validador, retry, `resumoEngine` ou `RoboGerador` por falhas pontuais de geração.
+- Regra operacional daqui em diante: falha isolada de um recorte → registrar → pular → próximo. Só reabrir engenharia diante de evidência de bug **sistêmico/repetitivo** (afeta múltiplos recortes, não um caso isolado).
+
+---
+
+## BACKLOG DE PRODUTO — FUTURO (NÃO IMPLEMENTAR AGORA)
+
+### "Conduta Prática / Na Prática, o Que Você Faria?"
+
+**Objetivo:** quando houver grounding documental confiável para o tema, permitir que o conteúdo pedagógico apresente de forma curta e útil: medicamento de escolha, dose, via, intervalo, duração, monitorização, critérios de internação/encaminhamento quando pertinentes.
+
+**Regra absoluta:** nenhuma dose, duração, intervalo, limiar ou precisão normativa poderá ser inventada. Só exibir precisão quando sustentada por diretriz controlada (`diretrizesControladas.js` ou equivalente). Sem grounding suficiente, manter conduta qualitativa (sem números).
+
+**Status:** registrado para fase futura. Não implementar agora — não interrompe a produção das 120.
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R021 — Reanimação neonatal
+
+**Matéria:** Pediatria.
+
+**Critério de escolha:** LIBERADO, prioridade ALTO, ainda `PENDENTE`, diferente de R002/R041, não duplica R034, `Grounding: não` (mesmo perfil de baixo risco numérico que funcionou em R034 — decisão puramente sequencial/procedural, sem limiar/dose a citar), diversifica matéria (R034 foi Cirurgia; R021 é Pediatria).
+
+**Texto exato para colar no RoboGerador:**
+```
+Reanimação neonatal — sequência da sala de parto
+```
+
+**Decisão (Mapa Mestre):** Seguir a sequência (secar/aquecer → avaliar FC/respiração → VPP) antes de escalonar para massagem/adrenalina.
+
+**Armadilha (Mapa Mestre):** Iniciar compressão torácica antes de otimizar a ventilação com pressão positiva.
+
+**Grounding obrigatório:** NÃO. **Grounding disponível/auto-injetável:** NÃO (recorte não depende de diretriz controlada específica).
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO`.
 
 ---
 
