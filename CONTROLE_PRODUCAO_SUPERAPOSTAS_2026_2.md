@@ -491,7 +491,34 @@ Gravidez ectópica — diagnóstico precoce e decisão cirúrgica vs. expectante
 
 **Motivo da escolha:** todas as 5 áreas já têm 1+ sucesso; entre as opções com fonte sourced disponível nesta sessão, restam apenas R025 (GO, 1 sucesso) e R038 (Pediatria, 2 sucessos) — R025 favorece melhor o equilíbrio progressivo (evita concentrar ainda mais em Pediatria). Estrutura de decisão é sequencial/categórica (avaliar estabilidade → escolher conduta), no mesmo perfil que acabou de funcionar em R029 apesar da tentação de citar critérios numéricos (beta-hCG, tamanho do saco gestacional) — risco residual reconhecido e não eliminado.
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q7` se aprovado, já que Q1–Q6 já foram consumidos).
+**Status:** ✅ **PRODUÇÃO OFICIAL — APROVADA — CONTA PARA AS 120** (resumo em revisão, ver abaixo).
+
+### R025 — encerramento (2026-07-24)
+
+**Questão:** `SA_2026_2_Q7` — **APROVADA E SALVA**.
+- Tentativa 1 (Haiku): rejeitada — distrator curto + número 48 não suportado.
+- Tentativa 2 (Haiku): rejeitada — números 48, 72 e 5.000 não suportados.
+- Tentativa 3 (Opus, fallback): **APROVADA**.
+
+**Resumo do Tema** (`Gravidez ectópica--gestante`): **REJEITADO** — números 48, 50, 5000, 1000, 1500, 3.5 e 5 não sustentados pelo grounding injetado. Não salvo — **REVISÃO**. Não invalida a questão.
+
+**Status para as 120:** `QUESTÃO APROVADA / RESUMO REJEITADO-REVISÃO` — **CONTA** (Caso B). Não retentado, nenhum hotfix, nenhum validador alterado.
+
+## CONTAGEM ATUAL — QUESTÕES OFICIAIS VÁLIDAS PARA AS 120 (atualizada)
+
+| # | ID | Recorte | Área operacional | Status |
+|---|---|---|---|---|
+| 1 | `SA_2026_2_Q1` | R034 | Cirurgia | CONTA — PASS E2E |
+| 2 | `SA_2026_2_Q2` | R021 | Pediatria | CONTA (resumo pendente/revisão) |
+| 3 | `SA_2026_2_Q3` | R030 | Pediatria | CONTA (resumo reaproveitado) |
+| 4 | `SA_2026_2_Q4` | R010 | Preventiva | CONTA — PASS E2E |
+| 5 | `SA_2026_2_Q5` | R015 | Ginecologia e Obstetrícia | CONTA — PASS E2E |
+| 6 | `SA_2026_2_Q6` | R029 | Clínica Médica | CONTA (resumo em revisão) |
+| 7 | `SA_2026_2_Q7` | R025 | Ginecologia e Obstetrícia | CONTA (resumo em revisão) |
+
+**Total confirmado: 7 de 120.** Não contam (falha pontual, IDs não consumidos): R002, R024, R019, R003. Excluído (revisão humana): R041.
+
+**Balanço por área até aqui:** Cirurgia 1 · Pediatria 2 · Preventiva 1 · Ginecologia e Obstetrícia 2 · Clínica Médica 1.
 
 ---
 
