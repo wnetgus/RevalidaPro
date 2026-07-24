@@ -152,13 +152,36 @@ exports.gerarQuestoesIA = functions
     }
 
     try {
-      const { system, prompt } = req.body;
+      const { system, prompt, model } = req.body;
       if (!prompt) {
         res.status(400).json({ erro: "O campo 'prompt' é obrigatório." });
         return;
       }
 
-      // ── CHAMADA À ANTHROPIC — usa fetch nativo do Node 20 ─────────────────
+      // Benchmark controlado (Fase 3 Super Apostas 2026.2): permite escolher
+      // explicitamente o modelo, restrito a um allowlist — nunca repassa string
+      // arbitrária do cliente para a API da Anthropic. Sem "model" no body,
+      // comportamento é IDÊNTICO ao de sempre (Haiku) — nenhum chamador
+      // existente (RoboGerador/ImportadorPro/ResumoGerador) é afetado.
+      const MODELOS_PERMITIDOS = ["claude-haiku-4-5-20251001", "claude-opus-4-8"];
+      const modeloEscolhido = MODELOS_PERMITIDOS.includes(model) ? model : "claude-haiku-4-5-20251001";
+
+      // ── PROMPT CACHING (auditoria de custo Super Apostas 2026.2) ──────────
+      // O "system" de todo chamador deste endpoint (PROMPT_SISTEMA_ROBO,
+      // PROMPT_SISTEMA_SUPERAPOSTAS_ABCD, PROMPT_SISTEMA_IMPORTADOR,
+      // PROMPT_SISTEMA_RESUMO/_SA) é 100% fixo — tema/diretriz/feedback
+      // sempre entram no "prompt" (user), nunca no "system". Isso o torna
+      // seguro para cache_control em toda a extensão, sem risco de cachear
+      // conteúdo variável por engano.
+      // cache_control em bloco "system" é recurso estável da Messages API
+      // (sem beta header) na anthropic-version usada aqui (2023-06-01) — não
+      // depende de SDK (esta function usa fetch bruto, não o SDK Anthropic).
+      // Efeito: 1ª chamada da sessão paga escrita de cache (~1.25x); toda
+      // chamada seguinte com o MESMO system (mesmo formato, mesmo modelo)
+      // lê do cache a ~0.1x do preço — inclusive entre temas diferentes do
+      // mesmo lote, já que o "system" não muda por tema.
+      // Cache é por modelo: troca Haiku→Opus dentro do fallback não reaproveita
+      // a escrita feita em Haiku (each cria/lê sua própria entrada).
       const anthropicRes = await globalThis.fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -167,9 +190,11 @@ exports.gerarQuestoesIA = functions
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model:      "claude-haiku-4-5-20251001",
+          model:      modeloEscolhido,
           max_tokens: 8192, // aumentado de 4096 — 3 questões completas precisam de ~5000-6000 tokens
-          system:     system || "",
+          system:     system
+            ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
+            : "",
           messages:   [{ role: "user", content: prompt }],
         }),
       });
