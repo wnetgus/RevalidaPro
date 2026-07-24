@@ -126,6 +126,42 @@ Reanimação neonatal — sequência da sala de parto
 
 **Grounding obrigatório:** NÃO. **Grounding disponível/auto-injetável:** NÃO (recorte não depende de diretriz controlada específica).
 
+**Status:** ✅ **PRODUÇÃO OFICIAL — APROVADA — CONTA PARA AS 120** (resumo em revisão, ver abaixo).
+
+### R021 — encerramento (2026-07-24)
+
+**Questão:** `SA_2026_2_Q2` — **APROVADA E SALVA**.
+- Modelos: Haiku → Haiku → Opus. Chamadas: 3. Retry: SIM.
+- Tentativa 1 (Haiku): rejeitada — termo absoluto sem grounding + ano/fonte de diretriz inventados sem diretriz controlada.
+- Tentativa 2 (Haiku): rejeitada — pista estrutural da alternativa correta (REGRA SA-1).
+- Tentativa 3 (Opus, fallback): **APROVADA**.
+- Confirmado visualmente: questão abre normalmente, alternativas/fluxo de resposta funcionam, cards pedagógicos funcionam.
+
+**Resumo do Tema:** NÃO DISPONÍVEL. Modal confirma: *"Resumo ainda não disponível" / "O resumo de Reanimação ainda não foi gerado."* Fica **PENDENTE/REVISÃO**, para lote de revisão separado — não bloqueia a questão.
+
+**Status para as 120:** `QUESTÃO APROVADA / RESUMO PENDENTE-REVISÃO` — **CONTA**. Não regenerado, resumo não gerado agora, nenhum hotfix aberto (falha pontual, mesma regra operacional de R034/R002).
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R024 — Hemorragia pós-parto
+
+**Matéria:** Ginecologia e Obstetrícia.
+
+**Critério de escolha:** LIBERADO, prioridade ALTO, ainda `PENDENTE`, não duplica R034/R021, evita R002/R041, `Grounding: não` (mesmo perfil de baixo risco numérico de R034/R021 — decisão sequencial/escalonada por causa identificada, sem dose/limiar a citar), diversifica matéria (usadas até aqui: Cirurgia, Pediatria; R024 introduz Ginecologia e Obstetrícia).
+
+**Texto exato para colar no RoboGerador:**
+```
+Hemorragia pós-parto — causas (4 Ts) e sequência de manejo escalonado
+```
+
+**Decisão (Mapa Mestre):** Seguir a sequência de manejo (massagem → uterotônicos → medidas cirúrgicas) conforme a causa identificada pelos 4 Ts.
+
+**Armadilha (Mapa Mestre):** Pular direto para histerectomia sem esgotar medidas conservadoras em causa reversível (tono/tecido).
+
+**Grounding obrigatório:** NÃO. **Grounding disponível/auto-injetável:** NÃO.
+
+**Prioridade:** ALTO.
+
 **Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO`.
 
 ---
