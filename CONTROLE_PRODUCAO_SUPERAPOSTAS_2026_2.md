@@ -62,6 +62,29 @@ Auditoria pós-promoção encontrou uma lacuna: `StorageImage.jsx` (usado por `S
 
 ---
 
+## PRIMEIRA GERAÇÃO REAL EM PRODUÇÃO (revalidapro-f812e) — 2026-07-24
+
+### R002 — Crise hipertensiva — urgência vs. emergência e conduta imediata
+
+**Status:** `REVISÃO / FALHOU NA GERAÇÃO EM PRODUÇÃO`. **`SA_2026_2_Q1` NÃO foi consumido — nenhum documento foi salvo.**
+
+- Tentativa 1 (Haiku): rejeitada — números 4, 180, 110 não suportados pelo grounding.
+- Tentativa 2 (Haiku): rejeitada — números 3, 4 não suportados pelo grounding.
+- Tentativa 3 (Opus, fallback): rejeitada — pista estrutural (alternativa correta mais longa e única com números/qualificadores, REGRA SA-1).
+- Teto de 3 chamadas respeitado; cache funcionou; fallback Haiku→Opus funcionou; nenhuma questão inválida foi salva.
+
+**Decisão:** não retentar R002 agora; não abrir hotfix; não alterar prompt/validador; não gerar manualmente. Falha tratada como **Caso C** (questão rejeitada por problema pontual de geração) da regra operacional oficial — segue para o próximo recorte, sem travar o lote.
+
+**`SA_2026_2_Q1` continua livre** — a numeração é derivada do maior `numeroQuestao` existente em `questoes` com `edicao == "2026_2"` (ainda zero documentos), não reservada antecipadamente.
+
+### Próximo recorte selecionado: R034 — Cirurgia — Hérnia da parede abdominal
+
+Critério de escolha: LIBERADO, prioridade ALTO, não bloqueado, não revisão humana, sem dependência de precisão numérica (`Grounding: não` — evita exatamente o modo de falha de R002), já validado tecnicamente no DEV em 1 chamada Haiku sem retry (`SA_2026_2_Q24`, ver seção Lote 003).
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q1` se aprovado, já que R002 não consumiu o número).
+
+---
+
 ## LOTE 003 — PRODUÇÃO OFICIAL CONTROLADA
 
 **Aberto em:** 2026-07-23. **Ambiente:** revalidapro-dev, exclusivamente pelo painel (`https://revalidapro-dev.web.app`) — RoboGerador com **Formato ABCD: LIGADO** e **Modo validação (1 questão por recorte): LIGADO**. Geração pelo Claude via script **não autorizada** para este lote — todos os 12 itens abaixo devem ser gerados pelo usuário, um recorte por vez, aguardando conclusão completa (questão + resumo) antes do próximo.
