@@ -7,6 +7,39 @@
 
 ---
 
+## PROMOÇÃO TÉCNICA PARA PRODUÇÃO — concluída em 2026-07-24
+
+**Ambiente promovido:** `revalidapro-f812e` (produção real, distinto de `revalidapro-dev`). Esta seção documenta apenas a promoção do **código** da engine SA 2026.2 — nenhuma questão oficial foi gerada em produção ainda.
+
+**Confirmações manuais que liberaram a promoção:**
+- Conta usada no painel ADM/RoboGerador de produção: `drweynesouza@gmail.com` (não `wnetgus@gmail.com`) — rules de produção já autorizavam essa conta em `questoes`/`teorias`/`resumos_temas`, então **nenhum deploy de Firestore Rules foi necessário**.
+- Firestore de produção, coleção `questoes`, `edicao == "2026_2"`: **zero documentos** confirmados manualmente no Firebase Console antes da promoção. **Primeira ID oficial esperada: `SA_2026_2_Q1`.**
+
+**Commits (branch `main`):**
+| Commit | Hash | Conteúdo |
+|---|---|---|
+| 1 | `7ed7cacad72e5c93bc6e8357a6f72015ec7335b2` | `feat(superapostas): add Super Apostas 2026.2 engine and UI` — 8 arquivos (promptEngine.js, resumoEngine.js, RoboGerador.jsx, recortesStatusSA.js, diretrizesControladas.js, Simulador.jsx, SimuladorFeedback.jsx, QuestionCard.jsx) |
+| 1b | `ddd40301b15131e45b6e36502232029728ed7a38` | `fix(simulador): add registrarAnalyticsCognitivo dependency required by Simulador.jsx` — dependência real descoberta durante o isolamento pré-deploy (Simulador.jsx já commitado chama essa função incondicionalmente) |
+| 2 | `146974d0903541ea5a81218db2290de74cf0b5e3` | `feat(functions): add model and prompt caching support to gerarQuestoesIA` — só a fatia SA de `functions/index.js` (hunk `model`/`MODELOS_PERMITIDOS`/`cache_control`), via patch cirúrgico equivalente a `git add -p` |
+
+**Isolamento do INEP:** `EMAILS_ADMIN`/`verificarAdmin`/`extrairProvaINEP` e o cabeçalho do arquivo ficaram fora do Commit 2 (confirmado por grep no índice staged antes do commit — zero ocorrências). Para o deploy da function, o restante não commitado de `functions/index.js` foi guardado via `git stash push -- functions/index.js` antes do `firebase deploy`, e restaurado logo depois — nenhum trabalho INEP foi perdido.
+
+**Testes pré-deploy:** `npm run lint` (sem erros novos — os 4 erros/1 warning nos 8 arquivos SA e os 10 erros em `functions/index.js` são todos pré-existentes, confirmados linha a linha contra o HEAD anterior); `npm run build:prod` PASS; bundle inspecionado — 0 ocorrências de `"DIAGNÓSTICO DEV"` e de `"revalidapro-dev"`, 0 resíduo de `IS_DEV_PROJECT`.
+
+**Deploy Function:** `firebase deploy --project revalidapro-f812e --only functions:gerarQuestoesIA` — sucesso, só essa function foi tocada.
+
+**Deploy Hosting:** o `dist/` da Etapa 5 incluía trabalho não-SA ainda não commitado (INEP/analytics/outras telas). Antes do deploy de Hosting, todo esse trabalho foi isolado via `git stash` (mantendo `StorageImage.jsx`, dependência real de import de `Simulador.jsx`/`QuestionCard.jsx`), o build foi refeito só com os 3 commits SA (`npx vite build --mode production`), o bundle isolado foi reinspecionado (mesmos 0 resíduos DEV), e só então `firebase deploy --project revalidapro-f812e --only hosting` rodou. Confirmado por smoke test: `index.html` em produção referencia exatamente o bundle desse build isolado (`assets/index-DTDlANy-.js`). Todo o trabalho não-SA foi restaurado ao working tree logo depois, sem perdas.
+
+**Firestore Rules:** não alteradas, não deployadas nesta promoção (Cenário A confirmado).
+
+**Smoke test sem navegador:** Hosting root `200`; `gerarQuestoesIA` responde CORS (`OPTIONS` → `204`), valida corretamente sem chamar a Anthropic (`POST` sem `prompt` → `400`), rejeita método errado (`GET` → `405`). **Verificação visual (login como admin, RoboGerador, numeração exibida, Simulador) não foi feita — requer navegador, não disponível nesta sessão.**
+
+**Nenhuma questão oficial foi gerada. Nenhuma chamada à API Anthropic foi feita.**
+
+**Status:** produção pronta para o smoke test visual do usuário e, em seguida, a primeira geração controlada de `SA_2026_2_Q1`.
+
+---
+
 ## LOTE 003 — PRODUÇÃO OFICIAL CONTROLADA
 
 **Aberto em:** 2026-07-23. **Ambiente:** revalidapro-dev, exclusivamente pelo painel (`https://revalidapro-dev.web.app`) — RoboGerador com **Formato ABCD: LIGADO** e **Modo validação (1 questão por recorte): LIGADO**. Geração pelo Claude via script **não autorizada** para este lote — todos os 12 itens abaixo devem ser gerados pelo usuário, um recorte por vez, aguardando conclusão completa (questão + resumo) antes do próximo.
