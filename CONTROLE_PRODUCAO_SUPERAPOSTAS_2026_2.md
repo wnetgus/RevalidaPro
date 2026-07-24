@@ -522,6 +522,68 @@ Gravidez ectópica — diagnóstico precoce e decisão cirúrgica vs. expectante
 
 ---
 
+## REGRA OPERACIONAL — LOTES DE 3 POR ÁREA (vigente a partir de 2026-07-24)
+
+**Auditoria de código confirmou:** a "Área" do RoboGerador é um único `<select>` capturado uma vez por execução (`areaAtual`, [RoboGerador.jsx:665](src/components/RoboGerador.jsx#L665)) e aplicada sem alteração a **todas** as linhas da textarea, tanto no prompt quanto no campo `materia` gravado no Firestore ([linha 405](src/components/RoboGerador.jsx#L405)). Não há inferência por IA nem por linha. **Logo: uma execução só pode conter recortes da MESMA área operacional.**
+
+Fluxo adotado a partir de agora: **3 recortes distintos da mesma grande área, 1 questão por recorte, Modo Validação LIGADO** (não usar "3 questões/tema"). Alternar progressivamente entre as 5 áreas para preservar equilíbrio: Lote Clínica → Lote Pediatria → Lote GO → Lote Cirurgia → Lote Preventiva etc.
+
+## LOTE 1 — CLÍNICA MÉDICA (Q8–Q10) — 2026-07-24
+
+| Recorte | ID | Tentativas | Resultado | Resumo |
+|---|---|---|---|---|
+| R035 — Hipercalemia grave | `SA_2026_2_Q8` | Haiku (linguagem absoluta) → Haiku **APROVADA** | 2 chamadas | `Hipercalemia--idoso` salvo, 7 blocos |
+| R039 — DRGE, critérios de alarme | `SA_2026_2_Q9` | Haiku (erro JSON) → Haiku (pista estrutural + absoluta + fonte inventada) → Opus **APROVADA** | 3 chamadas | retry 1/1 → `Doença do refluxo gastroesofágico--adulto` salvo, 7 blocos |
+| R031 — DII Crohn vs. RCU | `SA_2026_2_Q10` | Haiku (pista estrutural + absoluta) → Haiku (absoluta) → Opus **APROVADA** | 3 chamadas | retry 1/1 → `Doença inflamatória intestinal--emergência` salvo, 7 blocos |
+
+**3/3 questões aprovadas e salvas.** Todas com resumo salvo (nenhuma em revisão neste lote). Nenhum retentado, nenhum hotfix, nenhum validador alterado.
+
+## CONTAGEM ATUAL — QUESTÕES OFICIAIS VÁLIDAS PARA AS 120 (atualizada)
+
+| # | ID | Recorte | Área operacional | Status |
+|---|---|---|---|---|
+| 1 | `SA_2026_2_Q1` | R034 | Cirurgia | CONTA — PASS E2E |
+| 2 | `SA_2026_2_Q2` | R021 | Pediatria | CONTA (resumo pendente/revisão) |
+| 3 | `SA_2026_2_Q3` | R030 | Pediatria | CONTA (resumo reaproveitado) |
+| 4 | `SA_2026_2_Q4` | R010 | Preventiva | CONTA — PASS E2E |
+| 5 | `SA_2026_2_Q5` | R015 | Ginecologia e Obstetrícia | CONTA — PASS E2E |
+| 6 | `SA_2026_2_Q6` | R029 | Clínica Médica | CONTA (resumo em revisão) |
+| 7 | `SA_2026_2_Q7` | R025 | Ginecologia e Obstetrícia | CONTA (resumo em revisão) |
+| 8 | `SA_2026_2_Q8` | R035 | Clínica Médica | CONTA — resumo salvo |
+| 9 | `SA_2026_2_Q9` | R039 | Clínica Médica | CONTA — resumo salvo |
+| 10 | `SA_2026_2_Q10` | R031 | Clínica Médica | CONTA — resumo salvo |
+
+**Total confirmado: 10 de 120.** Não contam (falha pontual, IDs não consumidos): R002, R024, R019, R003. Excluído (revisão humana): R041.
+
+**Balanço por área até aqui:** Cirurgia 1 · Pediatria 2 · Preventiva 1 · Ginecologia e Obstetrícia 2 · **Clínica Médica 4**.
+
+---
+
+## PRÓXIMO LOTE SELECIONADO — LOTE 2: PREVENTIVA
+
+**Fonte:** `recortes_100_condensado.json` / `auditoria_100_final.json` / `r101_r120.json`, recuperados em pasta de scratchpad de sessão anterior (`.../77957be3-2e01-4916-8b4a-d505cf5cc4fd/scratchpad/`), não movidos/alterados.
+
+**Área operacional:** PREVENTIVA (menos representada, empatada com Cirurgia em 1; pool de candidatos limpos mais seguro que o de Cirurgia — ver detalhe abaixo).
+
+| Recorte | Matéria original | Tema | Decisão | Armadilha | Grounding obrig. | Grounding disp. | Prioridade |
+|---|---|---|---|---|---|---|---|
+| R084 | Medicina Legal e Ética Médica → Preventiva | Atestado médico e sigilo no ambiente de trabalho — limites éticos | Informar no atestado apenas o necessário (afastamento e período), sem detalhar diagnóstico ao empregador | Detalhar diagnóstico clínico no atestado entregue ao empregador, violando o sigilo | NÃO | NÃO | MÉDIO (fonte real — não inflado) |
+| R096 | Medicina Legal e Ética Médica → Preventiva | Violência doméstica — sinais de alerta e fluxo de notificação compulsória | Notificar compulsoriamente diante de sinais de violência, independente da vontade da vítima em não prosseguir com queixa formal | Deixar de notificar por respeito à vontade da vítima — a notificação compulsória independe disso | NÃO | NÃO | BAIXO (fonte real — não inflado) |
+| R100 | Medicina Legal e Ética Médica → Preventiva | Cuidados paliativos — critérios de elegibilidade e comunicação de prognóstico | Indicar cuidados paliativos pela doença que ameaça a vida (não só terminalidade iminente) e comunicar prognóstico com honestidade e acolhimento | Reservar cuidados paliativos apenas para os últimos dias de vida, adiando indicação pertinente | NÃO | NÃO | MÉDIO (fonte real — não inflado) |
+
+**Bloco exato — colar com Área = Preventiva, Modo Validação LIGADO:**
+```
+Atestado médico e sigilo no ambiente de trabalho — limites éticos
+Violência doméstica — sinais de alerta e fluxo de notificação compulsória
+Cuidados paliativos — critérios de elegibilidade e comunicação de prognóstico
+```
+
+**Motivo:** R008/R009 (Ética Médica, ALTO) já têm IDs de DEV anterior (`SA_2026_2_Q16`/`Q20`) — não são pendentes reais, descartados. R019/R033/R041 já usados/excluídos. Entre Cirurgia (pool residual: R069/R072 MEDIO + R110 sem prioridade classificada, sendo R072 com risco numérico explícito via "ângulo de Cobb") e Preventiva (pool residual: R084/R096/R100, MEDIO/BAIXO mas estruturalmente qualitativos/categóricos, mesmo perfil que já funcionou em R010), Preventiva ofereceu 3 recortes limpos e mais seguros — sem inventar prioridade ALTO onde a fonte real diz MEDIO/BAIXO. Cirurgia fica reservada para o lote seguinte.
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (primeiro aprovado será `SA_2026_2_Q11`, já que Q1–Q10 já foram consumidos).
+
+---
+
 ## LOTE 003 — PRODUÇÃO OFICIAL CONTROLADA
 
 **Aberto em:** 2026-07-23. **Ambiente:** revalidapro-dev, exclusivamente pelo painel (`https://revalidapro-dev.web.app`) — RoboGerador com **Formato ABCD: LIGADO** e **Modo validação (1 questão por recorte): LIGADO**. Geração pelo Claude via script **não autorizada** para este lote — todos os 12 itens abaixo devem ser gerados pelo usuário, um recorte por vez, aguardando conclusão completa (questão + resumo) antes do próximo.
