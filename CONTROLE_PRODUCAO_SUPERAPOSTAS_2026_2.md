@@ -381,7 +381,62 @@ Sífilis — estadiamento clínico e escolha do esquema de penicilina benzatina 
 
 **Motivo da escolha:** GO ainda não teve sucesso nesta rodada (R024 falhou) — diversidade pendente. É um recorte inerentemente dose/estágio-dependente, mas diferente de R003 (metas glicêmicas/cardiorrenais, terreno amplo e pouco delimitado), o esquema de penicilina benzatina por estágio de sífilis é o conteúdo **nuclear e mais básico** de qualquer diretriz de sífilis — maior probabilidade de estar bem coberto em `pontosCriticos` do que parâmetros mais periféricos (ex.: R016, sífilis congênita/seguimento sorológico, que falhou por grounding numérico insuficiente em tema mais periférico). Risco residual reconhecido e não eliminado — não há recorte ALTO/LIBERADO/PENDENTE totalmente livre de conteúdo numérico nas 5 áreas restantes com fonte disponível nesta sessão (R025/R029/R038 têm risco numérico igual ou maior, sem grounding).
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q5` se aprovado, já que Q1–Q4 já foram consumidos).
+**Status:** ✅ **PRODUÇÃO OFICIAL — APROVADA E2E — CONTA PARA AS 120.**
+
+### R015 — encerramento (2026-07-24)
+
+**Questão:** `SA_2026_2_Q5` — **APROVADA E SALVA**.
+- Tentativa 1 (Haiku): rejeitada — erro técnico de JSON.
+- Tentativa 2 (Haiku): rejeitada — pista estrutural da alternativa correta.
+- Tentativa 3 (Opus, fallback): **APROVADA**.
+- Teto de 3 chamadas respeitado.
+
+**Resumo do Tema** (`Sífilis--gestante`): **APROVADO E SALVO** (7 blocos).
+
+**Verificação visual manual:** **PASS E2E COMPLETO.** Usuário confirmou "tudo certinho" na plataforma real.
+
+**Status para as 120:** **CONTA.**
+
+## CONTAGEM ATUAL — QUESTÕES OFICIAIS VÁLIDAS PARA AS 120 (atualizada)
+
+| # | ID | Recorte | Área operacional | Status |
+|---|---|---|---|---|
+| 1 | `SA_2026_2_Q1` | R034 | Cirurgia | CONTA — PASS E2E |
+| 2 | `SA_2026_2_Q2` | R021 | Pediatria | CONTA (resumo pendente/revisão) |
+| 3 | `SA_2026_2_Q3` | R030 | Pediatria | CONTA (resumo reaproveitado) |
+| 4 | `SA_2026_2_Q4` | R010 | Preventiva | CONTA — PASS E2E |
+| 5 | `SA_2026_2_Q5` | R015 | Ginecologia e Obstetrícia | CONTA — PASS E2E |
+
+**Total confirmado: 5 de 120.** Não contam (falha pontual, IDs não consumidos): R002, R024, R019, R003. Excluído (revisão humana): R041.
+
+**Balanço por área até aqui:** Cirurgia 1 · Pediatria 2 · Preventiva 1 · Ginecologia e Obstetrícia 1 · **Clínica Médica 0** (2 tentativas, 2 falhas — R002, R003).
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R029 — Trombose venosa profunda
+
+**Matéria original do Mapa Mestre:** Clínica Médica.
+
+**Área operacional:** CLÍNICA MÉDICA (já é uma das 5 grandes áreas — sem necessidade de mapeamento).
+
+**Tema:** Trombose venosa profunda — Escore de Wells e conduta anticoagulante inicial.
+
+**Texto exato para colar no RoboGerador:**
+```
+Trombose venosa profunda — Escore de Wells e conduta anticoagulante inicial
+```
+
+**Decisão (Mapa Mestre):** Usar o escore de Wells para definir probabilidade pré-teste antes de indicar D-dímero ou imagem direta.
+
+**Armadilha (Mapa Mestre):** Solicitar D-dímero em paciente de alta probabilidade pré-teste, atrasando o exame de imagem definitivo.
+
+**Grounding obrigatório:** NÃO (conforme Mapa Mestre). **Grounding disponível/auto-injetável:** NÃO.
+
+**Prioridade:** ALTO.
+
+**Motivo da escolha:** Clínica Médica é a única das 5 grandes áreas ainda sem nenhum sucesso (0/2 tentativas) — prioridade de equilíbrio. Reexaminando o recorte: a decisão central não exige citar os pontos exatos do Escore de Wells, e sim a **lógica de sequência diagnóstica** (usar probabilidade pré-teste antes de escolher entre D-dímero e imagem) — estrutura de decisão sequencial/categórica, mais próxima do perfil que já funcionou em R034/R021/R024(tentativa)/R030, e não uma exigência de posologia/protocolo terapêutico como em R002/R003. `Grounding: não` é consistente com essa leitura (não há necessidade de citar valor normativo externo). Risco residual reconhecido: se a IA optar por enumerar pontuações específicas do escore, ainda há risco de rejeição por número sem grounding — decisão tomada por representatividade clínica (TVP é tema de alta relevância INEP) e equilíbrio de área, não por busca de "tema fácil".
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q6` se aprovado, já que Q1–Q5 já foram consumidos).
 
 ---
 
