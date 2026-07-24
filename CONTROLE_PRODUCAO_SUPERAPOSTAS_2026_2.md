@@ -239,7 +239,45 @@ Epidemiologia — cálculo e interpretação de sensibilidade, especificidade e 
 
 **Motivo da escolha:** aplicando o aprendizado de R024 — os números deste recorte são **dados do próprio caso clínico** (sensibilidade/especificidade/prevalência fornecidos no enunciado para o raciocínio bayesiano), não citações de protocolo/posologia externa — perfil de "números reutilizados do caso", já validado como seguro pela engine, diferente do padrão que derrubou R002/R024 (números de fonte normativa não injetada). Descartados: R003 e R015 (grounding disponível mas ainda centrados em dose/esquema terapêutico — risco residual); R025 (critérios de elegibilidade para MTX podem induzir limiar não sustentado); R029 (Escore de Wells — pontuação numérica explícita); R038 (índices hematimétricos — valores de referência numéricos); R010 (qualitativo e sem risco numérico, mas o texto exato do recorte no Mapa Mestre — `recortes_100_condensado.json`/`auditoria_100_final.json` — não está disponível neste repositório para reprodução fiel; não inventar decisão/armadilha). Diversifica matéria para Preventiva, ainda não tentada nesta rodada oficial (R041 foi excluído previamente por outro motivo, não é uma tentativa formal de produção).
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q4` se aprovado, já que R024 não consumiu nenhum número).
+**Status:** `REVISÃO / FALHOU NA GERAÇÃO EM PRODUÇÃO`. **`SA_2026_2_Q4` NÃO foi consumido — nenhum documento foi salvo.**
+
+### R019 — encerramento da tentativa (2026-07-24)
+
+- Tentativa 1 (Haiku): rejeitada — termo absoluto/percentual específico sem diretriz controlada.
+- Tentativa 2 (Haiku): rejeitada — mesma classe de rejeição.
+- Tentativa 3 (Opus, fallback): rejeitada — **erro técnico de JSON** (`Expected ',' or '}' after property value...`), não uma rejeição de conteúdo.
+- Teto de 3 chamadas respeitado. Nenhuma questão inválida salva.
+
+**Decisão:** não retentar R019 agora; não abrir hotfix; não alterar prompt/validador. Caso C (falha pontual) — segue para o próximo recorte.
+
+**`SA_2026_2_Q4` continua livre.**
+
+**Nota:** confirma o aprendizado de R024 de forma mais ampla — mesmo um recorte com "números do próprio caso" (R019, epidemiologia) pode ser classificado como percentual/termo absoluto pela regra de grounding, indicando que o risco não está restrito a posologia/protocolo clínico, mas a qualquer afirmação quantitativa específica sem fonte controlada. Critério reforçado para a próxima escolha: preferir decisão **categórica/classificatória** (escolher entre opções qualitativamente distintas) a decisão que exige citar **qualquer valor numérico específico** — mesmo que "do próprio caso".
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R003 — Diabetes mellitus tipo 2
+
+**Matéria:** Clínica Médica.
+
+**Tema:** DM tipo 2 — metas glicêmicas e escolha de 2ª droga além da metformina por perfil cardiorrenal.
+
+**Texto exato para colar no RoboGerador:**
+```
+Diabetes mellitus tipo 2 — metas glicêmicas e escolha de 2ª droga além da metformina por perfil cardiorrenal
+```
+
+**Decisão (Mapa Mestre):** Priorizar iSGLT2/GLP-1 quando há doença cardiovascular ou renal estabelecida, não apenas controle glicêmico.
+
+**Armadilha (Mapa Mestre):** Escalonar para sulfonilureia/insulina por hábito, ignorando benefício cardiorrenal de outras classes.
+
+**Grounding obrigatório:** SIM (diretriz `dm`, já carregada em `diretrizesControladas.js`). **Grounding disponível/auto-injetável:** SIM.
+
+**Prioridade:** ALTO.
+
+**Motivo da escolha:** a decisão central é **categórica** (qual classe de fármaco priorizar — iSGLT2/GLP-1 vs. sulfonilureia/insulina — por perfil cardiorrenal), não uma dose/intervalo/limiar numérico específico, e há grounding controlado disponível para sustentar qualquer afirmação sobre a diretriz `dm`, reduzindo o risco de invenção de fonte. Descartados: R015 (esquema de penicilina por fase — inerentemente dose/duração-dependente, mesmo com grounding); R025 (critérios de elegibilidade para MTX sem grounding formal); R029 (Escore de Wells — pontuação numérica explícita); R038 (índices hematimétricos — valores de referência numéricos). Diversifica para Clínica Médica, matéria ainda sem sucesso nesta rodada (R002 falhou).
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q4` se aprovado, já que R019 não consumiu nenhum número).
 
 ---
 
