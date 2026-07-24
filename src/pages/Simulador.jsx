@@ -8,31 +8,77 @@ import {
   FaStethoscope, FaFlask, FaLightbulb, FaSignOutAlt, FaQuestionCircle,
   FaArrowLeft, FaArrowRight, FaChevronLeft, FaChevronRight,
   FaTrophy, FaCheckCircle, FaTimesCircle, FaFilePdf, FaBolt,
-  FaEye, FaListOl, FaShieldAlt
+  FaEye, FaListOl, FaShieldAlt, FaFire
 } from "react-icons/fa";
 import { registrarRespostaIndividual, gravarDesempenhoFinalLote, atualizarStreakDiario, atualizarEstatisticasFinais, registrarAnalyticsCognitivo } from "../modules/simulador/simuladorLogic";
 import TeoriaModal from "../components/TeoriaModal";
 import { classificarPorRegras } from "../utils/resumoEngine";
+import { StorageImage } from "../components/StorageImage";
 
 // ─── HELPERS DE EXPERIÊNCIA COGNITIVA ────────────────────────────────────────
 const BADGES_COGNITIVOS = {
   "CONFUSÃO DIAGNÓSTICA":   { cor: "#f97316", bg: "rgba(249,115,22,0.12)"  },
   "TIMING INCORRETO":       { cor: "#3b82f6", bg: "rgba(59,130,246,0.12)"  },
+  "CONDUTA INSUFICIENTE":   { cor: "#f59e0b", bg: "rgba(245,158,11,0.12)"  },
   "TRATAMENTO INCOMPLETO":  { cor: "#8b5cf6", bg: "rgba(139,92,246,0.12)"  },
   "DIRETRIZ ANTIGA":        { cor: "#6366f1", bg: "rgba(99,102,241,0.12)"  },
+  "DOSE ERRADA":            { cor: "#ef4444", bg: "rgba(239,68,68,0.12)"   },
+  "EXCESSO DE INTERVENÇÃO": { cor: "#94a3b8", bg: "rgba(148,163,184,0.10)" },
+  "INDICAÇÃO TROCADA":      { cor: "#06b6d4", bg: "rgba(6,182,212,0.10)"   },
   "ARMADILHA DE CLASSE":    { cor: "#ec4899", bg: "rgba(236,72,153,0.12)"  },
-  "EXCESSO DE INTERVENÇÃO": { cor: "#ef4444", bg: "rgba(239,68,68,0.12)"   },
+  "ARMADILHA INEP":         { cor: "#ec4899", bg: "rgba(236,72,153,0.10)"  },
+};
+
+const BADGE_KEYWORD_MAP = [
+  { keys: ["CONFUS"],                             tipo: "CONFUSÃO DIAGNÓSTICA"   },
+  { keys: ["TIMING"],                             tipo: "TIMING INCORRETO"       },
+  { keys: ["CONDUTA"],                            tipo: "CONDUTA INSUFICIENTE"   },
+  { keys: ["TRATAMENTO", "INCOMPLET"],            tipo: "TRATAMENTO INCOMPLETO"  },
+  { keys: ["DIRETRIZ"],                           tipo: "DIRETRIZ ANTIGA"        },
+  { keys: ["DOSE"],                               tipo: "DOSE ERRADA"            },
+  { keys: ["INTERVEN"],                           tipo: "EXCESSO DE INTERVENÇÃO" },
+  { keys: ["INDICA"],                             tipo: "INDICAÇÃO TROCADA"      },
+  { keys: ["MECANISMO", "CLASSE", "ARMADILH"],    tipo: "ARMADILHA DE CLASSE"    },
+];
+
+const resolveBadgeType = (texto) => {
+  if (!texto) return "ARMADILHA INEP";
+  const upper = texto.toUpperCase();
+  for (const { keys, tipo } of BADGE_KEYWORD_MAP) {
+    if (keys.some(k => upper.includes(k))) return tipo;
+  }
+  return "ARMADILHA INEP";
 };
 
 const parseBadgeCognitivo = (nota) => {
-  if (!nota) return { tipo: null, texto: "" };
+  if (!nota) return { tipo: null, subtitulo: null, texto: "" };
   const upper = nota.toUpperCase();
+
+  // 1. Correspondência exata com nome canônico
   for (const tipo of Object.keys(BADGES_COGNITIVOS)) {
     if (upper.startsWith(tipo)) {
-      return { tipo, texto: nota.slice(tipo.length).replace(/^[:\.\,\s]+/, "").trim() };
+      return { tipo, subtitulo: null, texto: nota.slice(tipo.length).replace(/^[:\.\,\s]+/, "").trim() };
     }
   }
-  return { tipo: null, texto: nota };
+
+  // 2. Fuzzy: procura primeiro segmento antes de ":" ou "\n" (máx 75 chars)
+  const ci = nota.indexOf(":");
+  const ni = nota.indexOf("\n");
+  const splitAt = [ci, ni].filter(i => i > 0).sort((a, b) => a - b)[0];
+  if (splitAt && splitAt <= 75) {
+    const seg = nota.slice(0, splitAt).trim();
+    // Só tenta se o segmento for todo maiúsculo (padrão de badge do Codex)
+    if (seg.length > 0 && seg === seg.toUpperCase() && /[A-ZÀÁÂÃÄÉÊÍÓÔÕÚÇ]/.test(seg)) {
+      const tipo = resolveBadgeType(seg);
+      return {
+        tipo,
+        subtitulo: seg !== tipo ? seg : null,
+        texto: nota.slice(splitAt + 1).trim(),
+      };
+    }
+  }
+
+  return { tipo: null, subtitulo: null, texto: nota };
 };
 
 const parseRaciocinio = (texto) => {
@@ -42,6 +88,339 @@ const parseRaciocinio = (texto) => {
   if (matches.length < 2) return null;
   matches.forEach(m => { result[m[1].toUpperCase()] = m[2].trim().replace(/\s*→\s*$/, ""); });
   return result;
+};
+
+const PASSOS_CONFIG = [
+  { cor: "#10b981", emoji: "🟢" },
+  { cor: "#3b82f6", emoji: "🔵" },
+  { cor: "#8b5cf6", emoji: "🟣" },
+  { cor: "#f59e0b", emoji: "🟡" },
+  { cor: "#94a3b8", emoji: "⚪" },
+  { cor: "#ef4444", emoji: "🔴" },
+];
+
+const parseTTO = (texto) => {
+  if (!texto) return null;
+  const matches = [...texto.matchAll(/PASSO\s+(\d+)\s*[—–\-]+\s*([^\n]+)/gi)];
+  if (matches.length < 2) return null;
+  return matches.map((m, i) => {
+    const inicio = m.index + m[0].length;
+    const fim = i < matches.length - 1 ? matches[i + 1].index : texto.length;
+    const num = parseInt(m[1]);
+    return {
+      numero: m[1],
+      titulo: m[2].trim(),
+      conteudo: texto.slice(inicio, fim).trim(),
+      cor: PASSOS_CONFIG[num - 1]?.cor || "#94a3b8",
+      emoji: PASSOS_CONFIG[num - 1]?.emoji || "⬜",
+    };
+  });
+};
+
+const parseDicaMestre = (texto) => {
+  if (!texto) return null;
+  const partes = texto.split(/\s*↓\s*/);
+  if (partes.length < 2) return null;
+
+  // Formato premium: 4 partes
+  if (partes.length >= 4) {
+    return {
+      formato:        "premium",
+      frase:          partes[0].trim(),
+      pivot:          partes[1].trim(),
+      caminhoCorreto: partes[2].trim(),
+      porQueErram:    partes[3].trim(),
+    };
+  }
+
+  // Formato legacy: 2–3 partes
+  const primeiro = partes[0].trim();
+  const temMnemonic = primeiro.includes("\n") || primeiro.length > 50;
+  return {
+    formato:  "legacy",
+    mnemonic: temMnemonic ? primeiro : null,
+    gatilho:  temMnemonic ? primeiro.split("\n")[0].trim() : primeiro,
+    resposta: partes[1].trim(),
+    erro:     partes[2]?.trim() || null,
+  };
+};
+
+// Estratégia da Aposta — exclusivo Super Apostas 2026.2. Mesmo padrão de
+// separador " ↓ " já usado pela Dica Mestre, só que com 3 blocos fixos.
+const parseEstrategiaAposta = (texto) => {
+  if (!texto) return null;
+  const partes = texto.split(/\s*↓\s*/).map((p) => p.trim()).filter(Boolean);
+  if (partes.length < 3) return null;
+  return {
+    porQueApostamos:    partes[0],
+    comoPodeCair:       partes[1],
+    armadilhaProvavel:  partes[2],
+  };
+};
+
+const renderLinhasTTO = (conteudo, cor) => {
+  if (!conteudo) return null;
+  return conteudo.split("\n").filter(l => l.trim()).map((linha, i) => {
+    const t = linha.trim();
+    if (t.startsWith("•") || t.startsWith("✗") || t.startsWith("-")) {
+      const isErro = t.startsWith("✗");
+      return (
+        <div key={i} style={{ display: "flex", gap: "8px", alignItems: "flex-start", marginBottom: "4px" }}>
+          <span style={{ color: isErro ? "#ef4444" : cor, flexShrink: 0, fontSize: "13px" }}>
+            {isErro ? "✗" : "•"}
+          </span>
+          <span style={{ color: isErro ? "#fca5a5" : "#cbd5e1", fontSize: "13px", lineHeight: 1.5 }}>
+            {t.slice(1).trim()}
+          </span>
+        </div>
+      );
+    }
+    const ci = t.indexOf(":");
+    if (ci > 0 && ci < 22 && !t.startsWith("PASSO")) {
+      const key = t.slice(0, ci).trim();
+      const val = t.slice(ci + 1).trim();
+      if (val) return (
+        <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "4px", flexWrap: "wrap" }}>
+          <span style={{ color: cor, fontSize: "11px", fontWeight: "900", minWidth: "80px", flexShrink: 0 }}>{key}:</span>
+          <span style={{ color: "#e2e8f0", fontSize: "13px", flex: 1 }}>{val}</span>
+        </div>
+      );
+    }
+    return <p key={i} style={{ margin: "0 0 4px", color: "#94a3b8", fontSize: "13px", lineHeight: 1.5 }}>{t}</p>;
+  });
+};
+
+const renderGrafico = (graficoDados, imagemLegenda) => {
+  if (!graficoDados || !Array.isArray(graficoDados.dados) || graficoDados.dados.length === 0) return null;
+  const { titulo, tipo = "barra", eixoX, eixoY, dados } = graficoDados;
+  const seriesKeys = Object.keys(dados[0]).filter(k => k !== "x");
+  const isMulti = seriesKeys.length > 1 || !seriesKeys.includes("y");
+  const VW = 480, VH = 200, ML = 48, MR = 16, MT = 16, MB = 46;
+  const CW = VW - ML - MR, CH = VH - MT - MB;
+  const allVals = isMulti
+    ? dados.flatMap(d => seriesKeys.map(k => Number(d[k]) || 0))
+    : dados.map(d => Number(d.y) || 0);
+  const maxY = Math.max(...allVals) || 1;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(maxY * f));
+  const n = dados.length;
+  const xStep = CW / n;
+  const cx = (i) => ML + i * xStep + xStep / 2;
+  const cy = (v) => MT + CH - (Number(v) / maxY) * CH;
+  const barW = Math.min(xStep * 0.65, 42);
+  const tx = { fontSize: "10", fill: "#64748b", fontFamily: "sans-serif" };
+  const PALETTE = { observado: "#818cf8", limiteSuperior: "#ef4444", mediana: "#10b981", limiteInferior: "#f59e0b" };
+  const FALLBACK = ["#818cf8", "#ef4444", "#10b981", "#f59e0b", "#06b6d4", "#a78bfa"];
+  const col = (k, i) => PALETTE[k] || FALLBACK[i % FALLBACK.length];
+  return (
+    <div style={{ marginBottom: "24px", background: "#0f172a", border: "1px solid rgba(99,102,241,0.25)", borderRadius: "14px", overflow: "hidden" }}>
+      <div style={{ padding: "10px 16px", background: "rgba(79,70,229,0.12)", borderBottom: "1px solid rgba(79,70,229,0.2)" }}>
+        <span style={{ fontSize: "11px", color: "#818cf8", fontWeight: "900", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+          {(tipo === "linha" || isMulti) ? "📈" : "📊"} {titulo || "Gráfico"}
+        </span>
+      </div>
+      <div style={{ padding: "14px 12px 6px", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{ display: "block", minWidth: "260px" }}>
+          <line x1={ML} y1={MT} x2={ML} y2={MT + CH} stroke="#1e293b" strokeWidth="1" />
+          <line x1={ML} y1={MT + CH} x2={ML + CW} y2={MT + CH} stroke="#1e293b" strokeWidth="1" />
+          {yTicks.map((v, i) => {
+            const y = cy(v);
+            return (
+              <g key={i}>
+                <line x1={ML - 3} y1={y} x2={ML + CW} y2={y} stroke="#1e293b" strokeWidth="0.5" strokeDasharray={i > 0 ? "3 3" : "0"} />
+                <text x={ML - 6} y={y + 3} textAnchor="end" {...tx}>{v}</text>
+              </g>
+            );
+          })}
+          {eixoY && <text x={11} y={MT + CH / 2} textAnchor="middle" transform={`rotate(-90,11,${MT + CH / 2})`} fontSize="9" fill="#475569" fontFamily="sans-serif">{eixoY}</text>}
+          {eixoX && <text x={ML + CW / 2} y={VH - 3} textAnchor="middle" fontSize="9" fill="#475569" fontFamily="sans-serif">{eixoX}</text>}
+          {/* X labels — sempre renderizados */}
+          {dados.map((d, i) => (
+            <text key={i} x={cx(i)} y={MT + CH + 16} textAnchor="middle" {...tx}>
+              {String(d.x).length > 5 ? String(d.x).slice(0, 4) + "…" : d.x}
+            </text>
+          ))}
+          {/* Dados — multi-série, linha única ou barras */}
+          {isMulti ? (
+            seriesKeys.map((key, si) => {
+              const c = col(key, si);
+              return (
+                <g key={key}>
+                  <polyline
+                    points={dados.map((d, i) => `${cx(i)},${cy(d[key])}`).join(" ")}
+                    fill="none" stroke={c}
+                    strokeWidth={key === "observado" ? "2.5" : "1.5"}
+                    strokeLinejoin="round"
+                    strokeDasharray={key !== "observado" ? "4 2" : "0"}
+                  />
+                  {key === "observado" && dados.map((d, i) => (
+                    <circle key={i} cx={cx(i)} cy={cy(d[key])} r="3" fill={c} />
+                  ))}
+                </g>
+              );
+            })
+          ) : tipo === "linha" ? (
+            <>
+              <polyline points={dados.map((d, i) => `${cx(i)},${cy(d.y)}`).join(" ")} fill="none" stroke="#818cf8" strokeWidth="2.5" strokeLinejoin="round" />
+              {dados.map((d, i) => (
+                <circle key={i} cx={cx(i)} cy={cy(d.y)} r="4.5" fill="#4f46e5" stroke="#818cf8" strokeWidth="1.5" />
+              ))}
+            </>
+          ) : (
+            dados.map((d, i) => {
+              const bH = (Number(d.y) / maxY) * CH;
+              return <rect key={i} x={cx(i) - barW / 2} y={cy(d.y)} width={barW} height={bH} fill="rgba(79,70,229,0.7)" rx="3" />;
+            })
+          )}
+        </svg>
+      </div>
+      {isMulti && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px", padding: "8px 16px", borderTop: "1px solid rgba(51,65,85,0.4)" }}>
+          {seriesKeys.map((key, si) => (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "10px", color: "#94a3b8" }}>
+              <div style={{ width: "16px", height: key === "observado" ? "2.5px" : "1.5px", background: col(key, si), borderRadius: "1px" }} />
+              <span>{key.replace(/([A-Z])/g, " $1").toLowerCase()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {imagemLegenda && <p style={{ margin: 0, padding: "8px 16px 10px", fontSize: "11px", color: "#64748b", fontStyle: "italic", borderTop: "1px solid rgba(51,65,85,0.4)", lineHeight: 1.5 }}>{imagemLegenda}</p>}
+    </div>
+  );
+};
+
+const renderPartograma = (imagemUrl, imagemStoragePath, imagemLegenda, onZoom) => {
+  if (!imagemUrl && !imagemStoragePath) return null;
+  return (
+    <div style={{ marginBottom: "24px", background: "#0f172a", border: "1px solid rgba(236,72,153,0.25)", borderRadius: "14px", overflow: "hidden" }}>
+      <div style={{ padding: "10px 16px", background: "rgba(236,72,153,0.07)", borderBottom: "1px solid rgba(236,72,153,0.2)", display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "13px" }}>🤰</span>
+        <span style={{ fontSize: "11px", color: "#f472b6", fontWeight: "900", letterSpacing: "0.5px", textTransform: "uppercase" }}>Partograma Oficial</span>
+      </div>
+      <div style={{ padding: "16px", textAlign: "center" }}>
+        <StorageImage
+          storagePath={imagemStoragePath}
+          directUrl={imagemUrl}
+          alt={imagemLegenda || "Partograma"}
+          style={{ maxWidth: "100%", maxHeight: "420px", objectFit: "contain", borderRadius: "10px", cursor: "zoom-in" }}
+          onClick={(src) => onZoom(src)}
+        />
+      </div>
+      <div style={{ padding: "10px 16px 12px", borderTop: "1px solid rgba(51,65,85,0.4)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px", marginBottom: imagemLegenda ? "8px" : 0 }}>
+          {[["🟡","Linha de alerta"],["🔴","Linha de ação"],["🔵","Dilatação cervical"],["◻️","Altura da apresentação"]].map(([icon, label]) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "10px", color: "#94a3b8" }}>
+              <span style={{ fontSize: "12px", lineHeight: 1 }}>{icon}</span><span>{label}</span>
+            </div>
+          ))}
+        </div>
+        {imagemLegenda && <p style={{ margin: 0, fontSize: "11px", color: "#64748b", fontStyle: "italic", lineHeight: 1.5 }}>{imagemLegenda}</p>}
+      </div>
+    </div>
+  );
+};
+
+const renderAlertaRecursoVisual = (recursoVisual, imagemUrl, imagemStoragePath, tabelaDados, graficoDados) => {
+  if (!recursoVisual?.necessitaImagem) return null;
+  if (imagemUrl) return null;
+  if (imagemStoragePath) return null;
+  if (tabelaDados?.linhas?.length > 0) return null;
+  if (graficoDados?.dados?.length > 0) return null;
+  return (
+    <div style={{
+      marginBottom: "24px", background: "#0f172a",
+      border: "2px dashed rgba(234,179,8,0.35)", borderRadius: "14px",
+      padding: "16px 20px", display: "flex", flexDirection: "column", gap: "6px"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <span style={{ fontSize: "16px" }}>📷</span>
+        <span style={{ fontSize: "12px", fontWeight: "900", color: "#fbbf24", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+          IMAGEM OFICIAL NECESSÁRIA
+        </span>
+      </div>
+      {recursoVisual.tipo && (
+        <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+          <span style={{ color: "#64748b" }}>Tipo: </span>
+          <span style={{ color: "#e2e8f0", fontWeight: "600" }}>{recursoVisual.tipo.replace(/_/g, " ")}</span>
+        </div>
+      )}
+      {recursoVisual.arquivoEsperado && (
+        <div style={{ fontSize: "12px", color: "#94a3b8" }}>
+          <span style={{ color: "#64748b" }}>Arquivo esperado: </span>
+          <code style={{ color: "#fbbf24", fontSize: "11px", background: "rgba(251,191,36,0.08)", padding: "2px 7px", borderRadius: "4px" }}>
+            {recursoVisual.arquivoEsperado}
+          </code>
+        </div>
+      )}
+      {recursoVisual.observacao && (
+        <div style={{ fontSize: "11px", color: "#64748b" }}>{recursoVisual.observacao}</div>
+      )}
+      <div style={{ fontSize: "11px", color: "#475569", fontStyle: "italic", marginTop: "2px" }}>
+        Adicione a imagem oficial na Biblioteca RevalidaPRO.
+      </div>
+    </div>
+  );
+};
+
+const renderTabelaDados = (tabelaDados, descricaoTabela) => {
+  if (!tabelaDados || !Array.isArray(tabelaDados.linhas) || tabelaDados.linhas.length === 0) return null;
+  const { titulo, cabecalho, linhas } = tabelaDados;
+  const getCells = (l) => Array.isArray(l) ? l : Array.from({ length: cabecalho?.length ?? 0 }, (_, i) => l[`c${i}`] ?? "");
+  return (
+    <div style={{
+      marginBottom: "24px", background: "#0f172a",
+      border: "1px solid rgba(99,102,241,0.25)", borderRadius: "14px", overflow: "hidden",
+    }}>
+      {titulo && (
+        <div style={{
+          padding: "10px 16px", background: "rgba(79,70,229,0.12)",
+          borderBottom: "1px solid rgba(79,70,229,0.2)",
+        }}>
+          <span style={{ fontSize: "11px", color: "#818cf8", fontWeight: "900", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+            📊 {titulo}
+          </span>
+        </div>
+      )}
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "320px", fontSize: "13px" }}>
+          {Array.isArray(cabecalho) && cabecalho.length > 0 && (
+            <thead>
+              <tr>
+                {cabecalho.map((col, i) => (
+                  <th key={i} style={{
+                    padding: "9px 14px", background: "rgba(79,70,229,0.15)",
+                    color: "#a5b4fc", fontWeight: "800", fontSize: "11px",
+                    textAlign: "left", borderBottom: "1px solid rgba(79,70,229,0.25)",
+                    whiteSpace: "nowrap",
+                  }}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody>
+            {linhas.map((linha, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.025)" }}>
+                {getCells(linha).map((cel, j) => (
+                  <td key={j} style={{
+                    padding: "8px 14px",
+                    color: j === 0 ? "#e2e8f0" : "#94a3b8",
+                    fontWeight: j === 0 ? "600" : "400",
+                    borderBottom: "1px solid rgba(51,65,85,0.4)",
+                    verticalAlign: "top", lineHeight: 1.55,
+                  }}>{cel}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {descricaoTabela && (
+        <p style={{
+          margin: 0, padding: "10px 16px", fontSize: "11px", color: "#64748b",
+          fontStyle: "italic", borderTop: "1px solid rgba(51,65,85,0.4)", lineHeight: 1.5,
+        }}>{descricaoTabela}</p>
+      )}
+    </div>
+  );
 };
 
 const Simulador = () => {
@@ -75,6 +454,7 @@ const Simulador = () => {
   const [showTeoria, setShowTeoria] = useState(false);
   const [showCorrecaoDetalhada, setShowCorrecaoDetalhada] = useState(false);
   const [filtroCorrecao, setFiltroCorrecao] = useState("todas"); // "todas" | "erradas" | "certas"
+  const [lightboxUrl, setLightboxUrl] = useState(null);
 
   // ── Progresso salvo (continuar de onde parou) ──────────────────────────────
   const [modalProgresso, setModalProgresso] = useState(null); // { indice, respostasSalvas, totalRespondidas }
@@ -450,7 +830,10 @@ const Simulador = () => {
   const respondeu = respostasSalvas[indice];
   const gabaritoCerto = (q.gabarito || q.correta || "").toString().toLowerCase();
   const acertouAtual = respondeu && respondeu.toLowerCase() === gabaritoCerto;
-  const racioParseado = parseRaciocinio(q?.raciocinio);
+  const racioParseado           = parseRaciocinio(q?.raciocinio);
+  const ttoParseado             = parseTTO(q?.tto);
+  const dicaMestreParseada      = parseDicaMestre(q?.dicaMestre);
+  const estrategiaApostaParseada = parseEstrategiaAposta(q?.estrategiaAposta);
 
   return (
     <div className="sim-wrapper" style={{ ...st.container, background: modoFoco ? "#000" : "#020617" }}>
@@ -802,12 +1185,35 @@ const Simulador = () => {
           <h2 className="enunciado" style={st.enunciado}>{q.enunciado}</h2>
         </div>
 
-        {/* IMAGEM */}
-        {q.imagemUrl && (
-          <div style={st.imgBox}>
-            <img src={q.imagemUrl} style={st.imagem} alt="Imagem da questão" />
-          </div>
-        )}
+        {/* TABELA DE DADOS */}
+        {renderTabelaDados(q.tabelaDados, q.descricaoTabela)}
+
+        {/* VISUAL — gráfico / partograma / imagem clínica */}
+        {q.imagemTipo === "grafico" && q.graficoDados
+          ? renderGrafico(q.graficoDados, q.imagemLegenda)
+          : q.imagemTipo === "partograma" && (q.imagemUrl || q.imagemStoragePath)
+          ? renderPartograma(q.imagemUrl, q.imagemStoragePath, q.imagemLegenda, setLightboxUrl)
+          : (q.imagemUrl || q.imagemStoragePath)
+          ? (
+            <div style={st.imgBox}>
+              <StorageImage
+                storagePath={q.imagemStoragePath}
+                directUrl={q.imagemUrl}
+                alt={q.imagemLegenda || "Imagem da questão"}
+                style={{ ...st.imagem, cursor: "zoom-in" }}
+                onClick={(src) => setLightboxUrl(src)}
+              />
+              {q.imagemLegenda && (
+                <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#64748b", fontStyle: "italic", textAlign: "center" }}>
+                  {q.imagemLegenda}
+                </p>
+              )}
+            </div>
+          ) : null
+        }
+
+        {/* ALERTA RECURSO VISUAL PENDENTE */}
+        {renderAlertaRecursoVisual(q.recursoVisual, q.imagemUrl, q.imagemStoragePath, q.tabelaDados, q.graficoDados)}
 
         {/* ✅ ALTERNATIVAS PREMIUM */}
         <div style={st.optionsGrid}>
@@ -851,7 +1257,7 @@ const Simulador = () => {
             const nota = respondida && !modoOficial
               ? (q.alts?.[letra]?.nota || q[`justificativa${letra.toUpperCase()}`] || "")
               : "";
-            const { tipo: tipoErro, texto: notaTxt } = parseBadgeCognitivo(nota);
+            const { tipo: tipoErro, subtitulo: subtituloErro, texto: notaTxt } = parseBadgeCognitivo(nota);
             const badgeErro = tipoErro ? BADGES_COGNITIVOS[tipoErro] : null;
 
             return (
@@ -889,14 +1295,24 @@ const Simulador = () => {
                       }}>✓ CORRETA</div>
                     )}
                     {tipoErro && !isCorreta && (
-                      <div style={{
-                        display: "inline-flex", alignItems: "center", gap: "4px",
-                        padding: "2px 9px", borderRadius: "5px",
-                        background: badgeErro.bg, color: badgeErro.cor,
-                        fontSize: "9px", fontWeight: "900", letterSpacing: "0.5px",
-                        marginBottom: "6px", textTransform: "uppercase",
-                        border: `1px solid ${badgeErro.cor}40`
-                      }}>{tipoErro}</div>
+                      <div style={{ marginBottom: "6px" }}>
+                        <div style={{
+                          display: "inline-flex", alignItems: "center", gap: "4px",
+                          padding: "2px 9px", borderRadius: "5px",
+                          background: badgeErro.bg, color: badgeErro.cor,
+                          fontSize: "9px", fontWeight: "900", letterSpacing: "0.5px",
+                          textTransform: "uppercase",
+                          border: `1px solid ${badgeErro.cor}40`
+                        }}>{tipoErro}</div>
+                        {subtituloErro && (
+                          <div style={{
+                            fontSize: "9px", color: badgeErro.cor, opacity: 0.75,
+                            marginTop: "3px", fontStyle: "italic", letterSpacing: "0.2px",
+                          }}>
+                            {subtituloErro.toLowerCase().replace(/(?:^|\s)\S/g, c => c.toUpperCase())}
+                          </div>
+                        )}
+                      </div>
                     )}
                     <p style={{ margin: 0, fontSize: "13px", lineHeight: 1.55,
                       color: isCorreta ? "#a7f3d0" : "#94a3b8" }}>
@@ -961,9 +1377,9 @@ const Simulador = () => {
             {/* ─── 💊 CONDUTA ATUALIZADA ─── */}
             {q.tto && (
               <div style={{ ...st.expertBox, borderTop: "3px solid #10b981" }}>
-                <div style={{ ...st.expertLabel, justifyContent: "space-between" }}>
+                <div style={{ ...st.expertLabel, justifyContent: "space-between", marginBottom: "14px" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                    <FaFlask size={11} color="#10b981" /> CONDUTA ATUALIZADA
+                    <FaFlask size={11} color="#10b981" /> 🩺 CONDUTA ATUALIZADA
                   </span>
                   {q.fonte_diretriz && (
                     <span style={{
@@ -977,7 +1393,32 @@ const Simulador = () => {
                     </span>
                   )}
                 </div>
-                <p style={st.expertText}>{q.tto}</p>
+                {ttoParseado ? (
+                  <div className="tto-grid">
+                    {ttoParseado.map((passo, i) => (
+                      <div key={i} style={{
+                        background: "#020617", borderRadius: "12px",
+                        border: `1px solid ${passo.cor}28`, overflow: "hidden",
+                      }}>
+                        <div style={{
+                          padding: "8px 14px", background: `${passo.cor}12`,
+                          borderBottom: `1px solid ${passo.cor}20`,
+                          display: "flex", alignItems: "center", gap: "8px",
+                        }}>
+                          <span style={{ fontSize: "11px" }}>{passo.emoji}</span>
+                          <span style={{ color: passo.cor, fontSize: "10px", fontWeight: "900", letterSpacing: "0.5px" }}>
+                            PASSO {passo.numero} — {passo.titulo}
+                          </span>
+                        </div>
+                        <div style={{ padding: "10px 14px" }}>
+                          {renderLinhasTTO(passo.conteudo, passo.cor)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={st.expertText}>{q.tto}</p>
+                )}
               </div>
             )}
 
@@ -987,7 +1428,150 @@ const Simulador = () => {
                 <div style={st.dicaMestreLabel}>
                   <FaLightbulb size={12} color="#fbbf24" /> 🎯 DICA MESTRE
                 </div>
-                <p style={st.dicaMestreText}>{q.dicaMestre}</p>
+                {dicaMestreParseada?.formato === "premium" ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+
+                    {/* ⚡ FRASE QUE APROVA — largura total */}
+                    <div style={{
+                      background: "linear-gradient(135deg, rgba(251,191,36,0.18) 0%, rgba(251,191,36,0.07) 100%)",
+                      border: "1px solid rgba(251,191,36,0.45)", borderRadius: "12px",
+                      padding: "16px 20px", textAlign: "center",
+                    }}>
+                      <div style={{ fontSize: "9px", color: "#fbbf24", fontWeight: "900", letterSpacing: "2px", marginBottom: "10px" }}>
+                        ⚡ A FRASE QUE VOCÊ VAI LEMBRAR NA PROVA
+                      </div>
+                      <p style={{ color: "#fef9c3", fontSize: "16px", fontWeight: "900", margin: 0, lineHeight: 1.6, fontStyle: "italic", whiteSpace: "pre-line" }}>
+                        {dicaMestreParseada.frase}
+                      </p>
+                    </div>
+
+                    {/* 🔑 O SINAL QUE MUDA TUDO — largura total */}
+                    <div style={{
+                      background: "linear-gradient(135deg, rgba(99,102,241,0.16) 0%, rgba(139,92,246,0.08) 100%)",
+                      border: "1px solid rgba(99,102,241,0.40)", borderRadius: "12px",
+                      padding: "16px 20px",
+                    }}>
+                      <div style={{ fontSize: "9px", color: "#a5b4fc", fontWeight: "900", letterSpacing: "2px", marginBottom: "10px" }}>
+                        🔑 O SINAL QUE MUDA TUDO
+                      </div>
+                      <p style={{ color: "#e0e7ff", fontSize: "14px", fontWeight: "700", margin: 0, lineHeight: 1.7, whiteSpace: "pre-line" }}>
+                        {dicaMestreParseada.pivot}
+                      </p>
+                    </div>
+
+                    {/* 🧠 + ⚠️ — 2 colunas desktop / 1 coluna mobile */}
+                    <div className="dica-cols" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+
+                      <div style={{
+                        background: "linear-gradient(160deg, rgba(16,185,129,0.13) 0%, rgba(6,182,212,0.07) 100%)",
+                        border: "1px solid rgba(16,185,129,0.35)", borderRadius: "12px",
+                        padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px",
+                      }}>
+                        <div style={{ fontSize: "9px", color: "#34d399", fontWeight: "900", letterSpacing: "1.5px" }}>
+                          🧠 O CAMINHO CERTO
+                        </div>
+                        <p style={{ color: "#d1fae5", fontSize: "13px", fontWeight: "600", margin: 0, lineHeight: 1.7, whiteSpace: "pre-line" }}>
+                          {dicaMestreParseada.caminhoCorreto}
+                        </p>
+                      </div>
+
+                      <div style={{
+                        background: "linear-gradient(160deg, rgba(245,158,11,0.13) 0%, rgba(239,68,68,0.07) 100%)",
+                        border: "1px solid rgba(245,158,11,0.35)", borderRadius: "12px",
+                        padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px",
+                      }}>
+                        <div style={{ fontSize: "9px", color: "#fbbf24", fontWeight: "900", letterSpacing: "1.5px" }}>
+                          ⚠️ POR QUE ERRAM
+                        </div>
+                        <p style={{ color: "#fef3c7", fontSize: "13px", fontWeight: "600", margin: 0, lineHeight: 1.7, whiteSpace: "pre-line" }}>
+                          {dicaMestreParseada.porQueErram}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                ) : dicaMestreParseada?.formato === "legacy" ? (
+                  <div>
+                    {dicaMestreParseada.mnemonic && (
+                      <div style={{
+                        background: "linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.06) 100%)",
+                        border: "1px solid rgba(251,191,36,0.40)", borderRadius: "12px",
+                        padding: "16px 20px", textAlign: "center", marginBottom: "12px",
+                      }}>
+                        <div style={{ fontSize: "9px", color: "#fbbf24", fontWeight: "900", letterSpacing: "2px", marginBottom: "8px" }}>💡 MNEMÔNICO</div>
+                        <p style={{ color: "#fef9c3", fontSize: "15px", fontWeight: "900", margin: 0, lineHeight: 1.6, fontStyle: "italic", whiteSpace: "pre-line" }}>
+                          {dicaMestreParseada.mnemonic}
+                        </p>
+                      </div>
+                    )}
+                    <div className="dica-cols" style={{ gridTemplateColumns: dicaMestreParseada.erro ? undefined : "repeat(2, 1fr)" }}>
+                      <div style={{
+                        background: "linear-gradient(160deg, rgba(99,102,241,0.14) 0%, rgba(139,92,246,0.08) 100%)",
+                        border: "1px solid rgba(99,102,241,0.35)", borderRadius: "12px",
+                        padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px",
+                      }}>
+                        <div style={{ fontSize: "10px", color: "#a5b4fc", fontWeight: "900", letterSpacing: "0.5px" }}>🧠 COMO O ESPECIALISTA PENSA</div>
+                        <p style={{ color: "#e0e7ff", fontSize: "13px", fontWeight: "600", margin: 0, lineHeight: 1.7, whiteSpace: "pre-line" }}>{dicaMestreParseada.gatilho}</p>
+                      </div>
+                      <div style={{
+                        background: "linear-gradient(160deg, rgba(16,185,129,0.14) 0%, rgba(6,182,212,0.07) 100%)",
+                        border: "1px solid rgba(16,185,129,0.35)", borderRadius: "12px",
+                        padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px",
+                      }}>
+                        <div style={{ fontSize: "10px", color: "#34d399", fontWeight: "900", letterSpacing: "0.5px" }}>🎯 O QUE O INEP QUER DE VOCÊ</div>
+                        <p style={{ color: "#d1fae5", fontSize: "13px", fontWeight: "600", margin: 0, lineHeight: 1.7, whiteSpace: "pre-line" }}>{dicaMestreParseada.resposta}</p>
+                      </div>
+                      {dicaMestreParseada.erro && (
+                        <div style={{
+                          background: "linear-gradient(160deg, rgba(239,68,68,0.13) 0%, rgba(185,28,28,0.07) 100%)",
+                          border: "1px solid rgba(239,68,68,0.35)", borderRadius: "12px",
+                          padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px",
+                        }}>
+                          <div style={{ fontSize: "10px", color: "#f87171", fontWeight: "900", letterSpacing: "0.5px" }}>🚫 O ERRO QUE ELIMINA CANDIDATOS</div>
+                          <p style={{ color: "#fee2e2", fontSize: "13px", fontWeight: "600", margin: 0, lineHeight: 1.7, whiteSpace: "pre-line" }}>{dicaMestreParseada.erro}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                ) : (
+                  <p style={st.dicaMestreText}>{q.dicaMestre}</p>
+                )}
+              </div>
+            )}
+
+            {/* ─── 🔥 ESTRATÉGIA DA APOSTA — exclusivo Super Apostas 2026.2 ───
+                 3 mini-cards (mesmo padrão visual do Raciocínio Clínico: fundo
+                 #020617 + borderTop de acento + padding) em vez de texto corrido
+                 dentro de um único card — só apresentação, conteúdo/parser
+                 inalterados. className="dica-cols" reaproveita a mesma classe
+                 responsiva já usada pela Dica Mestre legada (3 colunas no
+                 desktop, empilhado no mobile via @media já existente). */}
+            {q.modulo === "super_apostas" && estrategiaApostaParseada && (
+              <div style={st.estrategiaApostaBox}>
+                <div style={st.estrategiaApostaLabel}>
+                  <FaFire size={10} color="#ef4444" /> ESTRATÉGIA DA APOSTA
+                </div>
+                <div className="dica-cols">
+                  {[
+                    { label: "POR QUE APOSTAMOS",   icon: "🎯", texto: estrategiaApostaParseada.porQueApostamos },
+                    { label: "COMO PODE CAIR",       icon: "🃏", texto: estrategiaApostaParseada.comoPodeCair },
+                    { label: "ARMADILHA PROVÁVEL",   icon: "⚠",  texto: estrategiaApostaParseada.armadilhaProvavel },
+                  ].map(({ label, icon, texto }) => (
+                    <div key={label} style={{
+                      padding: "10px 13px", background: "#020617",
+                      borderRadius: "10px", borderTop: "2px solid #ef4444",
+                    }}>
+                      <div style={{ fontSize: "9px", fontWeight: "900", color: "#fca5a5",
+                        marginBottom: "5px", letterSpacing: "0.5px" }}>
+                        {icon} {label}
+                      </div>
+                      <p style={{ fontSize: "12px", color: "#cbd5e1", margin: 0, lineHeight: 1.55 }}>
+                        {texto}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -1144,6 +1728,33 @@ const Simulador = () => {
                       {qc.enunciado?.length > 220 ? qc.enunciado.slice(0, 220) + "…" : qc.enunciado}
                     </p>
 
+                    {/* Tabela de dados na correção */}
+                    {renderTabelaDados(qc.tabelaDados, qc.descricaoTabela)}
+
+                    {/* VISUAL na correção — gráfico / partograma / imagem clínica */}
+                    {qc.imagemTipo === "grafico" && qc.graficoDados
+                      ? renderGrafico(qc.graficoDados, qc.imagemLegenda)
+                      : qc.imagemTipo === "partograma" && (qc.imagemUrl || qc.imagemStoragePath)
+                      ? renderPartograma(qc.imagemUrl, qc.imagemStoragePath, qc.imagemLegenda, setLightboxUrl)
+                      : (qc.imagemUrl || qc.imagemStoragePath)
+                      ? (
+                        <div style={{ ...st.imgBox, marginBottom: "14px" }}>
+                          <StorageImage
+                            storagePath={qc.imagemStoragePath}
+                            directUrl={qc.imagemUrl}
+                            alt={qc.imagemLegenda || "Imagem da questão"}
+                            style={{ ...st.imagem, cursor: "zoom-in" }}
+                            onClick={(src) => setLightboxUrl(src)}
+                          />
+                          {qc.imagemLegenda && (
+                            <p style={{ margin: "8px 0 0", fontSize: "11px", color: "#64748b", fontStyle: "italic", textAlign: "center" }}>
+                              {qc.imagemLegenda}
+                            </p>
+                          )}
+                        </div>
+                      ) : null
+                    }
+
                     {/* Resposta do aluno + gabarito */}
                     <div style={{ display: "flex", gap: "10px", marginBottom: "14px", flexWrap: "wrap" }}>
                       <div style={{
@@ -1251,8 +1862,39 @@ const Simulador = () => {
           subcontexto_clinico={q.subcontexto_clinico || classificarPorRegras(q)}
           materia={q.materia}
           subtema={q.subtema}
+          resumoTema={q.resumoTema}
           onClose={() => setShowTeoria(false)}
         />
+      )}
+
+      {/* ─── LIGHTBOX DE IMAGEM ─── */}
+      {lightboxUrl && (
+        <div
+          onClick={() => setLightboxUrl(null)}
+          style={{
+            position: "fixed", inset: 0, zIndex: 13000,
+            background: "rgba(0,0,0,0.93)", backdropFilter: "blur(4px)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "20px", cursor: "zoom-out"
+          }}
+        >
+          <button
+            onClick={() => setLightboxUrl(null)}
+            style={{
+              position: "absolute", top: "16px", right: "20px",
+              background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.25)",
+              color: "#fff", borderRadius: "50%", width: "42px", height: "42px",
+              fontSize: "22px", cursor: "pointer", display: "flex",
+              alignItems: "center", justifyContent: "center", lineHeight: 1
+            }}
+          >×</button>
+          <img
+            src={lightboxUrl}
+            alt="Imagem ampliada"
+            style={{ maxWidth: "90vw", maxHeight: "90vh", objectFit: "contain", borderRadius: "8px", boxShadow: "0 8px 40px rgba(0,0,0,0.6)" }}
+            onClick={e => e.stopPropagation()}
+          />
+        </div>
       )}
 
       {/* MODAL DE DÚVIDA */}
@@ -1290,6 +1932,9 @@ const Simulador = () => {
         .sim-wrapper { width:100%; max-width:100vw; overflow-x:hidden; }
         .enunciado { word-break:break-word; overflow-wrap:break-word; line-height:1.6; hyphens:auto; }
 
+        .tto-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .dica-cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
         @media (max-width: 768px) {
           .sim-wrapper { padding: 10px !important; }
           .top-container { padding: 12px !important; margin-bottom: 12px !important; border-radius: 16px !important; }
@@ -1301,6 +1946,8 @@ const Simulador = () => {
           .meta-data { flex-direction: column !important; align-items: flex-start !important; gap: 10px !important; }
           .enunciado { font-size: 15px !important; }
           .expert-row { grid-template-columns: 1fr !important; }
+          .tto-grid { grid-template-columns: 1fr !important; }
+          .dica-cols { grid-template-columns: 1fr !important; }
           .bottomNav { gap: 8px !important; }
           .btn-nav { padding: 13px 10px !important; font-size: 12px !important; }
         }
@@ -1352,6 +1999,11 @@ const st = {
   dicaMestreBox: { background: "linear-gradient(135deg, rgba(251,191,36,0.07) 0%, rgba(251,191,36,0.02) 100%)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: "14px", padding: "16px 18px" },
   dicaMestreLabel: { fontSize: "11px", fontWeight: "900", color: "#fbbf24", display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", letterSpacing: "0.5px" },
   dicaMestreText: { fontSize: "15px", color: "#fef3c7", margin: 0, lineHeight: 1.65, fontStyle: "italic", fontWeight: "500" },
+  // Estratégia da Aposta — bloco pequeno e discreto, exclusivo Super Apostas 2026.2
+  // (itens internos viraram 3 mini-cards com estilo inline, mesmo padrão do
+  // Raciocínio Clínico — ver JSX; só o container/label externos usam este objeto)
+  estrategiaApostaBox: { background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.18)", borderRadius: "12px", padding: "12px 14px" },
+  estrategiaApostaLabel: { fontSize: "10px", fontWeight: "900", color: "#ef4444", display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px", letterSpacing: "0.5px" },
   bottomNav: { marginTop: "28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #334155", paddingTop: "18px", gap: "10px" },
   navCenter: { flex: 1, textAlign: "center" },
   btnNav: { color: "#fff", border: "none", padding: "12px 20px", borderRadius: "12px", fontWeight: "700", fontSize: "12px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", transition: "0.2s", whiteSpace: "nowrap" },

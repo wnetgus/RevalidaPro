@@ -112,7 +112,7 @@ export const DIRETRIZES_CONTROLADAS = [
     ano: 2024,
     pontosCriticos: [
       "GINA 2024 — Track 1 preferencial: CI+formoterol (baixa dose) conforme necessário desde Step 1 (sem SABA isolado)",
-      "GINA 2024 PROÍBE SABA em monoterapia como único tratamento — risco aumentado de morte por asma",
+      "GINA 2024 PROÍBE SABA isolado como CONTROLADOR/MANUTENÇÃO diária (substituído por CI+formoterol) — risco aumentado de morte por asma quando usado como único tratamento de manutenção. ISSO NÃO SE APLICA ao alívio agudo durante uma crise: no atendimento da crise/exacerbação, SABA (com ou sem ipratrópio associado em crise grave) continua sendo a terapia de resgate padrão — não confundir a proibição de manutenção com a conduta na crise aguda",
       "Classificação de controle: Controlada (nenhum critério) | Parcialmente controlada (1–2 critérios) | Não controlada (3–4 critérios)",
       "Step 1: CI+formoterol baixa dose PRN | Step 2: CI baixa dose diária + SABA PRN | Step 3: CI/LABA baixa-média dose | Step 4: CI/LABA alta dose | Step 5: add-on biológico (omalizumabe, mepolizumabe, benralizumabe, dupilumabe)",
       "Crise leve-moderada: SABA (salbutamol 2–4 puffs) a cada 20 min × 3; corticoide sistêmico se sem melhora em 1h",
@@ -131,8 +131,14 @@ export const DIRETRIZES_CONTROLADAS = [
     id: "rastreamento_colo",
     tema: "Rastreamento do Câncer de Colo do Útero",
     palavrasChave: [
+      // Hotfix pós-Lote 001: removida a palavra-chave "nio" — substring de 3
+      // letras que casava dentro de "cranioencefálico" e injetava esta
+      // diretriz (colo do útero) em questões de TCE. "nic" tem o mesmo risco
+      // (casa dentro de "clínica", "crônica", "técnica" etc.) — mantido por
+      // ora pois já havia dependência dele, mas reportado como risco
+      // equivalente ainda pendente (ver auditoria no relatório do hotfix).
       "colo uterino", "colo do útero", "papanicolau", "colpocitologia",
-      "hpv", "cervical", "nio", "nic", "rastreamento cervical",
+      "hpv", "cervical", "nic", "rastreamento cervical",
       "colposcopia", "asc-us", "lsil", "hsil", "asc-h",
     ],
     fonte: "INCA 2023 — Diretrizes Brasileiras para o Rastreamento do Câncer do Colo do Útero (2ª edição)",
@@ -310,29 +316,106 @@ export const DIRETRIZES_CONTROLADAS = [
     historica: false,
     substitui: null,
   },
+
+  // ── 11. DENGUE ─────────────────────────────────────────────────────────────
+  // Hotfix pós-Lote 001: entrada controlada mínima criada para permitir geração
+  // de questões sobre dengue sem bloqueio por REGRA SA-4 (o modelo tentava citar
+  // "MS/SUS" sem fonte injetada — corretamente barrado, mas o tema ficava sem
+  // grounding possível). Preferida a uma allowlist ampla, por instrução direta.
+  {
+    id: "dengue",
+    tema: "Dengue",
+    palavrasChave: ["dengue"],
+    fonte: "Ministério da Saúde — Dengue: Diagnóstico e Manejo Clínico (5ª edição) + Notas Técnicas de atualização em cenário de epidemia",
+    ano: 2023,
+    pontosCriticos: [
+      "Classificação por grupos: A (sem sinais de alarme, sem comorbidade/condição especial) | B (sem sinais de alarme, mas com sangramento espontâneo de pele, prova do laço positiva, condição clínica especial ou risco social) | C (com sinais de alarme) | D (sinais de choque/gravidade)",
+      "Sinais de alarme: dor abdominal intensa e contínua, vômitos persistentes, acúmulo de líquidos (ascite, derrame pleural/pericárdico), sangramento de mucosa, letargia ou irritabilidade, hepatomegalia >2cm, aumento progressivo do hematócrito com queda rápida de plaquetas",
+      "Sinais de choque/gravidade: extravasamento grave de plasma com choque, sangramento grave, comprometimento grave de órgãos (hepatite grave, encefalite, miocardite)",
+      "Prova do laço: obrigatória em todo paciente com suspeita de dengue sem sinais de alarme, auxilia a triagem para o Grupo B",
+      "Grupo A: hidratação oral vigorosa, acompanhamento ambulatorial, orientação de sinais de alarme e retorno imediato se surgirem",
+      "Grupo B: hemograma obrigatório, observação em unidade de saúde até o resultado; hidratação oral até confirmação",
+      "Grupo C: internação (leito de observação/enfermaria), reposição volêmica IV imediata com reavaliação clínica e de hematócrito seriada",
+      "Grupo D: internação em leito de terapia intensiva, reposição volêmica rápida em bólus com reavaliação contínua",
+      "PROIBIDO: uso de AAS (ácido acetilsalicílico) e anti-inflamatórios não esteroidais (AINEs) — risco de sangramento",
+      "Notificação compulsória imediata de todo caso suspeito",
+    ],
+    ativa: true,
+    historica: false,
+    substitui: null,
+  },
+
+  // ── 12. ÉTICA MÉDICA ───────────────────────────────────────────────────────
+  // Hotfix pós-Lote 001: idem — entrada mínima para sigilo médico/quebra
+  // justificada, ancorada exclusivamente no Código de Ética Médica vigente
+  // (fonte estável, sem edição recente que mude o conteúdo abaixo).
+  {
+    id: "etica_medica",
+    tema: "Ética Médica — Sigilo Profissional",
+    palavrasChave: [
+      "ética médica", "sigilo médico", "sigilo profissional",
+      "quebra de sigilo", "código de ética médica", "conselho federal de medicina",
+    ],
+    fonte: "Código de Ética Médica — Resolução CFM nº 2.217/2018 (alterada pelas Resoluções CFM nº 2.222/2018 e 2.226/2019)",
+    ano: 2019,
+    pontosCriticos: [
+      "Art. 73: é vedado ao médico revelar fato de que tenha conhecimento em razão do exercício profissional, salvo justa causa, dever legal ou autorização expressa do paciente",
+      "Justa causa para quebra do sigilo: risco de morte ou dano grave a terceiros, dever legal de notificação (doenças de notificação compulsória; maus-tratos contra crianças, adolescentes, idosos ou pessoas com deficiência; ferimentos por arma de fogo ou arma branca)",
+      "Consentimento expresso e informado do próprio paciente autoriza a revelação, dentro do que foi consentido",
+      "O sigilo médico persiste mesmo após a morte do paciente",
+      "Sigilo em adolescentes: garantido, exceto quando há risco grave à vida/saúde do próprio paciente ou de terceiros, ou quando o adolescente não tem capacidade de avaliar o próprio risco — situação em que se pode/deve envolver o responsável legal",
+      "Notificação compulsória de doença ou de situação de violência não constitui quebra de sigilo — é dever legal do médico",
+      "PROIBIDO: revelar informação sigilosa por conveniência, a pedido de terceiros sem justa causa, ou sem consentimento do paciente fora das exceções previstas",
+    ],
+    ativa: true,
+    historica: false,
+    substitui: null,
+  },
 ];
 
-// ─── DETECTAR NA LISTA ESTÁTICA (fallback) ───────────────────────────────────
-export const detectarDiretriz = (temaMestre = "", subtema = "") => {
-  const texto = `${temaMestre} ${subtema}`.toLowerCase();
-  return (
-    DIRETRIZES_CONTROLADAS.find(
-      d => d.ativa && d.palavrasChave.some(kw => texto.includes(kw.toLowerCase()))
-    ) || null
-  );
+// ─── CORRESPONDÊNCIA DE PALAVRA-CHAVE ────────────────────────────────────────
+// Hotfix (auditoria pós-Lote 001): algumas palavras-chave curtas colidiam como
+// substring dentro de palavras não relacionadas — "nic" dentro de "clínica"/
+// "crônica"/"técnica", "gina" dentro de "vagina"/"vaginal", "tb"/"bk" (2 letras,
+// risco estrutural). Para essas — e só essas —, a correspondência passa a exigir
+// fronteira de palavra (\b): "clínica" não tem "nic" como token isolado (é
+// seguida de "a" sem separador), mas "NIC" ou "(NIC)" continuam casando.
+// Todas as demais palavras-chave (frases mais longas, sem esse risco) mantêm o
+// comportamento substring original — nenhuma regressão nas 12 entradas atuais.
+const _PALAVRAS_FRONTEIRA_OBRIGATORIA = new Set(["nic", "gina", "tb", "bk"]);
+const _escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const _casaPalavraChave = (texto, kw) => {
+  const kwLower = kw.toLowerCase();
+  if (_PALAVRAS_FRONTEIRA_OBRIGATORIA.has(kwLower)) {
+    return new RegExp(`\\b${_escapeRegex(kwLower)}\\b`, "i").test(texto);
+  }
+  return texto.includes(kwLower);
 };
 
 // ─── DETECTAR NA LISTA DINÂMICA (Firestore) ──────────────────────────────────
 // Recebe a lista carregada do Firestore (ou estática como fallback).
 // Preferir diretriz ativa; a versão mais recente (maior ano) tem prioridade.
+// ÚNICA lógica de seleção do arquivo — detectarDiretriz (abaixo) delega para
+// esta função em vez de reimplementar o desempate, para as duas nunca
+// divergirem (hotfix: resumoEngine.js usava só detectarDiretriz, que decidia
+// por "primeiro match na ordem do array" — diferente do critério "maior ano"
+// usado por RoboGerador/ImportadorPro/ResumoGerador via detectarDiretrizDinamica,
+// podendo escolher fontes controladas diferentes para o mesmo tema+subtema).
 export const detectarDiretrizDinamica = (lista = [], temaMestre = "", subtema = "") => {
   const texto = `${temaMestre} ${subtema}`.toLowerCase();
   const candidatas = lista.filter(
-    d => d.ativa && Array.isArray(d.palavrasChave) && d.palavrasChave.some(kw => texto.includes(kw.toLowerCase()))
+    d => d.ativa && Array.isArray(d.palavrasChave) && d.palavrasChave.some(kw => _casaPalavraChave(texto, kw))
   );
   if (!candidatas.length) return null;
   return candidatas.reduce((best, cur) => (cur.ano > best.ano ? cur : best));
 };
+
+// ─── DETECTAR NA LISTA ESTÁTICA (fallback) ───────────────────────────────────
+// Delega para detectarDiretrizDinamica com a lista estática — mesma assinatura
+// e mesmo retorno de sempre (uma diretriz ou null), mas agora com o MESMO
+// critério de desempate (maior ano) usado em todos os outros caminhos.
+export const detectarDiretriz = (temaMestre = "", subtema = "") =>
+  detectarDiretrizDinamica(DIRETRIZES_CONTROLADAS, temaMestre, subtema);
 
 // ─── MONTAR BLOCO DE INJEÇÃO PARA O PROMPT ───────────────────────────────────
 // Retorna string formatada a ser inserida no prompt antes do FOCO PEDAGÓGICO.

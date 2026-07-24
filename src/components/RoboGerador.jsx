@@ -18,24 +18,78 @@ import {
   extrairJSONDoTexto,
   MAPA_TEMA_MESTRE, PADROES_FRAGMENTADOS, estaFragmentado, normalizarTemaMestre,
   PROMPT_SISTEMA_ROBO, normalizarRaciocinio,
+  PROMPT_SISTEMA_SUPERAPOSTAS_ABCD, equilibrarGabaritoLote, executarGeracaoSA,
 } from "../utils/promptEngine";
 import { gerarESalvarResumo } from "../utils/resumoEngine";
 import {
   DIRETRIZES_CONTROLADAS,
   detectarDiretriz, detectarDiretrizDinamica, montarBlocoDiretriz,
 } from "../config/diretrizesControladas";
+import { statusRecorteSA } from "../config/recortesStatusSA";
 
 // ─── CONSTANTES DE TEMPORIZAÇÃO ────────────────────────────────────────────────
 // 90s entre temas: buffer para a Cloud Function (timeout 180s) e evitar
 // rate-limit da Anthropic. Reduzir apenas se a conta tiver cota mais alta.
 const DELAY_ENTRE_TEMAS_MS  = 20_000;  // 20 segundos — seguro no Tier 1 pago (50 RPM Haiku)
 const DELAY_RETRY_MS        = 45_000;  // 45 segundos antes da retentativa (buffer extra para temas densos)
-const MAX_RETRIES           = 3;       // tentativas por tema: 1 original + 2 retries
+// MAX_RETRIES: exclusivo do caminho LEGADO (2026.1, A–E, sem executarGeracaoSA) —
+// reinício simples de chamarIA em caso de erro técnico/rede, sem fallback/validação.
+// O formato ABCD (Super Apostas 2026.2) NÃO usa mais este valor: desde a
+// auditoria de custo do Lote 002, ele tem teto fixo e único de 3 chamadas via
+// executarGeracaoSA (promptEngine.js) — nunca reiniciado externamente.
+const MAX_RETRIES           = 3;       // tentativas por tema (só formato legado): 1 original + 2 retries
 const QUESTOES_POR_TEMA     = 3;       // questões geradas por tema
 
 // CICLO_NIVEIS_SA, atribuirNivelAposta, calcularStatusAtualizacao → importados de promptEngine.js
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+
+// ─── DIAGNÓSTICO DEV — candidata rejeitada (observabilidade, não decisão) ────
+// Gate pelo projeto Firebase do BUILD atual (VITE_FIREBASE_PROJECT_ID, vem de
+// .env.development vs .env.production em tempo de build) — não por hostname,
+// pra cobrir tanto localhost quanto o Hosting publicado em
+// revalidapro-dev.web.app. Nunca verdadeiro num build gerado com
+// .env.production, mesmo se algum dia servido por outro domínio.
+const IS_DEV_PROJECT = import.meta.env.VITE_FIREBASE_PROJECT_ID === "revalidapro-dev";
+
+// Réplica LOCAL, só para EXIBIÇÃO, de _extrairNumerosSignificativos
+// (promptEngine.js). Deliberadamente duplicada em vez de importada/exportada
+// de lá — esta correção não deve tocar no arquivo do validador de jeito
+// nenhum. Nunca usada para decidir aprovação/rejeição, só para mostrar ao
+// operador em dev quais números existem em cada campo.
+const _extrairNumerosParaDiagnostico = (texto) => {
+  const t = String(texto || "")
+    .replace(/\bPASSO\s+\d+\b/gi, "")
+    .replace(/\d+(?:[.,]\d+)?\s*[ªº]/g, "")
+    .replace(/\(\s*\d{1,2}\s*\)/g, "")
+    .replace(/(^|[.!?]\s+)\d{1,2}[.)]\s+/g, "$1");
+  const nums = t.match(/\d+(?:[.,]\d+)?/g) || [];
+  return [...new Set(nums.map((n) => n.replace(",", ".")))];
+};
+
+// Réplica LOCAL, só para EXIBIÇÃO, de _PADROES_AFIRMACAO_FORTE (promptEngine.js)
+// — mesma lista de padrões, deliberadamente duplicada em vez de importada,
+// pelo mesmo motivo do helper acima: nunca decide nada, só mostra ao operador
+// em dev ONDE um termo absoluto foi encontrado no resumo rejeitado.
+const _TERMOS_ABSOLUTOS_DIAGNOSTICO = [
+  /patognom[oô]nic[oa]/i,
+  /padr[ãa]o[\s-]?ouro/i,
+  /\d{1,3}\s?%/,
+  /desde\s+\d{4}/i,
+  /\bsempre\b/i,
+  /\bnunca\b/i,
+  /\bobrigat[óo]ri[ao]s?\b/i,
+  /\bem todos os (casos|pacientes)\b/i,
+];
+const _termosAbsolutosParaDiagnostico = (texto) => {
+  const t = String(texto || "");
+  const achados = [];
+  for (const re of _TERMOS_ABSOLUTOS_DIAGNOSTICO) {
+    const m = t.match(re);
+    if (m) achados.push(m[0]);
+  }
+  return achados;
+};
 
 // ─── PRÓXIMO NÚMERO SEQUENCIAL NO FIRESTORE (SA) ─────────────────────────────
 const obterProximoNumeroSA = async (saEdicao) => {
@@ -160,6 +214,16 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   const [area, setArea]           = useState("Clínica Médica");
   const [temas, setTemas]         = useState("");
   const [edicao, setEdicao]       = useState(SUPER_APOSTAS_CONFIG.edicao_atual);
+  // Super Apostas 2026.2: formato ABCD (4 alternativas) + nivel_aposta semântico
+  // + estrategiaAposta + protocolo anti-pistas. Opt-in — desligado preserva 100%
+  // do comportamento atual (A–E, ciclo posicional) para as edições antigas.
+  const [formatoABCD, setFormatoABCD] = useState(false);
+  // Modo validação/homologação — pede 1 questão por recorte em vez de 3.
+  // Opt-in, só afeta o caminho ABCD (formatoABCD=true); o fluxo legado
+  // (2026.1, A–E) nunca vê este estado — QUESTOES_POR_TEMA continua fixo em 3
+  // lá. Desligado (padrão) preserva 100% do comportamento atual também no
+  // formato ABCD — só muda quando o operador liga explicitamente.
+  const [modoUmPorRecorte, setModoUmPorRecorte] = useState(false);
 
   const [rodando, setRodando]         = useState(false);
   const [log, setLog]                 = useState([]);
@@ -205,6 +269,10 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   // diretrizCacheRef: tema.toLowerCase() → diretriz detectada (evita re-detecção em retries)
   const diretrizesRef    = useRef(null);
   const diretrizCacheRef = useRef(new Map());
+  // Distribuição de gabarito (Super Apostas 2026.2 / ABCD): contador mutável
+  // { a, b, c, d } — resetado a cada execução do robô, acumula ao longo de
+  // todos os temas/lotes do mesmo run para equilibrar a letra do gabarito.
+  const balanceadorGabaritoRef = useRef({ a: 0, b: 0, c: 0, d: 0 });
 
   // ── Auto-scroll do log ────────────────────────────────────────────────────
   useEffect(() => {
@@ -248,7 +316,12 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   }, []);
 
   // ── Chama a Cloud Function (com mensagem de erro detalhada) ───────────────
-  const chamarIA = useCallback(async (promptUsuario) => {
+  // systemPrompt é opcional — default preserva o comportamento atual (A–E).
+  // Super Apostas 2026.2 passa PROMPT_SISTEMA_SUPERAPOSTAS_ABCD explicitamente.
+  // model é opcional — sem ele, a function usa Haiku (comportamento de sempre).
+  // Retorna { parsed, usage } — usage vem da API da Anthropic (input/output tokens),
+  // usado só para telemetria/log, não para lógica de negócio.
+  const chamarIA = useCallback(async (promptUsuario, systemPrompt = PROMPT_SISTEMA_ROBO, model = undefined) => {
     const isDev = window.location.hostname === "localhost" ||
                   window.location.hostname === "127.0.0.1";
     const endpoint = isDev
@@ -259,7 +332,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ system: PROMPT_SISTEMA_ROBO, prompt: promptUsuario }),
+      body: JSON.stringify({ system: systemPrompt, prompt: promptUsuario, ...(model ? { model } : {}) }),
     });
 
     if (!response.ok) {
@@ -275,6 +348,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     }
 
     const data  = await response.json();
+    const usage = data.usage || null;
     const texto = (data.content || []).map((c) => c.text || "").join("").trim();
     if (!texto) throw new Error("IA retornou resposta vazia.");
 
@@ -290,12 +364,29 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
           : "JSON truncado — resposta cortada pelo limite de tokens";
       throw new Error(`JSON não encontrado: ${motivo}. (${texto.length} chars recebidos)`);
     }
-    return parsed;
+    return { parsed, usage };
   }, []);
+
+  // ── Adaptador: chamarIA daqui é (promptUsuario, systemPrompt, model) —
+  // executarGeracaoSA (promptEngine.js, fonte única da estratégia de retry/
+  // modelo) espera (systemPrompt, promptUsuario, model). Só inverte a ordem
+  // dos dois primeiros argumentos, sem lógica própria — a árvore de decisão
+  // inteira (tentativas, feedback, escolha Haiku/Opus, teto de 3 chamadas)
+  // vive em um único lugar (promptEngine.js), reaproveitável por scripts de
+  // teste de custo fora do React (ver item 9 do relatório de auditoria).
+  const chamarIABruto = useCallback(
+    (systemPrompt, promptUsuario, model) => chamarIA(promptUsuario, systemPrompt, model),
+    [chamarIA]
+  );
 
   // ── Salva questões de um tema no Firestore ────────────────────────────────
   // FIX BUG #5: area recebe o valor via parâmetro — não depende de closure stale
-  const salvarQuestoes = useCallback(async (lista, edicaoSA, proximoNum, areaAtual) => {
+  // opts.formatoABCD (Super Apostas 2026.2): não grava alternativaE/justificativaE,
+  // usa nivel_aposta semântico da IA (com fallback pro ciclo posicional) e grava
+  // estrategiaAposta quando presente. Sem opts (default), comportamento idêntico
+  // ao anterior — questões antigas e a edição 2026.1 não são afetadas.
+  const salvarQuestoes = useCallback(async (lista, edicaoSA, proximoNum, areaAtual, opts = {}) => {
+    const { formatoABCD = false } = opts;
     const anoAtual = String(new Date().getFullYear());
     const idBase   = `SA_${edicaoSA}`;
 
@@ -304,13 +395,22 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       const numQ  = proximoNum + i;
       const docId = `${idBase}_Q${numQ}`;
 
+      const nivelIA      = String(q.probabilidade_prova || "").toUpperCase().trim();
+      const nivelIAValido = ["ALTO", "MEDIO", "BAIXO"].includes(nivelIA);
+
       const finalData = {
         // FIX: sempre usa a área selecionada pelo usuário (ex: "Cirurgia").
         // q.materia da IA é IGNORADO — ela devolve strings livres que não
         // coincidem com os valores do filtro em SuperApostas.
         materia:     areaAtual,
-        tema_mestre: q.tema_mestre  || "",  // doença/condição principal gerada pela IA
-        subtema:     q.subtema      || q.materia || "",  // subtema guarda o texto detalhado da IA
+        // tema_mestre: passa pelo MESMO normalizador canônico (MAPA_TEMA_MESTRE)
+        // já usado na correção retroativa do AdminPainel — agora aplicado também
+        // no momento da geração, para não deixar entrar fragmentação de sinônimo
+        // ("Hipertensão" / "HAS" / "Hipertensão arterial" → sempre a forma canônica).
+        tema_mestre: normalizarTemaMestre((q.tema_mestre || "").trim()) || "",
+        // subtema: nunca mais cai em "materia" (fallback antigo misturava área
+        // ampla com subtema — semanticamente errado); cai em tema_mestre.
+        subtema:     (q.subtema || "").trim() || q.tema_mestre || "",
         banca:       "Revalida INEP",
         ano:         q.ano          || anoAtual,
         enunciado:   q.enunciado    || "",
@@ -326,16 +426,33 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
         alternativaB: q.alternativaB || q.alts?.b?.texto || "",
         alternativaC: q.alternativaC || q.alts?.c?.texto || "",
         alternativaD: q.alternativaD || q.alts?.d?.texto || "",
-        alternativaE: q.alternativaE || q.alts?.e?.texto || "",
         justificativaA: q.justificativaA || q.alts?.a?.nota || "",
         justificativaB: q.justificativaB || q.alts?.b?.nota || "",
         justificativaC: q.justificativaC || q.alts?.c?.nota || "",
         justificativaD: q.justificativaD || q.alts?.d?.nota || "",
-        justificativaE: q.justificativaE || q.alts?.e?.nota || "",
+        // alternativaE/justificativaE: SÓ gravadas fora do formato ABCD.
+        // Simulador já tolera o campo ausente — retrocompat sem mudar a tela.
+        ...(formatoABCD ? {} : {
+          alternativaE:   q.alternativaE   || q.alts?.e?.texto || "",
+          justificativaE: q.justificativaE || q.alts?.e?.nota  || "",
+        }),
 
         numeroQuestao:      numQ,
         status_atualizacao: calcularStatusAtualizacao(q.ano_diretriz),
-        nivel_aposta:       atribuirNivelAposta(i, lista.length),
+        // nivel_aposta: semântico (via IA) quando formatoABCD e a IA respondeu um
+        // valor válido; caso contrário cai no ciclo posicional de sempre — questões
+        // antigas continuam exatamente como estavam (não são reclassificadas).
+        nivel_aposta: (formatoABCD && nivelIAValido) ? nivelIA : atribuirNivelAposta(i, lista.length),
+        nivel_aposta_origem: (formatoABCD && nivelIAValido) ? "classificacao_ia" : "ciclo_posicional",
+        // Justificativa interna da classificação — nunca exibida ao aluno (não é
+        // consumida por nenhuma tela); serve só de registro/auditoria.
+        ...(formatoABCD && nivelIAValido && q.probabilidade_justificativa
+          ? { nivel_aposta_motivo: String(q.probabilidade_justificativa).trim() }
+          : {}),
+
+        // estrategiaAposta: campo opcional exclusivo do formato ABCD 2026.2.
+        ...(formatoABCD && q.estrategiaAposta ? { estrategiaAposta: String(q.estrategiaAposta).trim() } : {}),
+        formatoAlternativas: formatoABCD ? "ABCD" : "ABCDE",
 
         id:           docId,
         provaId:      "",           // isolamento — nunca aparece em queries INEP
@@ -353,7 +470,104 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       };
 
       await setDoc(doc(db, "questoes", docId), finalData);
-      gerarESalvarResumo(finalData).catch(() => {});
+
+      // Resumo do Tema — fire-and-forget continua (não bloqueia o salvamento
+      // da questão nem o avanço do robô para o próximo tema), mas agora todo
+      // desfecho é logado — antes o .catch(() => {}) engolia qualquer falha
+      // em silêncio e o operador só descobria que "o resumo não apareceu"
+      // olhando a tela do aluno, sem saber o motivo.
+      gerarESalvarResumo(finalData)
+        .then((r) => {
+          const chave = r?.key ? ` (${r.key})` : "";
+          switch (r?.status) {
+            case "salvo":
+              // Retry controlado do resumo (hotfix): tentativas > 1 significa
+              // que a 1ª candidata foi rejeitada por motivo corrigível e a 2ª
+              // (única retentativa, sempre Haiku) foi aprovada. Log visível em
+              // qualquer ambiente — é logging normal de operação, não o
+              // diagnóstico DEV detalhado (esse continua só em dev).
+              if (r.tentativas > 1) {
+                addLog(`   🔄 Resumo rejeitado na tentativa 1 — retry corretivo 1/1`, "aviso");
+                addLog(`   ✅ Resumo aprovado na tentativa 2`, "ok");
+              }
+              addLog(`   📚 Resumo do Tema salvo${chave} — ${r.blocos} bloco(s).`, "ok");
+              break;
+            case "dedup_sessao":
+              addLog(`   📚 Resumo do Tema não gerado — já tentado nesta sessão${chave}.`, "detalhe");
+              break;
+            case "dedup_firestore":
+              addLog(`   📚 Resumo do Tema reaproveitado — já existia no Firestore${chave}.`, "detalhe");
+              break;
+            case "rejeitado_grounding":
+              if (r.bloqueadoPorGrounding) {
+                addLog(`   ⚠️  Resumo do Tema REJEITADO por grounding${chave} — ${(r.problemas || []).join(" | ")}`, "aviso");
+              } else {
+                addLog(`   🔄 Resumo rejeitado na tentativa 1 — retry corretivo 1/1`, "aviso");
+                addLog(`   ⚠️ Resumo rejeitado após 2 tentativas — encaminhar para revisão${chave} — ${(r.problemas || []).join(" | ")}`, "aviso");
+              }
+              // ── Diagnóstico DEV — resumo rejeitado ────────────────────────
+              // Só em revalidapro-dev (IS_DEV_PROJECT), equivalente ao
+              // diagnóstico já existente para candidata de questão. Não
+              // persiste nada — só log visual do painel, nunca Firestore.
+              // Não altera validarResumoSA, o prompt do resumo, grounding,
+              // regras SA nem a decisão de rejeitar (já tomada acima).
+              if (IS_DEV_PROJECT) {
+                const problemasTexto = (r.problemas || []).join(" | ");
+                const pontos = Array.isArray(r.pontos) ? r.pontos : [];
+                addLog(`🧾 DIAGNÓSTICO DEV — resumo rejeitado`, "detalhe");
+                addLog(`   chave: ${r.key || "?"}`, "detalhe");
+                addLog(`   motivo(s): ${problemasTexto || "(nenhum registrado)"}`, "detalhe");
+                addLog(`   grounding usado: ${r.grounding ? `${r.grounding.id} — ${r.grounding.fonte} (${r.grounding.ano})` : "nenhuma"}`, "detalhe");
+                if (pontos.length === 0) {
+                  addLog(`   blocos: (nenhum bloco recebido)`, "detalhe");
+                } else {
+                  pontos.forEach((p, idx) => {
+                    addLog(`   ── bloco ${idx + 1}: ${p?.label || "(sem título)"} ──`, "detalhe");
+                    addLog(`   ${p?.texto || "(vazio)"}`, "detalhe");
+                  });
+                }
+                const textoCompleto = pontos.map((p) => p?.texto || "").join(" ");
+                const numsResumo = _extrairNumerosParaDiagnostico(textoCompleto);
+                addLog(`   números extraídos do resumo: ${numsResumo.join(", ") || "nenhum"}`, "detalhe");
+
+                // Números "sem suporte" extraídos do texto do MOTIVO real (já
+                // calculado por validarResumoSA) — nunca recalculados aqui,
+                // pra não haver risco de divergência com o que de fato causou
+                // a rejeição. Cobre os dois formatos de motivo (com/sem
+                // grounding) que validarResumoSA pode gerar.
+                const semSuporteMatch =
+                  problemasTexto.match(/número\(s\)\s+([\d.,\s]+?)\s+no resumo não aparece/) ||
+                  problemasTexto.match(/número\(s\)\s+clínico\(s\)\s+\(([\d.,\s]+?)\)\s+sem diretriz/);
+                if (semSuporteMatch) {
+                  const semSuporteNums = semSuporteMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
+                  addLog(`   números sem suporte: ${semSuporteNums.join(", ")}`, "aviso");
+                } else {
+                  addLog(`   números sem suporte: n/d — este motivo não é de suporte numérico (ver motivo acima)`, "detalhe");
+                }
+
+                const termosAbsolutos = _termosAbsolutosParaDiagnostico(textoCompleto);
+                addLog(`   termo(s) absoluto(s) detectado(s): ${termosAbsolutos.length ? termosAbsolutos.join(", ") : "nenhum"}`, "detalhe");
+              }
+              break;
+            case "resposta_invalida":
+              addLog(`   ⚠️  Resumo do Tema falhou — resposta da IA sem os pontos esperados${chave}.`, "aviso");
+              break;
+            case "sem_tema":
+              addLog(`   ⚠️  Resumo do Tema não gerado — questão sem tema_mestre.`, "aviso");
+              break;
+            case "erro_tecnico":
+              addLog(`   ❌ Resumo do Tema falhou tecnicamente${chave} — ${r.erro}`, "erro");
+              break;
+            default:
+              addLog(`   ⚠️  Resumo do Tema — status inesperado: ${JSON.stringify(r)}`, "aviso");
+          }
+        })
+        .catch((e) => {
+          // Rede de segurança: gerarESalvarResumo já captura seus próprios
+          // erros internamente e sempre resolve com um status — isto só
+          // dispararia por um bug genuinamente inesperado.
+          addLog(`   ❌ Resumo do Tema — erro inesperado não tratado: ${e.message}`, "erro");
+        });
     }
   }, []);
 
@@ -387,7 +601,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     setResSalvo(false);
     setResLog("Gerando resumo via IA…");
     try {
-      const resposta = await chamarIA(
+      const { parsed: resposta } = await chamarIA(
         `${PROMPT_RESUMO_TEMA}\n\nTEMA: ${resTema.trim()}`
       );
       // chamarIA retorna array; resumo é objeto único
@@ -448,8 +662,16 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     }
 
     // Captura valores de estado agora, antes de qualquer await
-    const areaAtual  = area;
+    const areaAtual   = area;
     const edicaoAtual = edicao;
+    const formatoABCDAtual = formatoABCD;
+    const systemPromptAtual = formatoABCDAtual ? PROMPT_SISTEMA_SUPERAPOSTAS_ABCD : PROMPT_SISTEMA_ROBO;
+    // Só o caminho ABCD respeita este modo — o legado sempre usa QUESTOES_POR_TEMA (3).
+    const questoesPorTemaAtual = (formatoABCDAtual && modoUmPorRecorte) ? 1 : QUESTOES_POR_TEMA;
+
+    // Reseta o balanceador de gabarito a cada execução — distribuição vale
+    // por run, não acumula entre sessões diferentes do robô.
+    balanceadorGabaritoRef.current = { a: 0, b: 0, c: 0, d: 0 };
 
     abortRef.current = false;
     setRodando(true);
@@ -458,7 +680,19 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     setProgresso({ atual: 0, total: listasTemas.length });
 
     addLog(`🤖 Robô iniciado — ${listasTemas.length} tema(s) | Edição: ${edicaoAtual} | Área: ${areaAtual}`, "sistema");
-    addLog(`⚙️  ${QUESTOES_POR_TEMA} questões/tema · ${DELAY_ENTRE_TEMAS_MS/1000}s entre temas · ${MAX_RETRIES} tentativas máx.`, "sistema");
+    addLog(
+      `⚙️  ${questoesPorTemaAtual} questõe${questoesPorTemaAtual > 1 ? "s" : ""}/tema · ${DELAY_ENTRE_TEMAS_MS/1000}s entre temas · ${
+        formatoABCDAtual ? "3 chamadas máx./recorte (fluxo único, sem reinício)" : `${MAX_RETRIES} tentativas máx.`
+      }`,
+      "sistema"
+    );
+    if (formatoABCDAtual) {
+      addLog(`🆕 Formato ABCD ativo (Super Apostas 2026.2) — 4 alternativas, nivel_aposta semântico, estrategiaAposta.`, "sistema");
+      if (modoUmPorRecorte) {
+        addLog(`🎯 Modo validação ativo — 1 questão por recorte (não 3). Use para homologar recortes específicos.`, "sistema");
+      }
+      addLog(`💰 Otimização de custo ativa — prompt caching, retry único com feedback, pré-check de recorte.`, "sistema");
+    }
 
     // ── Carrega diretrizes ativas (uma vez por sessão) ────────────────────
     if (diretrizesRef.current === null) {
@@ -509,25 +743,36 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
         "info"
       );
 
-      // ── Retry loop ─────────────────────────────────────────────────────
-      let sucesso   = false;
-      let tentativa = 1;
-
-      while (tentativa <= MAX_RETRIES && !abortRef.current) {
-        if (tentativa > 1) {
-          addLog(`   🔄 Tentativa ${tentativa}/${MAX_RETRIES} — aguardando ${DELAY_RETRY_MS/1000}s…`, "aviso");
-          await delay(DELAY_RETRY_MS);
-          if (abortRef.current) break;
+      // ── Pré-check de viabilidade (só formato ABCD 2026.2) ─────────────────
+      // Auditoria de custo: bloquear ANTES de gastar qualquer token em
+      // recortes já sabidamente inviáveis (src/config/recortesStatusSA.js) —
+      // em vez de redescobrir o mesmo problema via 3 chamadas rejeitadas.
+      // Objetivo: ZERO chamadas Anthropic para um recorte já bloqueado.
+      if (formatoABCDAtual) {
+        const statusPrevio = statusRecorteSA(tema);
+        if (statusPrevio.status !== "LIBERADO") {
+          addLog(
+            `   🚫 "${tema}" — ${statusPrevio.status} (0 chamadas à IA). Motivo: ${statusPrevio.motivo}`,
+            "aviso"
+          );
+          setTemasFalhos(prev => [...prev, tema]);
+          continue; // sem chamada de IA, sem custo — não precisa do intervalo entre temas
         }
+      }
 
+      let sucesso = false;
+
+      if (formatoABCDAtual) {
+        // ── Fluxo único, teto absoluto de 3 chamadas — nunca reiniciado ─────
+        // Toda a árvore de decisão (Haiku 1ª tentativa → feedback → Haiku/Opus
+        // conforme motivo → Opus última chance) vive em executarGeracaoSA
+        // (promptEngine.js). Aqui só monta o prompt do tema e reporta o log.
         try {
           const proximoNum = await obterProximoNumeroSA(edicaoAtual);
           addLog(`   📊 Próximo ID será: SA_${edicaoAtual}_Q${proximoNum}`, "detalhe");
 
-          // Detecta se o tema tem detalhamento explícito (parênteses, vírgulas, hífens com subtemas)
           const temDetalhamento = /[(),;]|—|-{1,2}|\b(incluindo|especialmente|tratamento|diagnóstico|classificação|complicaç|abordagem|conduta|farmacológ|não.farmacológ|critério)\b/i.test(tema);
 
-          // ── Diretriz dinâmica (cache por tema para não repetir em retries) ─
           const temaKey = tema.toLowerCase();
           if (!diretrizCacheRef.current.has(temaKey)) {
             const d = detectarDiretrizDinamica(diretrizesRef.current, tema, "")
@@ -538,6 +783,177 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
           const blocoDir = diretrizTema ? montarBlocoDiretriz(diretrizTema) : "";
 
           const promptTema =
+`Gere exatamente ${questoesPorTemaAtual} questõe${questoesPorTemaAtual > 1 ? "s" : ""} de múltipla escolha para o Revalida INEP.
+
+Área: ${areaAtual}
+Tema: ${tema}
+${blocoDir}${temDetalhamento ? `
+⚠️ TEMA COM DETALHAMENTO EXPLÍCITO DETECTADO:
+Identifique todos os subtemas e direcionamentos presentes no texto acima.
+${questoesPorTemaAtual > 1 ? `Distribua as ${questoesPorTemaAtual} questões cobrindo partes DIFERENTES do detalhamento.` : "Escolha a parte do detalhamento mais relevante/decisória para esta única questão."}
+NÃO ignore nenhum elemento após vírgulas, hífens, parênteses ou "incluindo".
+NÃO gere questões genéricas — siga o detalhamento como guia principal.
+` : `
+${questoesPorTemaAtual > 1 ? `Aborde ASPECTOS DIFERENTES do tema nas ${questoesPorTemaAtual} questões:` : "Aborde o aspecto mais decisório do tema:"}
+ex.: diagnóstico, tratamento, complicação, critério de internação, rastreamento.
+`}
+Requisitos gerais:
+- Caso clínico realista (UBS, UPA, emergência ou enfermaria)
+- Diretrizes atualizadas 2023–2025
+- Distratores plausíveis (pegadinhas de prova, não alternativas óbvias)
+- Diversidade: diferentes faixas etárias, gêneros e contextos clínicos${questoesPorTemaAtual > 1 ? "\n- NÃO repita cenário ou conduta entre questões" : ""}`;
+
+          addLog(`   🧠 Chamando IA… (teto de 3 tentativas, sem reinício externo)`, "info");
+
+          const resultado = await executarGeracaoSA(promptTema, systemPromptAtual, {
+            abcd: true,
+            grounding: Boolean(diretrizTema),
+            // Texto real da diretriz injetada — grounding=true não basta mais;
+            // validarLoteSA agora confere se todo número em tto/dicaMestre
+            // realmente aparece aqui (saneamento final pré-produção em escala).
+            // Usa o BLOCO COMPLETO (mesmo texto que o modelo recebeu, via
+            // blocoDir), não só pontosCriticos — do contrário o próprio
+            // "ANO DE REFERÊNCIA" da diretriz (ex. 2022) seria injetado no
+            // prompt mas rejeitado como "sem suporte" ao aparecer no tto.
+            groundingTexto: blocoDir || "",
+          }, chamarIABruto);
+
+          resultado.tentativas.forEach((t) => {
+            const cache = t.usage?.cache_read_input_tokens || t.usage?.cache_creation_input_tokens
+              ? ` cache_read:${t.usage.cache_read_input_tokens || 0} cache_write:${t.usage.cache_creation_input_tokens || 0}`
+              : "";
+            const infoTokens = t.usage ? ` (in:${t.usage.input_tokens} out:${t.usage.output_tokens}${cache})` : "";
+            if (t.erro) {
+              addLog(`   ⚠️  [tentativa ${t.numero} — ${t.modelo}] erro: ${t.erro}${infoTokens}`, "aviso");
+            } else {
+              addLog(`   🧪 [tentativa ${t.numero} — ${t.modelo}] ${t.validas} válida(s) / ${t.rejeitadas} rejeitada(s)${infoTokens}`, t.validas > 0 ? "ok" : "aviso");
+              // Achado ao testar em dev: uma questão pode acumular MAIS de um
+              // motivo de rejeição ao mesmo tempo (ex.: anti-pista estrutural
+              // + número sem suporte na diretriz, no mesmo candidato) — mostrar
+              // só o primeiro escondia o motivo que de fato bloqueava o recorte.
+              // Junta TODOS os motivos do 1º candidato rejeitado desta tentativa.
+              if (t.motivos?.length) {
+                addLog(`      ↳ motivo(s): ${t.motivos.join(" | ")}`, "detalhe");
+              }
+            }
+          });
+          if (resultado.bloqueadoPorGrounding) {
+            addLog(`   🚫 Bloqueado por grounding insuficiente — trocar de modelo não resolveria (parado sem gastar a 3ª chamada).`, "aviso");
+          }
+          if (resultado.altoRiscoRevisao) {
+            addLog(`   ⚠️  Conteúdo aceito com sinalização de revisão humana (alto risco clínico).`, "aviso");
+          }
+          addLog(`   🛑 PARAR — ${resultado.tentativas.length} tentativa(s) usada(s) para este recorte (teto: 3).`, "detalhe");
+
+          resultado.rejeitadas.forEach(({ motivos }, ridx) => {
+            addLog(`   🚫 Questão ${ridx + 1} do lote rejeitada — ${motivos.join("; ")}`, "aviso");
+          });
+
+          // ── Diagnóstico DEV — candidata rejeitada ─────────────────────────
+          // Só em revalidapro-dev (IS_DEV_PROJECT). Não persiste nada — só
+          // aparece no log visual do painel, nunca no Firestore. Em produção
+          // este bloco inteiro não executa; o log acima (resumido) é tudo que
+          // aparece lá, sem nenhuma linha a mais.
+          if (IS_DEV_PROJECT && resultado.rejeitadas.length > 0) {
+            const ultimaTentativa = resultado.tentativas[resultado.tentativas.length - 1];
+            resultado.rejeitadas.forEach(({ questao, motivos }) => {
+              const motivosTexto = motivos.join(" | ");
+              addLog(`🧾 DIAGNÓSTICO DEV — candidata rejeitada`, "detalhe");
+              addLog(`   tentativa: ${ultimaTentativa?.numero ?? "?"} | modelo: ${ultimaTentativa?.modelo ?? "?"}`, "detalhe");
+              addLog(`   motivo: ${motivosTexto}`, "detalhe");
+              addLog(`   diretriz/grounding: ${diretrizTema ? `${diretrizTema.id} — ${diretrizTema.fonte} (${diretrizTema.ano})` : "nenhuma (recorte sem grounding)"}`, "detalhe");
+              if (blocoDir) {
+                addLog(`   números no grounding: ${_extrairNumerosParaDiagnostico(blocoDir).join(", ") || "nenhum"}`, "detalhe");
+              }
+              addLog(`   ── raciocinio (texto completo) ──`, "detalhe");
+              addLog(`   ${questao?.raciocinio || "(vazio)"}`, "detalhe");
+              addLog(`   ── tto (texto completo) ──`, "detalhe");
+              addLog(`   ${questao?.tto || "(vazio)"}`, "detalhe");
+              addLog(`   ── dicaMestre (texto completo) ──`, "detalhe");
+              addLog(`   ${questao?.dicaMestre || "(vazio)"}`, "detalhe");
+              addLog(`   ── notas das alternativas (a/b/c/d) ──`, "detalhe");
+              ["a", "b", "c", "d"].forEach((letra) => {
+                addLog(`   ${letra}) ${questao?.alts?.[letra]?.nota || "(vazio)"}`, "detalhe");
+              });
+
+              const numsTto  = _extrairNumerosParaDiagnostico(questao?.tto);
+              const numsDica = _extrairNumerosParaDiagnostico(questao?.dicaMestre);
+              addLog(`   números extraídos — tto: ${numsTto.join(", ") || "nenhum"} | dicaMestre: ${numsDica.join(", ") || "nenhum"}`, "detalhe");
+
+              // A lista "sem suporte" é extraída do texto do MOTIVO real (já
+              // calculado por validarLoteSA) — nunca recalculada aqui, pra
+              // não haver risco de divergência entre o que aparece no
+              // diagnóstico e o que de fato causou a rejeição.
+              const semSuporteMatch = motivosTexto.match(/número\(s\)\s+([\d.,\s]+?)\s+em/);
+              if (semSuporteMatch) {
+                const semSuporteNums = semSuporteMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
+                const numsTtoSet  = new Set(numsTto);
+                const numsDicaSet = new Set(numsDica);
+                const campos = [];
+                if (semSuporteNums.some((n) => numsTtoSet.has(n)))  campos.push("tto");
+                if (semSuporteNums.some((n) => numsDicaSet.has(n))) campos.push("dicaMestre");
+                addLog(`   números SEM suporte: ${semSuporteNums.join(", ")} (campo(s): ${campos.length ? campos.join(", ") : "não identificado"})`, "aviso");
+              } else {
+                addLog(`   números SEM suporte: n/d — este motivo não é de suporte numérico (ver motivo acima)`, "detalhe");
+              }
+            });
+          }
+
+          if (resultado.validas.length === 0) {
+            throw new Error("Todas as questões do lote foram rejeitadas na validação pós-geração (teto de 3 tentativas atingido).");
+          }
+
+          const dados = equilibrarGabaritoLote(resultado.validas, ["a", "b", "c", "d"], balanceadorGabaritoRef.current);
+
+          addLog(
+            `   💾 Salvando ${dados.length} questão(ões)…${resultado.rejeitadas.length ? ` (${resultado.rejeitadas.length} rejeitada(s) na validação)` : ""}`,
+            "info"
+          );
+          await salvarQuestoes(dados, edicaoAtual, proximoNum, areaAtual, { formatoABCD: true });
+
+          totalSalvas += dados.length;
+          dados.forEach((q) => {
+            if (q.subtema) subtemasExistentes.add(q.subtema.toLowerCase().trim());
+          });
+
+          addLog(`   ✅ ${dados.length} questão(ões) salvas! (Total da sessão: ${totalSalvas})`, "ok");
+          invalidarCacheQuestoes(); // próxima leitura vai buscar dados frescos
+          if (typeof onQuestoesSalvas === "function") onQuestoesSalvas();
+
+          sucesso = true;
+        } catch (e) {
+          addLog(`   ❌ Erro: ${e.message}`, "erro");
+        }
+      } else {
+        // ── Caminho LEGADO (Super Apostas 2026.1, A–E) — sem validarLoteSA/
+        // fallback, retry externo simples em caso de erro técnico/rede.
+        // Comportamento INALTERADO por esta rodada (fora do escopo da
+        // auditoria de custo, que mirou exclusivamente o formato ABCD 2026.2
+        // usado no Lote 002). ───────────────────────────────────────────────
+        let tentativa = 1;
+        while (tentativa <= MAX_RETRIES && !abortRef.current) {
+          if (tentativa > 1) {
+            addLog(`   🔄 Tentativa ${tentativa}/${MAX_RETRIES} — aguardando ${DELAY_RETRY_MS/1000}s…`, "aviso");
+            await delay(DELAY_RETRY_MS);
+            if (abortRef.current) break;
+          }
+
+          try {
+            const proximoNum = await obterProximoNumeroSA(edicaoAtual);
+            addLog(`   📊 Próximo ID será: SA_${edicaoAtual}_Q${proximoNum}`, "detalhe");
+
+            const temDetalhamento = /[(),;]|—|-{1,2}|\b(incluindo|especialmente|tratamento|diagnóstico|classificação|complicaç|abordagem|conduta|farmacológ|não.farmacológ|critério)\b/i.test(tema);
+
+            const temaKey = tema.toLowerCase();
+            if (!diretrizCacheRef.current.has(temaKey)) {
+              const d = detectarDiretrizDinamica(diretrizesRef.current, tema, "")
+                     || detectarDiretriz(tema, "");
+              diretrizCacheRef.current.set(temaKey, d);
+            }
+            const diretrizTema = diretrizCacheRef.current.get(temaKey);
+            const blocoDir = diretrizTema ? montarBlocoDiretriz(diretrizTema) : "";
+
+            const promptTema =
 `Gere exatamente ${QUESTOES_POR_TEMA} questões de múltipla escolha para o Revalida INEP.
 
 Área: ${areaAtual}
@@ -559,33 +975,32 @@ Requisitos gerais:
 - Diversidade: diferentes faixas etárias, gêneros e contextos clínicos
 - NÃO repita cenário ou conduta entre questões`;
 
-          addLog(`   🧠 Chamando IA… (aguarde até 3 min)`, "info");
-          const dados = await chamarIA(promptTema);
+            addLog(`   🧠 Chamando IA… (aguarde até 3 min)`, "info");
+            const { parsed: dados } = await chamarIA(promptTema, systemPromptAtual);
 
-          addLog(`   💾 Salvando ${dados.length} questão(ões)…`, "info");
-          await salvarQuestoes(dados, edicaoAtual, proximoNum, areaAtual);
+            addLog(`   💾 Salvando ${dados.length} questão(ões)…`, "info");
+            await salvarQuestoes(dados, edicaoAtual, proximoNum, areaAtual, { formatoABCD: false });
 
-          totalSalvas += dados.length;
-          dados.forEach((q) => {
-            if (q.subtema) subtemasExistentes.add(q.subtema.toLowerCase().trim());
-          });
+            totalSalvas += dados.length;
+            dados.forEach((q) => {
+              if (q.subtema) subtemasExistentes.add(q.subtema.toLowerCase().trim());
+            });
 
-          addLog(`   ✅ ${dados.length} questão(ões) salvas! (Total da sessão: ${totalSalvas})`, "ok");
+            addLog(`   ✅ ${dados.length} questão(ões) salvas! (Total da sessão: ${totalSalvas})`, "ok");
+            invalidarCacheQuestoes();
+            if (typeof onQuestoesSalvas === "function") onQuestoesSalvas();
 
-          invalidarCacheQuestoes(); // próxima leitura vai buscar dados frescos
-          // FIX BUG #3 — avisa o AdminPainel para invalidar o cache do Banco
-          if (typeof onQuestoesSalvas === "function") onQuestoesSalvas();
-
-          sucesso = true;
-          break;
-        } catch (e) {
-          addLog(`   ❌ Erro (tentativa ${tentativa}): ${e.message}`, "erro");
-          tentativa++;
+            sucesso = true;
+            break;
+          } catch (e) {
+            addLog(`   ❌ Erro (tentativa ${tentativa}): ${e.message}`, "erro");
+            tentativa++;
+          }
         }
       }
 
       if (!sucesso && !abortRef.current) {
-        addLog(`   ⚠️  "${tema}" falhou após ${MAX_RETRIES} tentativas. Próximo tema.`, "aviso");
+        addLog(`   ⚠️  "${tema}" falhou. Próximo tema.`, "aviso");
         setTemasFalhos(prev => [...prev, tema]);
       }
 
@@ -1118,11 +1533,55 @@ Requisitos gerais:
           </div>
         </div>
 
+        <label
+          style={{
+            display: "flex", alignItems: "center", gap: "8px", marginBottom: "18px",
+            padding: "10px 12px", borderRadius: "10px", cursor: rodando ? "default" : "pointer",
+            background: formatoABCD ? "rgba(239,68,68,0.08)" : "#0f172a",
+            border: `1px solid ${formatoABCD ? "rgba(239,68,68,0.35)" : "#334155"}`,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={formatoABCD}
+            disabled={rodando}
+            onChange={e => setFormatoABCD(e.target.checked)}
+          />
+          <span style={{ fontSize: "12px", color: formatoABCD ? "#ef4444" : "#94a3b8", fontWeight: "700" }}>
+            Formato ABCD — Super Apostas 2026.2 <span style={{ fontWeight: "400", color: "#64748b" }}>
+              (4 alternativas, nivel_aposta semântico, estratégia da aposta, protocolo anti-pistas)
+            </span>
+          </span>
+        </label>
+
+        {formatoABCD && (
+          <label
+            style={{
+              display: "flex", alignItems: "center", gap: "8px", marginBottom: "18px",
+              padding: "10px 12px", borderRadius: "10px", cursor: rodando ? "default" : "pointer",
+              background: modoUmPorRecorte ? "rgba(129,140,248,0.08)" : "#0f172a",
+              border: `1px solid ${modoUmPorRecorte ? "rgba(129,140,248,0.35)" : "#334155"}`,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={modoUmPorRecorte}
+              disabled={rodando}
+              onChange={e => setModoUmPorRecorte(e.target.checked)}
+            />
+            <span style={{ fontSize: "12px", color: modoUmPorRecorte ? "#818cf8" : "#94a3b8", fontWeight: "700" }}>
+              Modo validação — 1 questão por recorte <span style={{ fontWeight: "400", color: "#64748b" }}>
+                (em vez de 3; use para homologar recortes específicos do Mapa Mestre sem gastar tokens em variações extras)
+              </span>
+            </span>
+          </label>
+        )}
+
         <div style={st.rowSingle}>
           <label style={st.label}>
             Temas a gerar&nbsp;
             <span style={{ color: "#64748b", textTransform: "none", fontWeight: "400" }}>
-              — um por linha · {QUESTOES_POR_TEMA} questões cada
+              — um por linha · {(formatoABCD && modoUmPorRecorte) ? 1 : QUESTOES_POR_TEMA} questõe{((formatoABCD && modoUmPorRecorte) ? 1 : QUESTOES_POR_TEMA) > 1 ? "s" : ""} cada
             </span>
           </label>
           <textarea
@@ -1139,16 +1598,18 @@ Requisitos gerais:
             disabled={rodando}
           />
           <p style={st.hint}>
-            {listasTemas.length} tema(s) · ~{listasTemas.length * QUESTOES_POR_TEMA} questões ·
+            {listasTemas.length} tema(s) · ~{listasTemas.length * ((formatoABCD && modoUmPorRecorte) ? 1 : QUESTOES_POR_TEMA)} questões ·
             tempo estimado: ~{Math.ceil(listasTemas.length * (DELAY_ENTRE_TEMAS_MS / 60_000))} min
           </p>
         </div>
 
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "20px" }}>
           <span style={st.badge("#818cf8")}><FaClock size={10}/> {DELAY_ENTRE_TEMAS_MS/1000}s pausa entre temas</span>
-          <span style={st.badge("#34d399")}><FaFire size={10}/> {QUESTOES_POR_TEMA} questões/tema</span>
-          <span style={st.badge("#fbbf24")}><FaLayerGroup size={10}/> {MAX_RETRIES} tentativas máx.</span>
-          <span style={st.badge("#94a3b8")}>BAIXO → MÉDIO → ALTO</span>
+          <span style={st.badge("#34d399")}><FaFire size={10}/> {(formatoABCD && modoUmPorRecorte) ? 1 : QUESTOES_POR_TEMA} questõe{((formatoABCD && modoUmPorRecorte) ? 1 : QUESTOES_POR_TEMA) > 1 ? "s" : ""}/tema</span>
+          <span style={st.badge("#fbbf24")}><FaLayerGroup size={10}/> {formatoABCD ? "3 chamadas máx./recorte" : `${MAX_RETRIES} tentativas máx.`}</span>
+          <span style={st.badge("#94a3b8")}>
+            {formatoABCD ? "nivel_aposta: classificação da IA (ALTO/MÉDIO/BAIXO)" : "BAIXO → MÉDIO → ALTO"}
+          </span>
         </div>
 
         <div style={st.acoes}>
@@ -1253,7 +1714,7 @@ Requisitos gerais:
         }}>
           <div style={{ ...st.cardTitle, color: "#f87171", marginBottom: "12px" }}>
             <FaExclamationTriangle size={15} color="#f87171" />
-            {temasFalhos.length} tema(s) não gerado(s) após {MAX_RETRIES} tentativas
+            {temasFalhos.length} tema(s) não gerado(s) (bloqueado, revisão humana pendente, ou falhou nas tentativas)
           </div>
           <div style={{
             background: "#0f172a", borderRadius: "10px", padding: "12px 14px",
