@@ -162,7 +162,45 @@ Hemorragia pós-parto — causas (4 Ts) e sequência de manejo escalonado
 
 **Prioridade:** ALTO.
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO`.
+**Status:** `REVISÃO / FALHOU NA GERAÇÃO EM PRODUÇÃO`. **`SA_2026_2_Q3` NÃO foi consumido — nenhum documento foi salvo.**
+
+### R024 — encerramento da tentativa (2026-07-24)
+
+- Tentativa 1 (Haiku): rejeitada — pista estrutural + posologia numérica sem diretriz controlada + ano/fonte de diretriz inventados.
+- Tentativa 2 (Haiku): rejeitada — pista estrutural da alternativa correta.
+- Tentativa 3 (Opus, fallback): rejeitada — linguagem/afirmação absoluta sem grounding.
+- Teto de 3 chamadas respeitado. Nenhuma questão inválida salva.
+
+**Decisão:** não retentar R024 agora; não abrir hotfix; não alterar prompt/validador. Caso C (falha pontual) — segue para o próximo recorte.
+
+**`SA_2026_2_Q3` continua livre.**
+
+**Aprendizado operacional (só para seleção, não altera a engine):** `Grounding: não` no Mapa Mestre não significa ausência de risco de indução de precisão — recortes cuja natureza clínica envolve sequência terapêutica/posologia (uterotônicos, doses, protocolos) tendem a puxar a IA para citar números/fontes não sustentados, mesmo sem exigência formal de grounding. Critério refinado para as próximas escolhas: priorizar recortes qualitativos/conceituais com baixa indução de dose/protocolo, ou recortes onde a precisão normativa é central **e** o grounding controlado já cobre esse ponto.
+
+---
+
+## PRÓXIMO RECORTE OFICIAL SELECIONADO: R030 — Transtorno do Espectro Autista
+
+**Matéria:** Pediatria.
+
+**Tema:** Transtorno do Espectro Autista (TEA) — sinais de alerta precoces e conduta de encaminhamento.
+
+**Texto exato para colar no RoboGerador:**
+```
+Transtorno do Espectro Autista — sinais de alerta precoces e conduta de encaminhamento
+```
+
+**Decisão (Mapa Mestre):** Encaminhar para avaliação especializada diante de sinais de alerta na puericultura, sem esperar "fechar" o diagnóstico na atenção primária.
+
+**Armadilha (Mapa Mestre):** Adotar postura de "esperar para ver" diante de sinais de alerta claros de atraso de desenvolvimento social/comunicativo.
+
+**Grounding obrigatório:** NÃO. **Grounding disponível/auto-injetável:** NÃO.
+
+**Prioridade:** ALTO.
+
+**Motivo da escolha:** aplicando o aprendizado de R024 — este é um recorte puramente comportamental/de reconhecimento de padrão (sinais de alerta do desenvolvimento), sem nenhuma dose, intervalo, protocolo terapêutico ou fonte normativa a citar — decisão é sobre *quando encaminhar*, não sobre *o que prescrever*. Avaliadas alternativas (R019 Epidemiologia — envolve raciocínio numérico/estatístico; R025 Gravidez ectópica — critérios de elegibilidade para MTX podem induzir dose/limiar; R029 TVP/Escore de Wells — sistema de pontuação numérico); R030 tem o menor risco de indução de precisão não sustentada entre os candidatos LIBERADO/ALTO/PENDENTE disponíveis. Diversifica matéria de volta para Pediatria (já usada em R021, mas ainda assim mais segura que reintroduzir Clínica Médica logo após a falha de R002/R024-adjacente).
+
+**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (será `SA_2026_2_Q3` se aprovado, já que R024 não consumiu o número).
 
 ---
 
