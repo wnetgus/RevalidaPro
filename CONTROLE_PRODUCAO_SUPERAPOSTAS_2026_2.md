@@ -38,6 +38,28 @@
 
 **Status:** produção pronta para o smoke test visual do usuário e, em seguida, a primeira geração controlada de `SA_2026_2_Q1`.
 
+### Correção de reprodutibilidade — `StorageImage.jsx` (2026-07-24, mesmo dia)
+
+Auditoria pós-promoção encontrou uma lacuna: `StorageImage.jsx` (usado por `Simulador.jsx`/`QuestionCard.jsx`, ambos já commitados) tinha ficado **untracked** — nenhum commit o incluía. Confirmado empiricamente: um clone limpo do HEAD `0bd07d8` falha o build (`Could not resolve "../components/StorageImage"`). Arquivo auditado (sem código INEP, sem segredo, sem dependência temporária — só `../firebase` e `firebase/storage`, ambos já estáveis) e commitado isoladamente:
+
+**Commit 3:** `c746e5a1d270cee3161e28db81524bafad9e89da` — `fix(simulator): include StorageImage runtime dependency`.
+
+**Validação de reprodutibilidade:** clone limpo do novo HEAD (`c746e5a`) + `npm install` + `vite build --mode production` → **PASS** (741 módulos); build repetido duas vezes no mesmo clone produz hash idêntico (`index-B530gwv-.js`, byte-a-byte igual) — determinístico dentro do mesmo ambiente. Bundle sem `DIAGNÓSTICO DEV`/`revalidapro-dev`.
+
+**Diferença encontrada (não-bloqueante):** o bundle do clone limpo (`index-B530gwv-.js`) difere em ~153 bytes do bundle já publicado em produção (`index-DTDlANy-.js`), mas a causa **não é o commit do StorageImage** (arquivo idêntico em ambos) — é o `package-lock.json` do repo principal estar divergente do HEAD commitado (tem a devDependency `playwright`, ainda não commitada), o que muda o dedupe/hoisting das dependências transitivas e afeta como o bundler organiza o código de upload do Firebase Storage (`uploadBytes`, usado por `Perfil.jsx`, feature pré-existente e não relacionada à SA). Nenhuma mudança de comportamento — decisão registrada: **não redeployar Hosting só por isso**; produção já reflete o código funcionalmente correto.
+
+**Baseline final que corresponde à produção:**
+- Branch: `main` — HEAD: `c746e5a1d270cee3161e28db81524bafad9e89da`
+- Commits SA: `7ed7cac` (frontend/engine), `ddd4030` (dependência simuladorLogic), `146974d` (function), `0bd07d8` (docs), `c746e5a` (StorageImage)
+- Function `gerarQuestoesIA`: promovida em produção (`revalidapro-f812e`)
+- Hosting: promovido em produção, correspondendo ao build isolado dos commits SA
+- Firestore Rules: intactas, não alteradas
+- Questões `edicao == "2026_2"` antes da Q1: zero confirmado
+- Conta oficial de geração: `drweynesouza@gmail.com`
+- Primeira ID oficial esperada: `SA_2026_2_Q1`
+
+**Status:** baseline de produção reprodutível a partir de um clone limpo do HEAD. Pronto para a primeira geração controlada, mediante autorização explícita do usuário.
+
 ---
 
 ## LOTE 003 — PRODUÇÃO OFICIAL CONTROLADA
