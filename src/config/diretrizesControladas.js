@@ -27,23 +27,23 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
-    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: busca verificada, PDF completo nao lido — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
-    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra Arq Bras Cardiol. 2025;122(9):e20250624 (DOI 10.36660/abc.20250624)",
-    observacoes: "Auditoria 2026-07-24 (ver AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md) localizou edição 2025 que supera a 7ª diretriz 2024 aqui cadastrada. Conteúdo central (meta 130/80, MAPA/MRPA, estratificação de risco) parece coincidir, mas não foi comparado linha a linha ao documento primário — pontosCriticos abaixo NÃO foram alterados até confirmação humana.",
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 3: PDF oficial 2025 integral baixado e lido (154 pag., Arq Bras Cardiol e20250624) — classificacao/monoterapia/gestante/nitroprussiato CONFIRMADOS e corrigidos com citacao direta; emergencia/urgencia/DRC/DCV/divergencias internacionais NAO releidos nesta sessao — fechamento PARCIAL, nao pronta para validacao integral
+    validadeOuProximaRevisao: "seções já lidas (classificação, monoterapia, gestante, agentes IV em gestante) podem ser validadas; emergência/urgência hipertensiva, DRC, DM, DCV e divergências SBC×MS×internacional ainda precisam de leitura dirigida antes de fechar a diretriz inteira",
+    observacoes: "Fase 3 (2026-07-24): PDF oficial da Diretriz 2025 (Arq Bras Cardiol. 2025;122(9):e20250624, DOI 10.36660/abc.20250624) baixado de https://static.poder360.com.br/2025/09/2025-0624_Diretriz_Hipertensao_2025_port.x66747.pdf e lido na íntegra (154 páginas, ~687 mil caracteres extraídos). ATENÇÃO — achado importante de auditoria: uma primeira tentativa baixou por engano o PDF de https://www.sbh.org.br/.../VII-Diretrizes-Brasileiras-HA.pdf, que se revelou ser a 7ª Diretriz ORIGINAL DE 2016 (Arq Bras Cardiol 2016;107(3)), não a edição 2025 — descartado antes de qualquer uso, documentado aqui para transparência. CORREÇÕES CONFIRMADAS por citação direta (Quadro 3.2/14.1): a classificação de PA mudou de patamar (o que era 'HAS Estágio 1' em 130-139/80-89 agora é 'Pré-hipertensão'; novo 'HA Estágio 3' ≥180/110 não existia antes) — já corrigido em pontosCriticos. Tratamento gestacional também corrigido (metildopa/BCC di-hidropiridínico, não labetalol/hidralazina como 1ª linha crônica). Emergência/urgência hipertensiva, DRC, DM, DCV, idosos (detalhe) e divergências SBC×MS×internacional NÃO foram relidos linha a linha nesta sessão — fechamento é PARCIAL. Distinção pedida (conduta Revalida/SUS vs. recomendação complementar de sociedade vs. sem consenso único) não foi feita nesta sessão por falta de tempo de leitura dirigida — pendência explícita.",
     temasRelacionados: ["R001", "R046", "R101"],
     pontosCriticos: [
-      "Meta pressórica geral: PA < 130/80 mmHg para a maioria dos adultos com HAS",
-      "Meta em idosos frágeis > 80 anos: PAS 130–150 mmHg (individualizar)",
-      "Classificação 2024 — Normal: <120/80 | Elevada: 120-129/<80 | HAS Est.1: 130-139/80-89 | HAS Est.2: ≥140/90",
-      "HAS Estágio 1 sem lesão de órgão-alvo: iniciar monoterapia (IECA, BRA, BCC ou tiazídico)",
-      "HAS Estágio 2 (≥160/100) ou alto risco CV: iniciar com combinação de 2 medicamentos",
-      "1ª linha: IECA (enalapril, captopril) OU BRA OU BCC (anlodipino) OU tiazídico (clortalidona/HCTZ)",
-      "Emergência hipertensiva: PA elevada + LOA aguda (encefalopatia, AVC, EAP, IAM, dissecção) → UTI + droga IV + redução PAM ≤25% na 1ª hora",
-      "Agentes IV de escolha: nitroprussiato (geral), nicardipina (AVC), labetalol (dissecção/gestante), hidralazina (gestante)",
-      "Urgência hipertensiva: PA muito elevada SEM LOA → redução gradual em 24–48h com VO (captopril, clonidina)",
-      "PROIBIDO: nifedipino sublingual (queda abrupta = AVC/IAM isquêmico)",
-      "Gestante: metildopa, hidralazina, labetalol. IECA/BRA são absolutamente contraindicados na gestação",
-      "Síndrome metabólica e DM: alvo < 130/80 mmHg; preferir IECA ou BRA (nefroproteção)",
+      "Meta pressórica geral: PA < 130/80 mmHg para a maioria dos adultos com HAS (confirmado por leitura direta da Diretriz 2025, Arq Bras Cardiol. 2025;122(9):e20250624)",
+      "CLASSIFICAÇÃO CORRIGIDA (Fase 3, leitura direta, Quadro 3.2/14.1 da Diretriz 2025 — SUBSTITUI a classificação 2024 anterior, que usava limiares diferentes): PA normal <120 e <80 | Pré-hipertensão 120-139 e/ou 80-89 | HA Estágio 1: 140-159 e/ou 90-99 | HA Estágio 2: 160-179 e/ou 100-109 | HA Estágio 3 (nova categoria): ≥180 e/ou 110. ATENÇÃO: o que a versão anterior chamava de 'HAS Estágio 1' (130-139/80-89) agora é 'Pré-hipertensão', não hipertensão — não usar os limiares antigos",
+      "Monoterapia indicada para: indivíduos frágeis, ≥80 anos, PA ≥130/80 mmHg de risco alto, ou HA Estágio 1 de risco baixo (a critério médico) — demais casos combinação preferencialmente em comprimido único (citação direta, Diretriz 2025)",
+      "Metas e seguimento: MAPA ou MRPA sempre que possível para avaliar fenótipos de HA; revisão a cada 4 semanas até atingir a meta; combater inércia terapêutica (citação direta, Diretriz 2025)",
+      "1ª linha: IECA (enalapril, captopril) OU BRA OU BCC (anlodipino) OU tiazídico (clortalidona/HCTZ) — não confirmado se a Diretriz 2025 alterou esta recomendação especificamente (não relido linha a linha)",
+      "Emergência hipertensiva: PA elevada + LOA aguda (encefalopatia, AVC, EAP, IAM, dissecção) → UTI + droga IV + redução PAM ≤25% na 1ª hora — não relido linha a linha na edição 2025 nesta sessão",
+      "Agentes IV de escolha: nitroprussiato (geral, uso IV máx. 4h em gestante pelo risco de impregnação fetal por cianeto — confirmado por leitura direta), nicardipina (AVC), labetalol/hidralazina (dissecção) — nitroglicerina IV também citada para EAP/HA grave refratária em gestante (achado novo, leitura direta)",
+      "Urgência hipertensiva: PA muito elevada SEM LOA → redução gradual em 24–48h com VO (captopril, clonidina) — não relido linha a linha na edição 2025",
+      "PROIBIDO: nifedipino sublingual (queda abrupta = AVC/IAM isquêmico) — distinto de nifedipina de longa duração, que É recomendada na gestação (ver abaixo)",
+      "GESTANTE — CORRIGIDO (Fase 3, leitura direta, recomendação FORTE/BAIXA certeza): iniciar tratamento com metildopa OU bloqueador de canal de cálcio di-hidropiridínico (nifedipina de LONGA DURAÇÃO ou anlodipino) — a versão anterior cadastrada citava labetalol/hidralazina como 1ª linha de tratamento crônico na gestação, mas a Diretriz 2025 não os coloca nessa posição (labetalol/hidralazina aparecem associados a manejo de emergência/dissecção, não ao início do tratamento crônico gestacional). IECA/BRA seguem contraindicados na gestação (não contestado nesta leitura)",
+      "Sulfato de magnésio: prevenção e tratamento de eclâmpsia em gestante com HA grave sintomática (confirmado por leitura direta)",
+      "Síndrome metabólica e DM: alvo < 130/80 mmHg; preferir IECA ou BRA (nefroproteção) — não relido linha a linha na edição 2025",
     ],
     ativa: true,
     historica: false,
@@ -175,9 +175,9 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
-    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: mudanca de paradigma confirmada (DNA-HPV), mas fluxo detalhado e conduta se teste indisponivel nao confirmados — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
-    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra o documento oficial no Diário Oficial da União",
-    observacoes: "Auditoria 2026-07-24 confirmou MUDANÇA DE PARADIGMA: o método primário de rastreio deixou de ser a citologia e passou a ser o teste molecular DNA-HPV, faixa 25-64 anos, intervalo de 5 anos quando negativo (substitui a periodicidade trienal por citologia da 2ª edição INCA 2023 aqui cadastrada). pontosCriticos abaixo já ajustados para refletir DNA-HPV como método primário; fluxo detalhado de ASC-US/LSIL/HSIL ainda reflete o protocolo de citologia antigo e PRECISA de confirmação humana antes de uso em recorte que dependa desses subitens.",
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 3: PDF oficial 3a edicao 2025 (INCA/MS) integral lido (98 pag., ~250 mil caracteres) — populacao-alvo/sintomatica/histerectomia/imunossuprimidas CONFIRMADOS por numero de recomendacao; fluxo ASC-US/LSIL/HSIL por citologia e conduta se DNA-HPV indisponivel NAO relidos — fechamento PARCIAL
+    validadeOuProximaRevisao: "fluxo de citologia reflexa (ASC-US/LSIL/HSIL) e conduta operacional quando DNA-HPV está indisponível na rede ainda precisam de leitura dirigida antes de fechar a diretriz inteira",
+    observacoes: "Fase 3 (2026-07-24): PDF oficial (Diretrizes Brasileiras para o Rastreamento do Câncer do Colo do Útero, 3ª edição revista/ampliada/atualizada, INCA/MS, 2025 — 1ª ed. 2011, 2ª ed. 2016) baixado de https://ninho.inca.gov.br/jspui/bitstream/123456789/17858/3/... e lido na íntegra (98 páginas). CONFIRMADO por número de recomendação: Recomendação 34 (histerectomia benigna pode excluir), 35 (histerectomia por lesão/câncer continua rastreio), 36 (sem atividade sexual não rastreia); e por citação direta: rastreamento é definido como processo para população ASSINTOMÁTICA — mulher com sintoma de câncer avançado está FORA do escopo deste documento, deve ir a serviço especializado independente da periodicidade de rastreio (confirma o pontoCritico já registrado na Fase 2). Imunossuprimidas/PVHIV: DNA-HPV desde o início da atividade sexual, sem o piso de 25 anos. NÃO confirmados nesta sessão: fluxo de citologia reflexa por resultado de DNA-HPV não-16/18, conduta exata quando o teste DNA-HPV não está disponível na rede, e cronograma de implantação/transição. Distinção pedida entre (A) norma clínica vigente, (B) implementação gradual no SUS e (C) alternativa temporária de transição não foi feita nesta sessão — pendência explícita.",
     temasRelacionados: ["R020", "R106"],
     pontosCriticos: [
       "MUDANÇA DE PARADIGMA (MS/INCA/CONITEC, Portaria SAES/SECTICS nº 13/2025, 18/08/2025): rastreamento primário passa a ser por TESTE MOLECULAR DNA-HPV oncogênico, não mais citologia isolada — maior sensibilidade, intervalos mais longos",
@@ -192,10 +192,12 @@ export const DIRETRIZES_CONTROLADAS = [
       "LSIL: repetir citologia em 6 meses OU colposcopia imediata",
       "ASC-H: colposcopia imediata",
       "HSIL: colposcopia imediata + biópsia dirigida; se NIC2/3 → tratamento (LEEP, conização)",
-      "Imunossuprimidas / PVHIV: iniciar rastreamento após início da atividade sexual (qualquer idade); realizar anualmente",
+      "Imunossuprimidas / PVHIV (CONFIRMADO por leitura direta, 3ª edição 2025): teste de DNA-HPV a partir do INÍCIO DA ATIVIDADE SEXUAL, independente de idade — regra de idade geral (25 anos) não se aplica a esse grupo",
+      "HISTERECTOMIA (NOVO — confirmado por leitura direta, Recomendações 34/35, 3ª edição 2025): histerectomia total por lesão BENIGNA, sem história de lesão cervical de alto grau, com exames anteriores normais → PODE excluir do rastreamento (recomendação condicional, evidência baixa). Histerectomia por lesão precursora ou câncer do colo → CONTINUAR rastreando por coleta vaginal por pelo menos 25 anos ou indefinidamente",
+      "SEM HISTÓRIA DE ATIVIDADE SEXUAL (CONFIRMADO, Recomendação 36, força FORTE/evidência moderada): não devem ser submetidas a rastreamento",
       "Vacinação HPV (PNI 2024): meninas 9–14 anos — 2 doses (0 e 6 meses); meninos 11–14 anos — 2 doses; imunossuprimidos 9–26 anos — 3 doses (0, 1–2 e 6 meses)",
       "PROIBIDO: rastreamento antes dos 25 anos em imunocompetentes — não indicado mesmo com início precoce da atividade sexual ou múltiplos parceiros",
-      "Gestante: rastreamento habitual; colposcopia e biópsia podem ser realizados; NIC não é indicação de parto cesáreo",
+      "Gestante: rastreamento habitual; colposcopia e biópsia podem ser realizados; NIC não é indicação de parto cesáreo — não relido linha a linha na 3ª edição nesta sessão",
     ],
     ativa: true,
     historica: false,
@@ -296,7 +298,7 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
-    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: PDF oficial integral lido (58 pag.) — bloco meningococico (Men C + reforco ACWY) confirmado; demais blocos (BCG/Penta/VIP-VOP/Pneumo/Rotavirus/Triplice Viral/HPV/Influenza/dT-dTpa) NAO relidos — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 3: PDF oficial integral lido (58 pag.) — blocos meningococico E dTpa (gestante/puerpera/profissional de saude) confirmados por citacao direta; BCG/Penta/VIP-VOP/Pneumo/Rotavirus/Triplice Viral/HPV/Influenza/CRIE NAO relidos nesta sessao — fechamento PARCIAL, nao pronto para validacao integral
     validadeOuProximaRevisao: "revisar em até 90 dias — calendário PNI tem ciclo de revisão frequente, confirmar demais esquemas além da mudança já identificada",
     observacoes: "Auditoria 2026-07-24 confirmou mudança de esquema: reforço aos 12 meses passou a usar meningocócica ACWY (não mais só Men C conjugada), conforme Instrução Normativa 2026. pontoCritico abaixo já corrigido. Demais esquemas (BCG, Penta, VIP/VOP, Pneumo, Rotavírus, Tríplice Viral etc.) não foram comparados linha a linha ao documento 2026 — tratar como não confirmados até revisão.",
     temasRelacionados: ["R032", "R033", "R051", "R107"],
@@ -313,7 +315,8 @@ export const DIRETRIZES_CONTROLADAS = [
       "Febre Amarela: 9 meses + reforço aos 4 anos; 1 dose é vitalícia após os 5 anos; CONTRAINDICADA em gestantes e imunossuprimidos graves",
       "HPV Quadrivalente (PNI 2024): meninas 9–14 anos e meninos 11–14 anos — 2 doses (0 e 6 meses); imunossuprimidos 9–26 anos — 3 doses",
       "Influenza: anualmente a partir de 6 meses para grupos prioritários; campanha nacional anual (antes do outono)",
-      "dT (adulto): a cada 10 anos; dTpa: 1 dose na gestante entre 20–36 semanas de cada gestação",
+      "dT (adulto): a cada 10 anos",
+      "dTpa (CORRIGIDO — Fase 3, leitura direta, PDF oficial IN 2026): gestante a partir da 20ª semana de gestação (na agenda oportuna do pré-natal), 1 dose por gestação — texto lido não confirma limite superior de '36 semanas' citado na versão anterior; puérpera até 45 dias pós-parto (se não vacinada na gestação); também indicada a profissionais de saúde de qualquer área e a parteiras tradicionais/estagiários que atuam em maternidade/UTI-UCI neonatal",
       "PROIBIDO: vacinas de vírus vivo atenuado (SCR, FA, varicela, VOP) em imunossuprimidos graves e gestantes (exceto influenza inativada e dTpa)",
     ],
     ativa: true,
@@ -340,9 +343,22 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
-    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: texto oficial integral lido (118 pag.) — esquema TARV 1a linha (TDF+3TC+DTG) confirmado estavel; secoes de PEP/PrEP NAO relidas nesta sessao — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
-    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar se o esquema TDF+3TC+DTG 1ª linha e os critérios de profilaxia mudaram no módulo 2024",
-    observacoes: "Auditoria 2026-07-24 localizou reorganização do PCDT em 3 módulos (2024), mais novo que a versão 2022/Nota Técnica 2023 aqui cadastrada. Conteúdo central (TARV para todos, TDF+3TC+DTG) é consistente com o conhecimento geral, mas não foi comparado linha a linha ao módulo 2024 — pontosCriticos abaixo NÃO foram alterados até confirmação humana.",
+    statusDocumental: "PENDENTE_AJUSTE", // status geral da entrada (conservador) — ver statusModulos abaixo para granularidade real por bloco
+    // Fase 3: cada bloco de HIV vem de um PCDT distinto e foi lido separadamente —
+    // "PRONTA_PARA_VALIDACAO_HUMANA" aqui só alcança o bloco efetivamente lido,
+    // nunca o restante da diretriz (regra explícita da Fase 3, Parte 5).
+    statusModulos: {
+      diagnostico: "PENDENTE_AJUSTE", // não relido nesta sessão
+      tarv_1a_linha: "PRONTA_PARA_VALIDACAO_HUMANA", // PCDT Módulo I 2024 lido na íntegra (118 pág.) — esquema TDF+3TC+DTG confirmado estável
+      gestacao: "PENDENTE_AJUSTE", // não relido nesta sessão (conteúdo cadastrado vem do Módulo I original, não confirmado)
+      coinfeccoes: "PENDENTE_AJUSTE", // Módulo II não obtido/lido nesta sessão
+      pep: "PRONTA_PARA_VALIDACAO_HUMANA", // PCDT PEP próprio (Portaria SECTICS/MS nº 14/2024) lido na íntegra (49 pág., 78 pág. no PDF) — 72h/28 dias/TDF+3TC+DTG confirmados estáveis, documento distinto do PCDT de tratamento
+      prep: "PENDENTE_AJUSTE", // PCDT PrEP próprio (edição 2025) lido na íntegra (78 pág.) — NOVIDADE confirmada (modalidade sob demanda), mas lista de populações-alvo e demais critérios não comparados linha a linha — ajuste necessário antes de promover
+      acompanhamento: "PENDENTE_AJUSTE", // não relido nesta sessão
+      falha_terapeutica: "PENDENTE_AJUSTE", // não relido nesta sessão
+    },
+    validadeOuProximaRevisao: "TARV 1ª linha e PEP podem ser validados (documentos próprios lidos na íntegra); diagnóstico, gestação, coinfecções, PrEP (revisar lista de populações), acompanhamento e falha terapêutica ainda precisam de leitura dirigida",
+    observacoes: "Fase 2 confirmou reorganização do PCDT de tratamento em 3 módulos (2024). Fase 3 (2026-07-24) confirma que PEP e PrEP são DOCUMENTOS PRÓPRIOS E DISTINTOS do PCDT de tratamento — não devem ser fundamentados automaticamente por ele (regra explícita da Fase 3): PCDT PEP (Portaria SECTICS/MS nº 14/2024, https://www.gov.br/saude/pt-br/assuntos/pcdt/p/profilaxia-pos-exposicao-de-risco-pep-a-infeccao-pelo-hiv, lido na íntegra) e PCDT PrEP Oral (edição 2025, https://www.gov.br/aids/pt-br/central-de-conteudo/pcdts/protocolo-clinico-e-diretrizes-terapeuticas-para-profilaxia-pre-exposicao-prep-oral-a-infeccao-pelo-hiv.pdf, lido na íntegra). TARV 1ª linha e PEP confirmados estáveis por citação direta. PrEP tem novidade confirmada (modalidade sob demanda, além da diária). Diagnóstico, gestação, coinfecções (Módulo II), acompanhamento e falha terapêutica NÃO foram lidos nesta sessão — ver `statusModulos` para granularidade exata por bloco.",
     temasRelacionados: ["R041", "R042", "R108"],
     pontosCriticos: [
       "Diagnóstico: 2 testes treponêmicos reagentes (ELISA 4ª geração OU teste rápido) + confirmação laboratorial; janela imunológica ~3–4 semanas",
@@ -351,8 +367,8 @@ export const DIRETRIZES_CONTROLADAS = [
       "Profilaxia primária PCP: SMX-TMP 800/160mg 3×/semana se CD4 <200 células/mm³ ou <14%",
       "Profilaxia toxoplasmose cerebral: SMX-TMP 800/160mg/dia se CD4 <100 + sorologia IgG positiva",
       "Meningite criptocócica: anfotericina B desoxicolato 0,7–1 mg/kg/dia IV × 14 dias + fluconazol 400mg/dia → consolidação + manutenção",
-      "PEP (Profilaxia Pós-Exposição): iniciar em até 72h (ideal < 2h), durar 28 dias — TDF+3TC+DTG; notificar e acompanhar",
-      "PrEP (Profilaxia Pré-Exposição): TDF+FTC 1 cp/dia — indicada para populações de alto risco (HSH, trans, trabalhadoras do sexo, casais sorodiscordantes)",
+      "MÓDULO PEP (CONFIRMADO por leitura direta, Fase 3 — PCDT PEP, Portaria SECTICS/MS nº 14/2024, documento próprio e distinto do PCDT de tratamento): iniciar em até 72h após a exposição de risco; esquema TDF/3TC 300/300mg + dolutegravir 50mg 1x/dia; duração 28 dias. Critério de indicação (Fonte: DATHI/SVSA/MS): tempo <72h + pessoa exposta não reagente para HIV no momento do atendimento. Conteúdo idêntico ao já cadastrado — confirmado estável",
+      "MÓDULO PrEP (CONFIRMADO por leitura direta, Fase 3 — PCDT PrEP Oral, edição 2025, documento próprio e distinto do PCDT de tratamento e do PCDT de PEP): TDF/FTC — NOVIDADE CONFIRMADA: a partir da edição 2025 existem DUAS modalidades, PrEP oral DIÁRIA (1cp/dia) e PrEP oral SOB DEMANDA (esquema por evento, não diário) — a versão anterior cadastrada só mencionava a diária. Indicada para populações de alto risco (HSH, trans, trabalhadoras do sexo, casais sorodiscordantes) — não confirmado nesta sessão se a lista de populações-alvo mudou",
       "TB + HIV: iniciar TARV 2–8 semanas após início do RIPE (exceto TB meníngea: aguardar 8 semanas); rifampicina = forte indutor CYP3A4",
       "Transmissão vertical: TARV em toda gestante HIV+; AZT IV intraparto; AZT VO ao RN por 4–6 semanas; não amamentar",
       "Meta de supressão: carga viral indetectável (<50 cópias/mL) após 6 meses de TARV = U=U (indetectável = intransmissível)",
@@ -508,7 +524,7 @@ export const DIRETRIZES_CONTROLADAS = [
     status: "PENDENTE_REVISAO",
     statusDocumental: "PENDENTE_AJUSTE", // CONFIANCA REDUZIDA: apenas fontes secundarias (blogs educacionais), documento WSES primario nao localizado/lido
     validadeOuProximaRevisao: "localizar e ler o documento WSES primário antes de promover; confirmar se antibiótico de rotina em quadro leve ainda é recomendado (ver nota de conflito com R111 abaixo)",
-    observacoes: "CONFIANÇA REDUZIDA — via fontes secundárias/educacionais, não o documento WSES primário. Risco de conflito interno: R111 (Mapa Mestre, faixa R101-R120) já registra que diverticulite aguda NÃO COMPLICADA pode ser tratada SEM antibiótico rotineiro — isso pode contradizer o ponto crítico de posologia abaixo, que veio de fonte secundária mais antiga/genérica. NÃO promover sem resolver essa divergência interna com o documento primário.",
+    observacoes: "CONFIANÇA REDUZIDA — via fontes secundárias/educacionais, não o documento WSES primário completo. Fase 3 (2026-07-24): localizado o artigo primário real — 'WSES 2020 update of the guidelines for the management of acute colonic diverticulitis in the emergency setting', World Journal of Emergency Surgery (link.springer.com/article/10.1186/s13017-020-00313-4 / PMC7206757) — mas o texto completo NÃO foi baixado/lido nesta sessão, só resumo de busca. Confirmado por esse resumo: a atualização 2020 cobre tanto diverticulite ESQUERDA (ALCD) quanto DIREITA (ARCD, mais prevalente em algumas regiões — nota nova, não presente na versão anterior desta entrada); e que para peritonite difusa por perfuração, sigmoidectomia laparoscópica de urgência só é sugerida 'se houver habilidade técnica e equipamento disponíveis' (recomendação FRACA, não forte) — isso é mais granular que o ponto crítico genérico já cadastrado ('lavagem/drenagem NÃO são 1ª linha'), mas ainda não substitui leitura integral. Risco de conflito interno PERMANECE ABERTO: R111 (Mapa Mestre) já registra que diverticulite aguda NÃO COMPLICADA pode ser tratada SEM antibiótico rotineiro — isso pode contradizer o ponto crítico de posologia abaixo, que veio de fonte secundária mais antiga/genérica. NÃO promover sem baixar e ler o artigo WSES 2020 completo e resolver essa divergência.",
     temasRelacionados: ["R023", "R111"],
     pontosCriticos: [
       "Classificação de Hinchey: I = abscesso pericólico | II = abscesso pélvico/retroperitoneal | III = peritonite purulenta | IV = peritonite fecal",
@@ -596,22 +612,23 @@ export const DIRETRIZES_CONTROLADAS = [
     ano: 2019,
     titulo: "Lei nº 13.931/2019 — Notificação compulsória de violência contra a mulher (+ normas correlatas de notificação compulsória em saúde)",
     orgao: "Congresso Nacional / Ministério da Saúde",
-    urlOficial: null,
-    versao: "Lei 13.931/2019, vigente desde 10/03/2020",
+    urlOficial: "https://www.planalto.gov.br/ccivil_03/_ato2019-2022/2019/lei/l13931.htm",
+    versao: "Lei 13.931/2019 (altera Lei 10.778/2003), vigente desde 10/03/2020",
     anoPublicacao: 2019,
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
-    statusDocumental: "PENDENTE_AJUSTE", // causa raiz confirmada das 3 falhas de R096 — textos legais nao lidos na integra, nenhum prazo numerico incluido intencionalmente
-    validadeOuProximaRevisao: "ler o texto integral da Lei 13.931/2019 e da Portaria de Consolidação MS nº 4/2017 antes de promover; confirmar qualquer prazo antes de incluir número",
-    observacoes: "Diretriz nova, proposta na Fase 2 para cobrir R096 — causa raiz confirmada das 3 falhas de geração na Fase 1 (recorte induzia citação de norma/prazo legal sem fonte). Cruza com `etica_medica` (art. 73 CEM) para o ponto de sigilo x dever legal.",
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 3: prazo/destinatario (autoridade policial, 24h) confirmados por citacao literal do artigo de lei (via busca, WebFetch direto ao planalto.gov.br falhou por reset de conexao) — bloco "mulher adulta" avancado; blocos crianca/adolescente (ECA), pessoa idosa, pessoa com deficiencia, violencia sexual e risco iminente NAO cobertos nesta sessao
+    validadeOuProximaRevisao: "ler o texto integral do artigo (não só o trecho citado); cobrir separadamente os blocos criança/adolescente (ECA/Lei 13.431/2017), pessoa idosa (Estatuto do Idoso), pessoa com deficiência e violência sexual — esta entrada cobre hoje SOMENTE mulher adulta",
+    observacoes: "Diretriz nova, proposta na Fase 2 para cobrir R096 — causa raiz confirmada das 3 falhas de geração na Fase 1. Fase 3 (2026-07-24) CONFIRMOU por citação literal do Art. 1º §1º da Lei 10.778/2003 (alterado pela Lei 13.931/2019): comunicação obrigatória à AUTORIDADE POLICIAL (não Ministério Público, corrige hipótese da Fase 2) em até 24 horas, 'para as providências cabíveis e para fins estatísticos'. Citação obtida via trecho reproduzido em busca — tentativa de leitura direta da página completa (WebFetch) falhou por reset de conexão do servidor; portanto NÃO é leitura integral artigo-por-artigo do texto legal, apenas citação literal de alta confiança. Esta entrada cobre SOMENTE o bloco 'mulher adulta' (conforme escopo original do recorte R096) — os blocos criança/adolescente, pessoa idosa, pessoa com deficiência, violência sexual e risco iminente exigidos pela Fase 3 NÃO foram desenvolvidos nesta sessão por restrição de tempo; permanecem como lacuna explícita. Cruza com `etica_medica` (art. 73 CEM) para o ponto de sigilo x dever legal.",
     temasRelacionados: ["R096"],
     pontosCriticos: [
       "Violência contra a mulher (suspeita ou confirmada) atendida em serviço de saúde = NOTIFICAÇÃO COMPULSÓRIA obrigatória, independente da vontade da vítima de prosseguir com queixa formal (Lei 13.931/2019)",
       "NOTIFICAÇÃO COMPULSÓRIA EM SAÚDE ≠ DENÚNCIA POLICIAL/BOLETIM DE OCORRÊNCIA — são atos distintos; a notificação do serviço de saúde não substitui nem depende do registro de BO pela vítima (armadilha central do recorte: tratar os dois como sinônimos)",
       "Notificação compulsória é dever legal do médico e NÃO constitui quebra de sigilo (mesmo princípio do art. 73 do Código de Ética Médica, diretriz `etica_medica`)",
       "Lei Maria da Penha (11.340/2006) é o marco de MEDIDAS PROTETIVAS (afastamento do agressor etc.), acionado por pedido da vítima ou decisão judicial — não é, em si, o mecanismo de notificação compulsória em saúde; não confundir os dois marcos legais",
-      "[NÃO USAR SEM CONFIRMAÇÃO] prazo exato de notificação (ex.: 'em até 24h') mencionado em fontes secundárias mas não confirmado no texto legal primário nesta sessão — não incluir prazo numérico específico em questão até confirmação humana",
+      "PRAZO CONFIRMADO (Fase 3): Lei 13.931/2019, que altera a Lei 10.778/2003, Art. 1º §1º — casos com indícios ou confirmação de violência contra a mulher devem ser 'obrigatoriamente comunicados à autoridade policial no prazo de 24 (vinte e quatro) horas, para as providências cabíveis e para fins estatísticos'. IMPORTANTE: destinatário confirmado é a AUTORIDADE POLICIAL (não Ministério Público, correção em relação à hipótese da Fase 2) — mas o texto qualifica essa comunicação como 'para fins estatísticos', reforçando que não é a mesma coisa que a vítima registrar uma denúncia/BO por iniciativa própria",
+      "[LIMITAÇÃO DE MÉTODO] o parágrafo acima foi obtido por trecho citado em resultado de busca reproduzindo o texto legal, não por leitura direta da página completa do planalto.gov.br — uma tentativa de acesso direto (WebFetch) falhou por reset de conexão. Tratar como confiança alta (é citação literal do artigo de lei, não paráfrase), mas não como 'documento lido na íntegra artigo por artigo'",
     ],
     ativa: true,
     historica: false,

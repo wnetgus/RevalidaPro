@@ -274,6 +274,117 @@ teste("23. bloqueio científico produz o mesmo sinal que RoboGerador.jsx usa par
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FASE 3 — Fechamento das lacunas documentais: 12 casos adicionais exigidos
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 24. módulos de HIV têm status independente
+teste("24. hiv.statusModulos existe e cada módulo tem status próprio", () => {
+  const hiv = DIRETRIZES_CONTROLADAS.find(x => x.id === "hiv");
+  assert.ok(hiv.statusModulos, "hiv deveria ter statusModulos");
+  const modulos = ["diagnostico", "tarv_1a_linha", "gestacao", "coinfeccoes", "pep", "prep", "acompanhamento", "falha_terapeutica"];
+  for (const m of modulos) assert.ok(hiv.statusModulos[m], `módulo ${m} deveria ter status`);
+  // nem todos os módulos têm o mesmo status — prova de independência real
+  const statusUnicos = new Set(Object.values(hiv.statusModulos));
+  assert.ok(statusUnicos.size > 1, "módulos deveriam ter status diferentes entre si (não é um valor único copiado)");
+});
+
+// 25. regra de TARV não libera automaticamente PEP ou PrEP
+teste("25. status PRONTO do módulo TARV não promove PEP/PrEP automaticamente", () => {
+  const hiv = DIRETRIZES_CONTROLADAS.find(x => x.id === "hiv");
+  assert.equal(hiv.statusModulos.tarv_1a_linha, "PRONTA_PARA_VALIDACAO_HUMANA");
+  assert.notEqual(hiv.statusModulos.prep, "PRONTA_PARA_VALIDACAO_HUMANA", "PrEP não deveria herdar o status de TARV");
+  // status geral da entrada continua conservador mesmo com TARV/PEP prontos
+  assert.equal(hiv.statusDocumental, "PENDENTE_AJUSTE");
+});
+
+// 26. diverticulite permanece bloqueada se divergência estiver aberta
+teste("26. diverticulite com conflito interno aberto permanece PENDENTE_AJUSTE e bloqueada", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "diverticulite");
+  assert.equal(d.statusDocumental, "PENDENTE_AJUSTE");
+  assert.match(d.observacoes, /conflito|CONFLITO/, "observações deveriam registrar o conflito interno não resolvido");
+  const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, "Diverticulite classificação de Hinchey", "");
+  assert.equal(avaliacao.bloqueado, true);
+});
+
+// 27. HAS não gera regra absoluta diante de divergência (classificação corrigida, sem apagar o histórico)
+teste("27. has registra a correção de classificação sem apagar a ressalva de itens não relidos", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "has");
+  const texto = d.pontosCriticos.join(" || ");
+  assert.match(texto, /CLASSIFICAÇÃO CORRIGIDA/);
+  assert.match(texto, /não relido/i, "deveria haver ao menos um ponto marcado como não relido, evitando afirmação absoluta de que tudo foi confirmado");
+});
+
+// 28. rastreamento diferencia rotina de paciente sintomática (regressão + histerectomia novo)
+teste("28. rastreamento_colo cobre histerectomia e mantém a distinção rotina/sintomática", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "rastreamento_colo");
+  const texto = d.pontosCriticos.join(" || ");
+  assert.match(texto, /NÃO se aplica a paciente sintomática/);
+  assert.match(texto, /HISTERECTOMIA/);
+});
+
+// 29. vacinação exige ano e população (não regra genérica única)
+teste("29. vacinacao.dTpa especifica população (gestante/puérpera/profissional), não regra única", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "vacinacao");
+  const pontoDtpa = d.pontosCriticos.find(p => /dTpa/.test(p));
+  assert.ok(pontoDtpa);
+  assert.match(pontoDtpa, /gestante/i);
+  assert.match(pontoDtpa, /puérpera/i);
+  assert.match(pontoDtpa, /profissiona(l|is)/i);
+});
+
+// 30. icterícia exige contexto populacional (neonatal, não genérico)
+teste("30. ictericia_neonatal delimita escopo estritamente neonatal", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "ictericia_neonatal");
+  assert.match(d.observacoes, /NEONATAL/);
+  assert.match(d.tema, /Neonatal/);
+});
+
+// 31. R096 separa notificação de denúncia (com prazo/destinatário confirmados na Fase 3)
+teste("31. violencia_domestica confirma prazo (24h) e destinatário (autoridade policial) por citação legal", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "violencia_domestica");
+  const texto = d.pontosCriticos.join(" || ");
+  assert.match(texto, /24 \(vinte e quatro\) horas/);
+  assert.match(texto, /AUTORIDADE POLICIAL/);
+  assert.match(texto, /NOTIFICAÇÃO COMPULSÓRIA EM SAÚDE ≠ DENÚNCIA POLICIAL/);
+});
+
+// 32. fonte secundária isolada não permite status documental pronto
+teste("32. diretrizes baseadas só em fonte secundária não são PRONTA_PARA_VALIDACAO_HUMANA", () => {
+  const idsFonteSecundaria = ["diverticulite", "tvp_wells", "distocia_ombro", "ictericia_neonatal"];
+  for (const id of idsFonteSecundaria) {
+    const d = DIRETRIZES_CONTROLADAS.find(x => x.id === id);
+    assert.notEqual(d.statusDocumental, "PRONTA_PARA_VALIDACAO_HUMANA", `${id} não deveria estar pronta (só fonte secundária/parcial)`);
+  }
+});
+
+// 33. diretriz sem documento primário lido permanece bloqueada para geração
+teste("33. tvp_wells (sem documento primário lido) permanece bloqueada", () => {
+  const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, "Escore de Wells trombose venosa profunda", "");
+  assert.equal(avaliacao.bloqueado, true);
+});
+
+// 34. recorte reclassificado como grounding obrigatório não chama IA (achado real da reauditoria: R036)
+teste("34. R036 (distocia de ombro), reclassificado na reauditoria da Fase 3, é bloqueado pelo código real", () => {
+  // Achado da reauditoria: a matriz automática da Fase 2 classificou R036 como
+  // "liberável" (grounding dispensável) por tratar "manobras sequenciais" como
+  // categórico-sequencial, sem checar que a Fase 2 já criara a diretriz
+  // `distocia_ombro`. O código real (avaliarBloqueioDiretriz) já bloqueia
+  // corretamente — este teste prova que o comportamento real diverge (para
+  // mais seguro) da classificação desatualizada da matriz.
+  const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, "Manobras sequenciais e reconhecimento do fator de risco distocia de ombro", "");
+  assert.equal(avaliacao.bloqueado, true, "R036 deveria ser bloqueado pelo código real, corrigindo a matriz da Fase 2");
+});
+
+// 35. nenhuma diretriz é promovida automaticamente
+teste("35. nenhuma das 17 diretrizes está VIGENTE_CONFIRMADA (nenhuma promoção automática ocorreu)", () => {
+  const comStatusExplicito = DIRETRIZES_CONTROLADAS.filter(d => d.status !== undefined);
+  assert.ok(comStatusExplicito.length >= 11, "deveriam existir ao menos as 11 diretrizes com status explícito (6 Fase 1 + 5 Fase 2)");
+  for (const d of comStatusExplicito) {
+    assert.notEqual(d.status, STATUS_DIRETRIZ.VIGENTE_CONFIRMADA, `${d.id} não deveria estar VIGENTE_CONFIRMADA`);
+  }
+});
+
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);
 if (falhas.length > 0) {
   console.log("\nFALHAS:");
