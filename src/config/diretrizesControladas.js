@@ -19,6 +19,17 @@ export const DIRETRIZES_CONTROLADAS = [
     ],
     fonte: "7ª Diretriz Brasileira de Hipertensão Arterial — SBC/SBH 2024",
     ano: 2024,
+    titulo: "Diretriz Brasileira de Hipertensão Arterial — 2025 (atualização da 7ª Diretriz)",
+    orgao: "Sociedade Brasileira de Cardiologia (SBC) / Sociedade Brasileira de Hipertensão (SBH) / Sociedade Brasileira de Nefrologia (SBN)",
+    urlOficial: "https://abccardiol.org/en/article/brazilian-guidelines-of-hypertension-2025/",
+    versao: "Edição 2025",
+    anoPublicacao: 2025,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra Arq Bras Cardiol. 2025;122(9):e20250624 (DOI 10.36660/abc.20250624)",
+    observacoes: "Auditoria 2026-07-24 (ver AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md) localizou edição 2025 que supera a 7ª diretriz 2024 aqui cadastrada. Conteúdo central (meta 130/80, MAPA/MRPA, estratificação de risco) parece coincidir, mas não foi comparado linha a linha ao documento primário — pontosCriticos abaixo NÃO foram alterados até confirmação humana.",
+    temasRelacionados: ["R001", "R046", "R101"],
     pontosCriticos: [
       "Meta pressórica geral: PA < 130/80 mmHg para a maioria dos adultos com HAS",
       "Meta em idosos frágeis > 80 anos: PAS 130–150 mmHg (individualizar)",
@@ -50,11 +61,22 @@ export const DIRETRIZES_CONTROLADAS = [
     ],
     fonte: "Diretrizes da Sociedade Brasileira de Diabetes (SBD) 2024–2025",
     ano: 2024,
+    titulo: "Diretriz da Sociedade Brasileira de Diabetes — Edição 2025 (manejo da terapia antidiabética no DM2)",
+    orgao: "Sociedade Brasileira de Diabetes (SBD)",
+    urlOficial: "https://diretriz.diabetes.org.br/manejo-da-terapia-antidiabetica-no-dm2-2/",
+    versao: "Edição 2025",
+    anoPublicacao: 2025,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra diretriz.diabetes.org.br (Ed. 2025, capítulos de tratamento/rastreio)",
+    observacoes: "Auditoria 2026-07-24 confirmou mudança clínica real: metformina NÃO É MAIS exclusividade universal de 1ª linha desde a atualização SBD de julho/2025 — pontoCritico abaixo já corrigido para refletir a condicionalidade por perfil de risco. Demais pontos (metas, CAD/EHH, hipoglicemia) não foram comparados linha a linha ao documento primário.",
+    temasRelacionados: ["R003", "R004", "R047", "R102"],
     pontosCriticos: [
       "Diagnóstico: GJ ≥126 mg/dL (×2) | TTOG 2h ≥200 mg/dL | HbA1c ≥6,5% | Glicemia aleatória ≥200 + sintomas",
       "Pré-diabetes: GJ 100–125 mg/dL | TTOG 2h 140–199 mg/dL | HbA1c 5,7–6,4%",
       "Meta HbA1c geral: <7,0%; idosos frágeis ou múltiplas comorbidades: <8,0%; gestantes: <6,0%",
-      "DM2 — 1ª linha: Metformina 500–2000 mg/dia (se TFG ≥30 e sem contraindicações)",
+      "DM2 — 1ª linha CONDICIONAL (SBD 2025, correção pós-auditoria 2026-07-24): metformina em monoterapia é 1ª escolha SOMENTE em adultos com risco cardiovascular baixo/intermediário, sem tratamento prévio, sem doença cardiorrenal/obesidade/sobrepeso e HbA1c <7,5%. Fora desse perfil, a escolha da 1ª linha é individualizada por risco CV/renal/IMC/HbA1c — NÃO presumir metformina universal",
       "DM2 + DCV estabelecida ou alto risco CV: adicionar iSGLT2 (empagliflozina/dapagliflozina) ou aGLP1 (semaglutida/liraglutida)",
       "DM2 + IRC (TFG 30–60): preferir iSGLT2; suspender metformina se TFG < 30",
       "DM2 + IC com fração reduzida: iSGLT2 é mandatório (reduz hospitalização e mortalidade)",
@@ -143,10 +165,24 @@ export const DIRETRIZES_CONTROLADAS = [
     ],
     fonte: "INCA 2023 — Diretrizes Brasileiras para o Rastreamento do Câncer do Colo do Útero (2ª edição)",
     ano: 2023,
+    titulo: "Diretrizes Brasileiras para o Rastreamento do Câncer do Colo do Útero — Volume 1: Rastreamento organizado com teste molecular para detecção de DNA-HPV oncogênico",
+    orgao: "Ministério da Saúde / INCA / CONITEC",
+    urlOficial: "https://www.gov.br/conitec/pt-br/midias/protocolos/diretrizes/diretriz-brasileira-rastreamento-do-cancer-do-colo-do-utero-diretriz-brasileira",
+    versao: "Volume 1, publicada 18/08/2025 (Portaria SAES/SECTICS nº 13/2025, Diário Oficial da União)",
+    anoPublicacao: 2025,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra o documento oficial no Diário Oficial da União",
+    observacoes: "Auditoria 2026-07-24 confirmou MUDANÇA DE PARADIGMA: o método primário de rastreio deixou de ser a citologia e passou a ser o teste molecular DNA-HPV, faixa 25-64 anos, intervalo de 5 anos quando negativo (substitui a periodicidade trienal por citologia da 2ª edição INCA 2023 aqui cadastrada). pontosCriticos abaixo já ajustados para refletir DNA-HPV como método primário; fluxo detalhado de ASC-US/LSIL/HSIL ainda reflete o protocolo de citologia antigo e PRECISA de confirmação humana antes de uso em recorte que dependa desses subitens.",
+    temasRelacionados: ["R020", "R106"],
     pontosCriticos: [
+      "MUDANÇA DE PARADIGMA (MS/INCA/CONITEC, Portaria SAES/SECTICS nº 13/2025, 18/08/2025): rastreamento primário passa a ser por TESTE MOLECULAR DNA-HPV oncogênico, não mais citologia isolada — maior sensibilidade, intervalos mais longos",
       "Início do rastreamento: 25 anos (mulheres com história de atividade sexual), independente da orientação sexual",
-      "Encerramento: 64 anos (com 2 citologias negativas nos últimos 5 anos); mulheres sem história de atividade sexual não necessitam rastreamento",
-      "Periodicidade INCA 2023: citologia (Papanicolau) anual × 2 anos consecutivos negativos → a cada 3 anos",
+      "Encerramento: 64 anos (com rastreamento adequado prévio); mulheres sem história de atividade sexual não necessitam rastreamento",
+      "Periodicidade (DNA-HPV, 2025): teste negativo → repetir em 5 anos (rastreamento organizado, 25-64 anos) — NÃO usar mais o intervalo trienal de citologia isolada como regra geral para novos rastreios",
+      "DNA-HPV positivo para tipos 16/18 (maior risco oncogênico): encaminhamento direto à colposcopia",
+      "[PENDENTE DE CONFIRMAÇÃO HUMANA] Fluxo abaixo (ASC-US/LSIL/HSIL por citologia) reflete o protocolo anterior (2ª edição INCA 2023) — usar com cautela até revisão confirmar se o fluxo por citologia isolada mudou no cenário de transição para DNA-HPV",
       "NILM × 2 anos consecutivos: repetir a cada 3 anos",
       "ASC-US: repetir citologia em 1 ano (OU teste HPV se disponível); se HPV 16/18 positivo → colposcopia imediata",
       "LSIL: repetir citologia em 6 meses OU colposcopia imediata",
@@ -204,6 +240,17 @@ export const DIRETRIZES_CONTROLADAS = [
     ],
     fonte: "PCDT para Atenção Integral às Pessoas com Infecções Sexualmente Transmissíveis — MS 2022",
     ano: 2022,
+    titulo: "Protocolo Clínico e Diretrizes Terapêuticas para Atenção Integral às Pessoas com Infecções Sexualmente Transmissíveis (IST) — atualizado 04/07/2024",
+    orgao: "Ministério da Saúde (Departamento de HIV/Aids, Tuberculose, Hepatites Virais e IST)",
+    urlOficial: "https://www.gov.br/saude/pt-br/assuntos/pcdt/a/atencao-integral-as-pessoas-com-infeccoes-sexualmente-transmissiveis/view",
+    versao: "Atualização 04/07/2024",
+    anoPublicacao: 2024,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar se o esquema de penicilina benzatina por estágio mudou na atualização 2024",
+    observacoes: "Auditoria 2026-07-24 localizou atualização do PCDT-IST em 04/07/2024 (2 anos mais nova que a versão 2022 aqui cadastrada), com revisão do algoritmo de decisão clínica para sífilis adquirida/gestante. Não foi confirmado linha a linha se o esquema de PGB por estágio mudou — pontosCriticos abaixo NÃO foram alterados até confirmação humana. Usado em produção em SA_2026_2_Q5 (R015) citando a versão 2022 desatualizada.",
+    temasRelacionados: ["R015", "R016", "R049", "R065", "R105"],
     pontosCriticos: [
       "Sífilis Primária: cancro duro (úlcera indolor, bordas endurecidas, base limpa) + adenopatia satélite indolor; VDRL pode ser negativo ou baixo",
       "Sífilis Secundária: roséola sifilítica (máculas palmo-plantares), condiloma plano, placas mucosas, alopecia; VDRL fortemente positivo",
@@ -236,13 +283,24 @@ export const DIRETRIZES_CONTROLADAS = [
     ],
     fonte: "Calendário Nacional de Vacinação SUS — PNI/MS 2024",
     ano: 2024,
+    titulo: "Instrução Normativa do Calendário Nacional de Vacinação — 2026",
+    orgao: "Ministério da Saúde / Programa Nacional de Imunizações (PNI)",
+    urlOficial: "https://www.gov.br/saude/pt-br/vacinacao/publicacoes/instrucao-normativa-que-instrui-o-calendario-nacional-de-vacinacao-2026.pdf",
+    versao: "Instrução Normativa 2026",
+    anoPublicacao: 2026,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    validadeOuProximaRevisao: "revisar em até 90 dias — calendário PNI tem ciclo de revisão frequente, confirmar demais esquemas além da mudança já identificada",
+    observacoes: "Auditoria 2026-07-24 confirmou mudança de esquema: reforço aos 12 meses passou a usar meningocócica ACWY (não mais só Men C conjugada), conforme Instrução Normativa 2026. pontoCritico abaixo já corrigido. Demais esquemas (BCG, Penta, VIP/VOP, Pneumo, Rotavírus, Tríplice Viral etc.) não foram comparados linha a linha ao documento 2026 — tratar como não confirmados até revisão.",
+    temasRelacionados: ["R032", "R033", "R051", "R107"],
     pontosCriticos: [
       "BCG: ao nascer (idealmente primeiras 12h); 1 dose; prematuros <37 sem → aguardar peso ≥2 kg",
       "Hepatite B: ao nascer (primeiras 12h) + Penta aos 2, 4 e 6 meses (total 4 doses)",
       "Pentavalente (DTP + Hib + HepB): 2, 4 e 6 meses + reforço DTP aos 15 meses e 4 anos",
       "VIP (Poliomielite inativada): 2, 4 e 6 meses; VOP (oral bivalente) reforços: 15 meses e 4 anos",
       "Pneumo 10: 2 e 4 meses + reforço aos 12 meses",
-      "Meningo C conjugada: 3 e 5 meses + reforço aos 12 meses",
+      "Meningocócica ACWY: reforço aos 12 meses (correção pós-auditoria 2026-07-24, Instrução Normativa 2026 — substitui o reforço que antes era só Meningo C conjugada aos 12 meses; esquema primário de Meningo C aos 3 e 5 meses não confirmado como alterado)",
       "Rotavírus humano (VORH): 2 e 4 meses (máximo: 1ª dose até 3 m 15 dias; 2ª dose até 7 m 29 dias)",
       "Tríplice Viral (SCR — sarampo, caxumba, rubéola): 12 meses + reforço aos 15 meses",
       "Varicela (SCRV — tetraviral): 15 meses (substituiu 2ª dose SCR)",
@@ -268,6 +326,17 @@ export const DIRETRIZES_CONTROLADAS = [
     ],
     fonte: "PCDT para Manejo da Infecção pelo HIV em Adultos — MS 2022 + Nota Técnica DIAHV 2023",
     ano: 2023,
+    titulo: "Protocolo Clínico e Diretrizes Terapêuticas para Manejo da Infecção pelo HIV em Adultos — Módulo I: Tratamento (2024)",
+    orgao: "Ministério da Saúde / Departamento de HIV, Aids, Tuberculose, Hepatites Virais e IST (DIAHV)",
+    urlOficial: "https://www.gov.br/aids/pt-br/central-de-conteudo/pcdts/pcdt_hiv_modulo_1_2024.pdf",
+    versao: "Módulo I: Tratamento, edição 2024 (protocolo reorganizado em 3 módulos: I-Tratamento, II-Coinfecções, III-Comorbidades)",
+    anoPublicacao: 2024,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    validadeOuProximaRevisao: "revisar em até 90 dias — confirmar se o esquema TDF+3TC+DTG 1ª linha e os critérios de profilaxia mudaram no módulo 2024",
+    observacoes: "Auditoria 2026-07-24 localizou reorganização do PCDT em 3 módulos (2024), mais novo que a versão 2022/Nota Técnica 2023 aqui cadastrada. Conteúdo central (TARV para todos, TDF+3TC+DTG) é consistente com o conhecimento geral, mas não foi comparado linha a linha ao módulo 2024 — pontosCriticos abaixo NÃO foram alterados até confirmação humana.",
+    temasRelacionados: ["R041", "R042", "R108"],
     pontosCriticos: [
       "Diagnóstico: 2 testes treponêmicos reagentes (ELISA 4ª geração OU teste rápido) + confirmação laboratorial; janela imunológica ~3–4 semanas",
       "TARV: iniciar em TODOS os pacientes, independente de CD4 ou carga viral (desde 2013 no Brasil — 'Tratar a Todos')",
@@ -392,9 +461,38 @@ const _casaPalavraChave = (texto, kw) => {
   return texto.includes(kwLower);
 };
 
+// ─── GOVERNANÇA CLÍNICA — STATUS DE VIGÊNCIA (Macro Sprint 2026.2) ───────────
+// Uma diretriz sem campo `status` é tratada como equivalente a
+// VIGENTE_CONFIRMADA — preserva 100% do comportamento anterior para toda
+// entrada que não passou pela auditoria de atualização (sepse, asma,
+// tuberculose, dengue, etica_medica, prenatal, nesta rodada). Só entradas
+// com `status` explicitamente diferente de VIGENTE_CONFIRMADA deixam de
+// contar como fonte segura para grounding.
+export const STATUS_DIRETRIZ = {
+  VIGENTE_CONFIRMADA: "VIGENTE_CONFIRMADA",
+  PENDENTE_REVISAO: "PENDENTE_REVISAO",
+  DESATUALIZADA: "DESATUALIZADA",
+  SUBSTITUIDA: "SUBSTITUIDA",
+  BLOQUEADA: "BLOQUEADA",
+};
+const _statusUtilizavel = (d) => d.status === undefined || d.status === STATUS_DIRETRIZ.VIGENTE_CONFIRMADA;
+
+// Encontra todos os candidatos por palavra-chave, ignorando status — usado
+// tanto pela seleção normal (que depois filtra por status) quanto pela
+// checagem de bloqueio (que precisa saber se HÁ diretriz relevante mesmo
+// quando ela não está vigente, para poder barrar a geração com motivo claro
+// em vez de simplesmente prosseguir sem grounding nenhum).
+const _candidatasPorPalavraChave = (lista, temaMestre, subtema) => {
+  const texto = `${temaMestre} ${subtema}`.toLowerCase();
+  return lista.filter(
+    d => d.ativa && Array.isArray(d.palavrasChave) && d.palavrasChave.some(kw => _casaPalavraChave(texto, kw))
+  );
+};
+
 // ─── DETECTAR NA LISTA DINÂMICA (Firestore) ──────────────────────────────────
 // Recebe a lista carregada do Firestore (ou estática como fallback).
-// Preferir diretriz ativa; a versão mais recente (maior ano) tem prioridade.
+// Preferir diretriz ativa E com status utilizável; a versão mais recente
+// (maior ano) tem prioridade entre as utilizáveis.
 // ÚNICA lógica de seleção do arquivo — detectarDiretriz (abaixo) delega para
 // esta função em vez de reimplementar o desempate, para as duas nunca
 // divergirem (hotfix: resumoEngine.js usava só detectarDiretriz, que decidia
@@ -402,10 +500,7 @@ const _casaPalavraChave = (texto, kw) => {
 // usado por RoboGerador/ImportadorPro/ResumoGerador via detectarDiretrizDinamica,
 // podendo escolher fontes controladas diferentes para o mesmo tema+subtema).
 export const detectarDiretrizDinamica = (lista = [], temaMestre = "", subtema = "") => {
-  const texto = `${temaMestre} ${subtema}`.toLowerCase();
-  const candidatas = lista.filter(
-    d => d.ativa && Array.isArray(d.palavrasChave) && d.palavrasChave.some(kw => _casaPalavraChave(texto, kw))
-  );
+  const candidatas = _candidatasPorPalavraChave(lista, temaMestre, subtema).filter(_statusUtilizavel);
   if (!candidatas.length) return null;
   return candidatas.reduce((best, cur) => (cur.ano > best.ano ? cur : best));
 };
@@ -416,6 +511,32 @@ export const detectarDiretrizDinamica = (lista = [], temaMestre = "", subtema = 
 // critério de desempate (maior ano) usado em todos os outros caminhos.
 export const detectarDiretriz = (temaMestre = "", subtema = "") =>
   detectarDiretrizDinamica(DIRETRIZES_CONTROLADAS, temaMestre, subtema);
+
+// ─── AVALIAR BLOQUEIO POR GOVERNANÇA (Macro Sprint 2026.2) ───────────────────
+// Chamada ANTES de montar o prompt/chamar a IA. Diferente de
+// detectarDiretrizDinamica (que silenciosamente ignora diretrizes não
+// vigentes e cai para "sem grounding"), esta função existe para DETECTAR que
+// havia uma diretriz relevante para o tema, mas ela não está em condições de
+// uso — permitindo barrar a geração com motivo explícito em vez de prosseguir
+// sem nenhum grounding para um tema que claramente precisa dele.
+export const avaliarBloqueioDiretriz = (lista = [], temaMestre = "", subtema = "") => {
+  const candidatas = _candidatasPorPalavraChave(lista, temaMestre, subtema);
+  if (!candidatas.length) return { bloqueado: false, diretriz: null, motivo: null };
+
+  const melhorUtilizavel = candidatas.filter(_statusUtilizavel);
+  const melhorGeral = candidatas.reduce((best, cur) => (cur.ano > best.ano ? cur : best));
+
+  if (melhorUtilizavel.length > 0) return { bloqueado: false, diretriz: melhorGeral, motivo: null };
+
+  const motivoPorStatus = {
+    [STATUS_DIRETRIZ.PENDENTE_REVISAO]: "diretriz pendente de revisão humana (edição mais nova localizada, conteúdo não confirmado linha a linha)",
+    [STATUS_DIRETRIZ.DESATUALIZADA]: "diretriz confirmada como desatualizada",
+    [STATUS_DIRETRIZ.SUBSTITUIDA]: "diretriz substituída por edição mais nova",
+    [STATUS_DIRETRIZ.BLOQUEADA]: "diretriz bloqueada manualmente",
+  };
+  const motivo = motivoPorStatus[melhorGeral.status] || `diretriz com status não utilizável (${melhorGeral.status})`;
+  return { bloqueado: true, diretriz: melhorGeral, motivo };
+};
 
 // ─── MONTAR BLOCO DE INJEÇÃO PARA O PROMPT ───────────────────────────────────
 // Retorna string formatada a ser inserida no prompt antes do FOCO PEDAGÓGICO.

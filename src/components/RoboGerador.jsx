@@ -24,6 +24,7 @@ import { gerarESalvarResumo } from "../utils/resumoEngine";
 import {
   DIRETRIZES_CONTROLADAS,
   detectarDiretriz, detectarDiretrizDinamica, montarBlocoDiretriz,
+  avaliarBloqueioDiretriz,
 } from "../config/diretrizesControladas";
 import { statusRecorteSA } from "../config/recortesStatusSA";
 
@@ -757,6 +758,25 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
           );
           setTemasFalhos(prev => [...prev, tema]);
           continue; // sem chamada de IA, sem custo — não precisa do intervalo entre temas
+        }
+      }
+
+      // ── Pré-check de governança clínica (Macro Sprint 2026.2) ─────────────
+      // Bloqueia ANTES de qualquer chamada à IA quando o tema corresponde a uma
+      // diretriz cadastrada mas não vigente (PENDENTE_REVISAO/DESATUALIZADA/
+      // SUBSTITUIDA/BLOQUEADA) — ver AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md.
+      // Diferente do pré-check de recorte acima: aqui o bloqueio é por status da
+      // FONTE, não do recorte em si. Um tema sem nenhuma diretriz correspondente
+      // não é afetado (continua gerando sem grounding, comportamento inalterado).
+      if (formatoABCDAtual) {
+        const avaliacao = avaliarBloqueioDiretriz(diretrizesRef.current, tema, "");
+        if (avaliacao.bloqueado) {
+          addLog(
+            `   🚫 "${tema}" — GERAÇÃO BLOQUEADA (0 chamadas à IA). Diretriz "${avaliacao.diretriz?.tema}" com status ${avaliacao.diretriz?.status}: ${avaliacao.motivo}.`,
+            "aviso"
+          );
+          setTemasFalhos(prev => [...prev, tema]);
+          continue;
         }
       }
 
