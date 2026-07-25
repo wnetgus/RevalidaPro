@@ -6,6 +6,22 @@
 
 ---
 
+## ADENDO — FASE 3 (2026-07-24): fechamento de lacunas por leitura de fonte primária
+
+Ver `PACOTE_VALIDACAO_HUMANA_DIRETRIZES_2026_2.md` para as fichas objetivas atualizadas por diretriz/módulo. Resumo do que mudou nesta fase (conteúdo completo já incorporado ao código, `src/config/diretrizesControladas.js`):
+
+- **`has`**: PDF oficial 2025 (154 pág.) lido — **achado crítico de auditoria**: uma primeira tentativa baixou por engano o PDF de sbh.org.br, que se revelou ser a 7ª Diretriz **original de 2016**, não a edição 2025 — descartado antes de qualquer uso. A fonte correta (Arq Bras Cardiol. 2025;122(9):e20250624) confirmou **mudança de classificação de estágios de PA** (o que era "Estágio 1" 130-139/80-89 agora é "Pré-hipertensão") e correção do tratamento gestacional (metildopa/BCC di-hidropiridínico, não labetalol/hidralazina como 1ª linha crônica). Fechamento parcial — emergência/urgência/DRC/DM/DCV não relidos.
+- **`rastreamento_colo`**: PDF oficial (3ª edição INCA/MS 2025, 98 pág.) lido — confirma por número de recomendação as regras de histerectomia (Rec. 34/35) e mulher sem atividade sexual (Rec. 36), e a distinção rastreio-de-rotina vs. paciente sintomática. Fluxo de citologia reflexa e conduta se DNA-HPV indisponível seguem não confirmados.
+- **`vacinacao`**: bloco dTpa lido no PDF oficial (58 pág.) — gestante a partir da 20ª semana (sem confirmação do limite de 36 semanas citado antes), puérpera até 45 dias, profissionais de saúde. Demais 13 blocos do calendário não relidos nesta fase.
+- **`hiv`**: PEP e PrEP confirmados como **documentos próprios e distintos** do PCDT de tratamento — PEP (Portaria SECTICS/MS nº 14/2024) lido na íntegra e confirmado estável (72h/28 dias/TDF+3TC+DTG); PrEP (edição 2025) lido na íntegra com **novidade confirmada** (modalidade sob demanda, além da diária). Novo campo `statusModulos` no código dá status documental independente por bloco (diagnóstico/TARV/gestação/coinfecções/PEP/PrEP/acompanhamento/falha terapêutica).
+- **`violencia_domestica`**: prazo (24h) e destinatário (autoridade policial, não Ministério Público) confirmados por citação literal do Art. 1º §1º da Lei 10.778/2003 (alterada pela Lei 13.931/2019) — via trecho reproduzido em busca; tentativa de leitura direta da página completa do planalto.gov.br falhou por reset de conexão. Cobre só o bloco "mulher adulta" — blocos criança/adolescente, pessoa idosa, pessoa com deficiência, violência sexual e risco iminente ficam para a Fase 4.
+- **`diverticulite`**: artigo primário WSES 2020 localizado (não baixado/lido na íntegra) — confirma cobertura de diverticulite direita além da esquerda e nuance na recomendação de cirurgia laparoscópica (fraca, condicionada a recursos). **Conflito interno com R111 permanece aberto e não resolvido.**
+- **`tvp_wells`, `distocia_ombro`, `ictericia_neonatal`**: sem progresso adicional de fonte primária nesta fase — permanecem como estavam ao final da Fase 2.
+
+**Reauditoria dos 55 recortes "liberáveis"** (ver `MATRIZ_GROUNDING_R001_R120.md`, seção Fase 3): releitura manual reclassificou o conjunto em 15 LIBERÁVEL QUALITATIVO, 22 GROUNDING RECOMENDADO, 14 GROUNDING OBRIGATÓRIO, 4 PENDENTE DE DECISÃO HUMANA. Achado principal: R036 (distocia de ombro) estava mal classificado na matriz automática da Fase 2, mas o código real já o bloqueia corretamente hoje.
+
+---
+
 ## PARTE 2 — DOSSIÊS DAS 6 DIRETRIZES EXISTENTES
 
 ### 1. `has` — Hipertensão Arterial Sistêmica

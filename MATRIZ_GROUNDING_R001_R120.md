@@ -142,3 +142,77 @@ Mapeamento de matéria original → área operacional (5 grandes áreas): Medici
 | R118 | Clínica Médica | Geriatria | Osteoporose | categórico-sequencial | OBRIGATORIO | - | INEXISTENTE | não | não | não | não | não | ALTO | SIM | **NAO** | Grounding obrigatório e nenhuma diretriz (existente ou proposta) cobre o tema. |
 | R119 | Clínica Médica | Clínica Médica | Insuficiência cardíaca | categórico-conceitual | OBRIGATORIO | - | INEXISTENTE | não | não | não | não | não | ALTO | SIM | **NAO** | Grounding obrigatório e nenhuma diretriz (existente ou proposta) cobre o tema. |
 | R120 | Cirurgia | Otorrinolaringologia | Faringoamigdalite | categórico-conceitual | DISPENSAVEL | - | N/A | não | não | não | não | não | BAIXO | NAO | **SIM** | Conteúdo qualitativo/categórico sem exigência normativa central. |
+
+---
+
+## FASE 3 — REAUDITORIA MANUAL DOS 55 RECORTES "LIBERÁVEIS" (2026-07-24)
+
+**Método:** releitura manual do texto real de recorte/decisão/armadilha dos 55 itens que a Fase 2 classificou como "pode gerar agora", aplicando 4 categorias (LIBERÁVEL QUALITATIVO / GROUNDING RECOMENDADO / GROUNDING OBRIGATÓRIO / PENDENTE DE DECISÃO HUMANA), não apenas palavra-chave. **Não é revisão especialista exaustiva de cada um** — é uma segunda leitura mais cética, aplicando as lições dos achados reais desta sessão (mudança de classificação de HAS, indução de posologia mesmo em recortes aparentemente categóricos, escores/critérios nomeados que passam despercebidos por regex simples).
+
+**Resultado agregado (dos 55 originais):**
+- **LIBERÁVEL QUALITATIVO (genuinamente seguro): 15**
+- **GROUNDING RECOMENDADO (grounding existe e está vigente, ou risco moderado): 22**
+- **GROUNDING OBRIGATÓRIO (risco real, sem diretriz cobrindo): 14**
+- **PENDENTE DE DECISÃO HUMANA: 4**
+
+**Achado mais importante da reauditoria:** **R036** (distocia de ombro) — a matriz automática da Fase 2 classificou como "liberável" porque seu classificador tratou "manobras sequenciais" como categórico-sequencial sem checar que a própria Fase 2 já havia criado a diretriz `distocia_ombro`. **O código real (`avaliarBloqueioDiretriz`) já bloqueia esse tema corretamente hoje** — a divergência era só da matriz documental, não do comportamento real do sistema (confirmado por teste automatizado, caso 34 em `scripts/test-diretrizes-governanca.js`).
+
+**Quantidade final realmente liberável sem nenhuma ressalva: 15 de 55** (27%). Os demais 40 têm alguma dependência de grounding (já coberto por diretriz vigente, ou não) ou pendência humana.
+
+| Rxxx | Reclassificação (Fase 3) | Justificativa |
+|---|---|---|
+| R005 | **GROUNDING RECOMENDADO** | RIPE é dose/duração específica, mas diretriz `tuberculose` já existe e está vigente (não tocada nesta sprint) — coberto. |
+| R006 | **GROUNDING RECOMENDADO** | Corticoide inalatório é posologia/classe, mas diretriz `asma` existe e está vigente — coberto, mesmo padrão de risco que R024 (categórico na superfície, induz posologia). |
+| R007 | **GROUNDING RECOMENDADO** | Classificação de gravidade é escore, mas diretriz `dengue` existe e está vigente — coberto. |
+| R008 | **LIBERÁVEL QUALITATIVO** | Conceitual/ético; diretriz `etica_medica` (vigente) cobre sigilo diretamente. |
+| R009 | **LIBERÁVEL QUALITATIVO** | Autonomia/consentimento — puramente conceitual, sem número implícito. |
+| R010 | **LIBERÁVEL QUALITATIVO** | Já gerado com sucesso e PASS E2E (SA_2026_2_Q4) — confirmado empiricamente seguro. |
+| R012 | **GROUNDING RECOMENDADO** | qSOFA/lactato são numéricos, mas diretriz `sepse` existe e está vigente — coberto. |
+| R021 | **PENDENTE DE DECISÃO HUMANA** | Já gerado com sucesso (Q2) sem grounding formal, mas reanimação neonatal tem marcos temporais reais (ex. 'minuto de ouro') não cobertos por nenhuma diretriz — risco residual não eliminado apesar do sucesso empírico. |
+| R022 | **GROUNDING OBRIGATÓRIO** | Escala de Glasgow é escore numérico nomeado — sem diretriz cadastrada cobrindo TCE/Glasgow. Já tem histórico DEV duplicado (Q14/Q17) — ambiguidade adicional. |
+| R025 | **PENDENTE DE DECISÃO HUMANA** | Já gerado com sucesso (Q7), mas o RESUMO do mesmo tema foi rejeitado por 7 números sem suporte — evidência direta de que o tema induz precisão numérica não sustentada, mesmo com a questão tendo passado. |
+| R026 | **GROUNDING RECOMENDADO** | Sulfato de magnésio é posologia, mas diretriz `prenatal` (vigente) já cobre a dose exata. |
+| R030 | **LIBERÁVEL QUALITATIVO** | Já gerado com sucesso (Q3) — puramente comportamental, confirmado empiricamente seguro. |
+| R031 | **GROUNDING RECOMENDADO** | Já gerado com sucesso (Q10); escalonamento para biológico é classe de fármaco, sem diretriz formal, mas já demonstrado funcionar. |
+| R034 | **LIBERÁVEL QUALITATIVO** | Já gerado com sucesso, PASS E2E completo (SA_2026_2_Q1) — confirmado empiricamente o mais seguro de todos. |
+| R035 | **GROUNDING RECOMENDADO** | Já gerado com sucesso (Q8); sequência com gluconato de cálcio é posologia implícita, sem diretriz, mas já demonstrado funcionar. |
+| R036 | **GROUNDING OBRIGATÓRIO — BLOQUEADO PELO CÓDIGO REAL** | RECLASSIFICAÇÃO: a Fase 2 já criou a diretriz `distocia_ombro` (PENDENTE_REVISAO) que cobre exatamente este tema — o classificador automático da Fase 2 não capturou isso porque tratou 'manobras sequenciais' como categórico-sequencial (grounding dispensável) sem checar a diretriz nova. `avaliarBloqueioDiretriz` no código real JÁ BLOQUEIA este tema corretamente hoje — divergência da matriz automática corrigida aqui. |
+| R037 | **GROUNDING RECOMENDADO** | Tratamento hormonal empírico pode induzir citar classe/dose específica sem diretriz cadastrada para endometriose. |
+| R038 | **GROUNDING OBRIGATÓRIO** | RDW/ferritina têm valores de referência numéricos — sem diretriz de anemia cadastrada. |
+| R039 | **LIBERÁVEL QUALITATIVO** | Já gerado com sucesso (Q9) — puramente conceitual (empírico vs. investigar), confirmado empiricamente seguro. |
+| R043 | **GROUNDING RECOMENDADO** | ILTB é esquema (isoniazida/rifampicina), mas diretriz `tuberculose` (vigente) cobre. |
+| R044 | **GROUNDING RECOMENDADO** | Pacote 1ª hora é numérico (tempos/volumes), mas diretriz `sepse` (vigente) cobre. |
+| R045 | **GROUNDING RECOMENDADO** | Step-up/down é protocolar, mas diretriz `asma` (vigente) cobre. |
+| R050 | **GROUNDING RECOMENDADO** | Lista de exames por trimestre é específica, mas diretriz `prenatal` (vigente) cobre. |
+| R063 | **GROUNDING RECOMENDADO** | Notificação compulsória de dengue, mas diretriz `dengue` (vigente) já cobre esse ponto. |
+| R066 | **GROUNDING RECOMENDADO** | TDAH pode envolver critérios diagnósticos nomeados (DSM), sem diretriz cadastrada — risco moderado, não claramente numérico o suficiente para OBRIGATÓRIO. |
+| R067 | **LIBERÁVEL QUALITATIVO** | Diferenciação clínica conceitual (padrão do evento, não números). |
+| R068 | **GROUNDING OBRIGATÓRIO** | 'Idade diagnóstica' de enurese é critério temporal explícito — sem diretriz cadastrada. |
+| R069 | **GROUNDING OBRIGATÓRIO** | Legg-Calvé-Perthes envolve estadiamento nomeado — sem diretriz cadastrada. |
+| R070 | **LIBERÁVEL QUALITATIVO** | Reconhecimento de sinais de alarme — conceitual. |
+| R071 | **GROUNDING RECOMENDADO** | Ortolani/Barlow são técnica de exame, mas 'rastreio neonatal' pode ter janela etária específica. |
+| R072 | **GROUNDING OBRIGATÓRIO** | Ângulo de Cobb é medida numérica explícita — sem diretriz cadastrada (já identificado como risco na Fase 2, seção de Cirurgia). |
+| R073 | **GROUNDING RECOMENDADO** | Apresentação clássica + urgência, mas faixa etária específica pode ser citada sem fonte. |
+| R074 | **LIBERÁVEL QUALITATIVO** | Abordagem não farmacológica primeiro — conceitual. |
+| R075 | **GROUNDING RECOMENDADO** | Rastreio de fragilidade pode envolver escala nomeada (ex. fenótipo de Fried) sem diretriz. |
+| R076 | **GROUNDING OBRIGATÓRIO** | Critérios de Beers/STOPP são LISTAS NOMEADAS ESPECÍFICAS de medicamentos — sem a lista real cadastrada, risco de invenção alto. |
+| R077 | **LIBERÁVEL QUALITATIVO** | Avaliação multifatorial de quedas — conceitual. |
+| R078 | **GROUNDING RECOMENDADO** | Sequência de manejo de epistaxe pode ter tempos de compressão específicos sem fonte. |
+| R079 | **LIBERÁVEL QUALITATIVO** | Técnica de remoção de cerume — conceitual/procedimental sem números críticos. |
+| R080 | **GROUNDING OBRIGATÓRIO** | Critério de Centor é escore numérico nomeado — sem diretriz cadastrada. |
+| R081 | **LIBERÁVEL QUALITATIVO** | Diferenciação periférica vs. central — conceitual (nistagmo, padrão clínico). |
+| R083 | **GROUNDING OBRIGATÓRIO** | Lista de Doenças Relacionadas ao Trabalho (LDRT) é norma nomeada específica — sem diretriz cadastrada. |
+| R085 | **PENDENTE DE DECISÃO HUMANA** | Texto do recorte insuficiente para classificar com segurança nesta sessão (matéria/conteúdo não claramente identificado na leitura disponível). |
+| R086 | **LIBERÁVEL QUALITATIVO** | Nome social — conceitual/ético. |
+| R088 | **GROUNDING RECOMENDADO** | Rastreio de risco de suicídio pode envolver escala nomeada (ex. Columbia) sem diretriz. |
+| R089 | **GROUNDING OBRIGATÓRIO** | Critérios de Roma (constipação funcional) são critérios nomeados específicos — sem diretriz cadastrada. |
+| R090 | **GROUNDING OBRIGATÓRIO** | Critérios de benignidade de convulsão febril simples (idade, duração) são critérios numéricos nomeados — sem diretriz cadastrada. |
+| R091 | **GROUNDING RECOMENDADO** | Curvas de crescimento envolvem percentis numéricos, mas uso qualitativo ('sinais de alerta') reduz o risco. |
+| R092 | **LIBERÁVEL QUALITATIVO** | Manejo de fissura/ingurgitamento — conceitual/procedimental. |
+| R095 | **LIBERÁVEL QUALITATIVO** | Funcionalidade como eixo — conceitual. |
+| R098 | **GROUNDING RECOMENDADO** | Atribuições da equipe/território é conteúdo normativo (PNAB) — fluxo do SUS, categoria que o próprio usuário definiu como grounding obrigatório em tese, mas sem número/dose específico; classificado como recomendado por prudência. |
+| R110 | **GROUNDING OBRIGATÓRIO** | Critérios de baixo risco para dispensar TC de crânio (ex. regras tipo Canadian CT Head) são normas nomeadas específicas — sem diretriz cadastrada. |
+| R112 | **PENDENTE DE DECISÃO HUMANA** | Mesmo domínio de R024 (hemorragia pós-parto), que falhou empiricamente por posologia de uterotônicos — risco real não eliminado. |
+| R114 | **GROUNDING RECOMENDADO** | Mesmo domínio de R021 (reanimação), que já funcionou uma vez, mas sem diretriz formal. |
+| R116 | **GROUNDING OBRIGATÓRIO** | Mesmo domínio de R019 (epidemiologia/curva epidêmica), que já falhou empiricamente 3x — risco confirmado, não hipotético. |
+| R120 | **GROUNDING OBRIGATÓRIO** | Mesmo domínio de R080 (Centor/faringoamigdalite) — escore numérico nomeado sem diretriz. |

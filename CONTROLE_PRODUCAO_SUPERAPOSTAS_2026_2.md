@@ -9,13 +9,14 @@
 
 ## ⛔ PRODUÇÃO EM MASSA PAUSADA (2026-07-24) — Macro Sprint de Governança Clínica em andamento
 
-Ver `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (2d5eca0), `MACRO_SPRINT_GOVERNANCA_CLINICA_2026_2.md` (Fase 1: `9fd5da2`; Fase 2: `a9e4d3c`/`1c131f6`), `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md` e `MATRIZ_GROUNDING_R001_R120.md` (1c131f6).
+Ver `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (2d5eca0), `MACRO_SPRINT_GOVERNANCA_CLINICA_2026_2.md` (Fase 1: `9fd5da2`; Fase 2: `a9e4d3c`/`1c131f6`; Fase 3: `a3b8161`/`cda399f`), `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md`, `MATRIZ_GROUNDING_R001_R120.md` e `PACOTE_VALIDACAO_HUMANA_DIRETRIZES_2026_2.md`.
 
 - **Nenhuma nova questão deve ser gerada até nova autorização explícita.**
-- **Q1–Q12** (já produzidas e contando para as 120) **aguardam revisão posterior** — nenhuma foi descartada, nenhuma perde o status de "conta para as 120" enquanto a revisão não aponta o contrário. **Ainda não iniciada** (aguardando nova autorização, conforme restrição explícita da Fase 2).
-- **R096 permanece `PENDENTE — RECUPERAÇÃO`** — agora com diretriz `violencia_domestica` proposta (não vigente) cobrindo o tema; segue na fila de recuperação da área Preventiva, aguardando validação humana da diretriz antes de nova tentativa.
+- **Q1–Q12** (já produzidas e contando para as 120) **aguardam revisão posterior** — nenhuma foi descartada, nenhuma perde o status de "conta para as 120" enquanto a revisão não aponta o contrário. **Ainda não iniciada** (aguardando nova autorização).
+- **R096 permanece `PENDENTE — RECUPERAÇÃO`** — diretriz `violencia_domestica` (não vigente) agora tem prazo (24h) e destinatário (autoridade policial) confirmados por citação legal direta (Fase 3), mas cobre só o bloco "mulher adulta"; segue na fila de recuperação da área Preventiva, aguardando validação humana antes de nova tentativa.
 - Contagem oficial no momento da pausa: **12/120** (Q1–Q12, ver seção de contagem abaixo).
-- **11 diretrizes controladas** — as 6 da Fase 1 (dm, rastreamento_colo, vacinacao, has, sifilis, hiv) + as 5 novas propostas na Fase 2 (ictericia_neonatal, diverticulite, tvp_wells, distocia_ombro, violencia_domestica) — estão todas `PENDENTE_REVISAO` e **bloqueiam geração grounded nesses temas** até confirmação humana nomeada. **Matriz completa em `MATRIZ_GROUNDING_R001_R120.md`: 55/120 recortes sem bloqueio automático conhecido, 65/120 bloqueados.**
+- **11 diretrizes/módulos controlados** — as 6 da Fase 1 + as 5 novas propostas na Fase 2, todas `PENDENTE_REVISAO`. Fase 3 aprofundou a leitura de fonte primária (has, rastreamento_colo, vacinacao-dTpa, hiv-PEP/PrEP) e confirmou mudanças clínicas reais (reclassificação de estágios de HAS, tratamento gestacional, PrEP sob demanda). **Nenhuma promoção a `VIGENTE_CONFIRMADA` ocorreu.**
+- **Reauditoria manual (Fase 3) dos 55 recortes antes classificados como "liberáveis"**: só **15 permanecem genuinamente liberáveis sem ressalva**; 22 têm grounding recomendado (coberto por diretriz já vigente, ou risco moderado), 14 passam a grounding obrigatório sem cobertura, 4 ficam pendentes de decisão humana. Matriz completa em `MATRIZ_GROUNDING_R001_R120.md`.
 - Retomada da produção depende de: (a) autorização explícita do usuário, e (b) não há mais bloqueio técnico ativo para o(s) tema(s) do próximo lote pretendido.
 
 ---

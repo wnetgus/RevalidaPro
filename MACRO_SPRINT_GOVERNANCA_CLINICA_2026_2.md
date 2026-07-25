@@ -1,6 +1,41 @@
 # MACRO SPRINT — GOVERNANÇA CLÍNICA E ATUALIZAÇÃO DE DIRETRIZES 2026.2
 
-**Fases concluídas:** FASE 1 (correção das diretrizes críticas existentes) e FASE 2 (consolidação científica + cobertura dos recortes críticos). **Data:** 2026-07-24. **Referências:** `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (2d5eca0), `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md` (1c131f6), `MATRIZ_GROUNDING_R001_R120.md` (1c131f6).
+**Fases concluídas:** FASE 1 (correção das diretrizes críticas existentes), FASE 2 (consolidação científica + cobertura dos recortes críticos) e FASE 3 (fechamento das lacunas documentais + pacote de validação humana). **Data:** 2026-07-24. **Referências:** `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (2d5eca0), `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md`, `MATRIZ_GROUNDING_R001_R120.md`, `PACOTE_VALIDACAO_HUMANA_DIRETRIZES_2026_2.md` (a3b8161/cda399f).
+
+---
+
+## FASE 3 — Fechamento das lacunas documentais e pacote de validação humana (2026-07-24)
+
+**Documentos primários efetivamente lidos nesta fase (download + extração de texto real, não resumo de busca):** `has` (154 pág., Arq Bras Cardiol 2025;122(9):e20250624), `rastreamento_colo` (98 pág., INCA/MS 3ª edição 2025), `hiv`/PEP (49 pág., Portaria SECTICS/MS nº 14/2024), `hiv`/PrEP (78 pág., edição 2025), `vacinacao` (bloco dTpa, dentro dos 58 pág. já extraídos na Fase 2).
+
+**Achado crítico de auditoria (transparência obrigatória):** a primeira tentativa de obter a fonte primária de `has` baixou por engano um PDF do site da SBH que se revelou ser a **7ª Diretriz original de 2016**, não a edição 2024/2025 — identificado pelo próprio conteúdo do documento (cabeçalho "Setembro 2016") antes de qualquer uso, e descartado. A fonte correta foi localizada e lida em seguida.
+
+**Documentos localizados mas NÃO lidos na íntegra (só busca/resumo):** `diverticulite` (artigo WSES 2020, localizado com DOI/link real), `tvp_wells` (escore original + uso CHEST/ACCP), `distocia_ombro` (FEBRASGO 2023 — download falhou tecnicamente duas sessões seguidas), `ictericia_neonatal` (SBP Manual nº 20/2023), `violencia_domestica` (Lei 13.931/2019 — trecho citado literalmente via busca; tentativa de WebFetch direto ao planalto.gov.br falhou por reset de conexão).
+
+**Mudanças clínicas confirmadas por leitura direta nesta fase:**
+- `has`: reclassificação de estágios de PA (antigo "Estágio 1" 130-139/80-89 agora é "Pré-hipertensão"); tratamento gestacional corrigido.
+- `rastreamento_colo`: regras de histerectomia (Rec. 34/35) e mulher sem atividade sexual (Rec. 36) confirmadas por número de recomendação.
+- `vacinacao`: dTpa gestante a partir da 20ª semana (limite de 36 semanas da versão antiga não confirmado), + puérpera + profissional de saúde.
+- `hiv`: PEP confirmado estável; PrEP tem modalidade sob demanda nova.
+- `violencia_domestica`: prazo de 24h e destinatário "autoridade policial" confirmados por citação literal de lei.
+
+**Divergências ainda abertas:** `diverticulite` × R111 (antibiótico de rotina em quadro leve — não resolvido, documento primário não lido); `has` (emergência/urgência/DRC/DM/DCV não relidos); `rastreamento_colo` (fluxo de citologia reflexa, conduta sem DNA-HPV); `hiv` (diagnóstico, gestação, coinfecções, acompanhamento, falha terapêutica — módulos não lidos); `tvp_wells`, `distocia_ombro`, `ictericia_neonatal` (sem progresso adicional nesta fase).
+
+**Reauditoria dos 55 recortes "liberáveis"** (ver `MATRIZ_GROUNDING_R001_R120.md`): releitura manual (não por palavra-chave) reclassificou em **15 LIBERÁVEL QUALITATIVO, 22 GROUNDING RECOMENDADO, 14 GROUNDING OBRIGATÓRIO, 4 PENDENTE DE DECISÃO HUMANA**. Achado principal: **R036** estava mal classificado como liberável na matriz automática da Fase 2 (classificador tratou "manobras sequenciais" como categórico sem checar a diretriz `distocia_ombro` já criada) — **o código real já bloqueia esse tema corretamente**, confirmado por teste automatizado (caso 34).
+
+**Quantidade final realmente liberável (sem nenhuma ressalva) dos 55 originais: 15 (27%).**
+
+**Pacote de validação humana:** `PACOTE_VALIDACAO_HUMANA_DIRETRIZES_2026_2.md` — ficha objetiva para as 11 diretrizes + 4 módulos de HIV, todos os campos de decisão (VALIDADO POR/DATA/DECISÃO/OBSERVAÇÕES) vazios.
+
+**Status documental sugerido (nenhum aplicado automaticamente — só recomendação no pacote):** `dm`, `hiv`/TARV, `hiv`/PEP, `sifilis` = `PRONTA_PARA_VALIDACAO_HUMANA`; demais 8 (incluindo `hiv`/PrEP e os outros módulos de HIV) = `PENDENTE_AJUSTE`.
+
+**Testes:** 12 casos novos (24-35) somados aos 23 anteriores — **35/35 passam**. Build PASS. Lint: 0 erros. **Distinção de tipo de verificação:** os 35 casos são um script Node manual (`scripts/test-diretrizes-governanca.js`, sem framework de teste instalado no projeto) que valida as funções puras de `diretrizesControladas.js` — não são "testes integrados à aplicação" no sentido de testar `RoboGerador.jsx` renderizado (não há framework de UI/DOM testing instalado); o build (`vite build`) e o lint (`eslint`) são as únicas verificações de regressão de aplicação real disponíveis neste projeto.
+
+**Commits Fase 3:** `a3b8161` (código: diretrizes atualizadas + 12 testes), `cda399f` (documentação: pacote de validação).
+
+**Nenhuma diretriz foi promovida a `VIGENTE_CONFIRMADA` nesta fase** — confirmado pelo teste 35.
+
+**Percentual estimado de conclusão da Macro Sprint: ~55%.** Concluído: schema + bloqueio (Fase 1); 6 diretrizes existentes + 5 novas propostas com fonte real (Fase 2); leitura de fonte primária real para `has`/`rastreamento_colo`/`hiv`(PEP+PrEP)/`vacinacao`(parcial), reauditoria dos 55 recortes, pacote de validação humana (Fase 3). Pendente: confirmação humana nomeada de todas as entradas; leitura dos documentos primários ainda não obtidos (`diverticulite`, `tvp_wells`, `distocia_ombro`, `ictericia_neonatal`, texto integral de `violencia_domestica`, blocos restantes de `has`/`rastreamento_colo`/`vacinacao`/`hiv`); desenvolvimento dos blocos populacionais faltantes de `violencia_domestica` (criança/adolescente, pessoa idosa, pessoa com deficiência, violência sexual, risco iminente); revisão de Q1–Q12; retomada de produção.
 
 ---
 
