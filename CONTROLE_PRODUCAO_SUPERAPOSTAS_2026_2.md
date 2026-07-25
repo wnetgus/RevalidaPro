@@ -7,6 +7,19 @@
 
 ---
 
+## ⛔ PRODUÇÃO EM MASSA PAUSADA (2026-07-24) — Macro Sprint de Governança Clínica em andamento
+
+Ver `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (commit `2d5eca0`) e `MACRO_SPRINT_GOVERNANCA_CLINICA_2026_2.md` (commit da Fase 1: `9fd5da2`).
+
+- **Nenhuma nova questão deve ser gerada até nova autorização explícita.**
+- **Q1–Q12** (já produzidas e contando para as 120) **aguardam revisão posterior** — nenhuma foi descartada, nenhuma perde o status de "conta para as 120" enquanto a revisão não aponta o contrário.
+- **R096 permanece `PENDENTE — RECUPERAÇÃO`** — inalterado por esta pausa, segue na fila de recuperação da área Preventiva.
+- Contagem oficial no momento da pausa: **12/120** (Q1–Q12, ver seção de contagem abaixo).
+- 6 diretrizes controladas (dm, rastreamento_colo, vacinacao, has, sifilis, hiv) foram marcadas `PENDENTE_REVISAO` e **bloqueiam geração grounded nesses temas** até confirmação humana nomeada — ver Macro Sprint para detalhes.
+- Retomada da produção depende de: (a) autorização explícita do usuário, e (b) não há mais bloqueio técnico ativo para o(s) tema(s) do próximo lote pretendido.
+
+---
+
 ## PROMOÇÃO TÉCNICA PARA PRODUÇÃO — concluída em 2026-07-24
 
 **Ambiente promovido:** `revalidapro-f812e` (produção real, distinto de `revalidapro-dev`). Esta seção documenta apenas a promoção do **código** da engine SA 2026.2 — nenhuma questão oficial foi gerada em produção ainda.
