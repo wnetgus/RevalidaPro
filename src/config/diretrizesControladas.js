@@ -27,6 +27,7 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: busca verificada, PDF completo nao lido — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
     validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra Arq Bras Cardiol. 2025;122(9):e20250624 (DOI 10.36660/abc.20250624)",
     observacoes: "Auditoria 2026-07-24 (ver AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md) localizou edição 2025 que supera a 7ª diretriz 2024 aqui cadastrada. Conteúdo central (meta 130/80, MAPA/MRPA, estratificação de risco) parece coincidir, mas não foi comparado linha a linha ao documento primário — pontosCriticos abaixo NÃO foram alterados até confirmação humana.",
     temasRelacionados: ["R001", "R046", "R101"],
@@ -69,6 +70,7 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
+    statusDocumental: "PRONTA_PARA_VALIDACAO_HUMANA", // Fase 2: texto oficial integral lido e verificado — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
     validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra diretriz.diabetes.org.br (Ed. 2025, capítulos de tratamento/rastreio)",
     observacoes: "Auditoria 2026-07-24 confirmou mudança clínica real: metformina NÃO É MAIS exclusividade universal de 1ª linha desde a atualização SBD de julho/2025 — pontoCritico abaixo já corrigido para refletir a condicionalidade por perfil de risco. Demais pontos (metas, CAD/EHH, hipoglicemia) não foram comparados linha a linha ao documento primário.",
     temasRelacionados: ["R003", "R004", "R047", "R102"],
@@ -173,6 +175,7 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: mudanca de paradigma confirmada (DNA-HPV), mas fluxo detalhado e conduta se teste indisponivel nao confirmados — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
     validadeOuProximaRevisao: "revisar em até 90 dias — confirmar linha a linha contra o documento oficial no Diário Oficial da União",
     observacoes: "Auditoria 2026-07-24 confirmou MUDANÇA DE PARADIGMA: o método primário de rastreio deixou de ser a citologia e passou a ser o teste molecular DNA-HPV, faixa 25-64 anos, intervalo de 5 anos quando negativo (substitui a periodicidade trienal por citologia da 2ª edição INCA 2023 aqui cadastrada). pontosCriticos abaixo já ajustados para refletir DNA-HPV como método primário; fluxo detalhado de ASC-US/LSIL/HSIL ainda reflete o protocolo de citologia antigo e PRECISA de confirmação humana antes de uso em recorte que dependa desses subitens.",
     temasRelacionados: ["R020", "R106"],
@@ -182,6 +185,7 @@ export const DIRETRIZES_CONTROLADAS = [
       "Encerramento: 64 anos (com rastreamento adequado prévio); mulheres sem história de atividade sexual não necessitam rastreamento",
       "Periodicidade (DNA-HPV, 2025): teste negativo → repetir em 5 anos (rastreamento organizado, 25-64 anos) — NÃO usar mais o intervalo trienal de citologia isolada como regra geral para novos rastreios",
       "DNA-HPV positivo para tipos 16/18 (maior risco oncogênico): encaminhamento direto à colposcopia",
+      "O rastreamento (periodicidade de 5 anos, DNA-HPV) vale para RASTREIO DE ROTINA em mulher ASSINTOMÁTICA — NÃO se aplica a paciente sintomática (sangramento anormal, lesão cervical visível ao exame), que segue investigação diagnóstica direta, não a periodicidade de rastreio populacional",
       "[PENDENTE DE CONFIRMAÇÃO HUMANA] Fluxo abaixo (ASC-US/LSIL/HSIL por citologia) reflete o protocolo anterior (2ª edição INCA 2023) — usar com cautela até revisão confirmar se o fluxo por citologia isolada mudou no cenário de transição para DNA-HPV",
       "NILM × 2 anos consecutivos: repetir a cada 3 anos",
       "ASC-US: repetir citologia em 1 ano (OU teste HPV se disponível); se HPV 16/18 positivo → colposcopia imediata",
@@ -248,6 +252,7 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
+    statusDocumental: "PRONTA_PARA_VALIDACAO_HUMANA", // Fase 2: texto oficial integral lido (112 pag.) — esquema de PGB por estagio confirmado estavel — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
     validadeOuProximaRevisao: "revisar em até 90 dias — confirmar se o esquema de penicilina benzatina por estágio mudou na atualização 2024",
     observacoes: "Auditoria 2026-07-24 localizou atualização do PCDT-IST em 04/07/2024 (2 anos mais nova que a versão 2022 aqui cadastrada), com revisão do algoritmo de decisão clínica para sífilis adquirida/gestante. Não foi confirmado linha a linha se o esquema de PGB por estágio mudou — pontosCriticos abaixo NÃO foram alterados até confirmação humana. Usado em produção em SA_2026_2_Q5 (R015) citando a versão 2022 desatualizada.",
     temasRelacionados: ["R015", "R016", "R049", "R065", "R105"],
@@ -291,6 +296,7 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: PDF oficial integral lido (58 pag.) — bloco meningococico (Men C + reforco ACWY) confirmado; demais blocos (BCG/Penta/VIP-VOP/Pneumo/Rotavirus/Triplice Viral/HPV/Influenza/dT-dTpa) NAO relidos — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
     validadeOuProximaRevisao: "revisar em até 90 dias — calendário PNI tem ciclo de revisão frequente, confirmar demais esquemas além da mudança já identificada",
     observacoes: "Auditoria 2026-07-24 confirmou mudança de esquema: reforço aos 12 meses passou a usar meningocócica ACWY (não mais só Men C conjugada), conforme Instrução Normativa 2026. pontoCritico abaixo já corrigido. Demais esquemas (BCG, Penta, VIP/VOP, Pneumo, Rotavírus, Tríplice Viral etc.) não foram comparados linha a linha ao documento 2026 — tratar como não confirmados até revisão.",
     temasRelacionados: ["R032", "R033", "R051", "R107"],
@@ -334,6 +340,7 @@ export const DIRETRIZES_CONTROLADAS = [
     dataUltimaRevisao: "2026-07-24",
     revisadoPor: null,
     status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // Fase 2: texto oficial integral lido (118 pag.) — esquema TARV 1a linha (TDF+3TC+DTG) confirmado estavel; secoes de PEP/PrEP NAO relidas nesta sessao — ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md
     validadeOuProximaRevisao: "revisar em até 90 dias — confirmar se o esquema TDF+3TC+DTG 1ª linha e os critérios de profilaxia mudaram no módulo 2024",
     observacoes: "Auditoria 2026-07-24 localizou reorganização do PCDT em 3 módulos (2024), mais novo que a versão 2022/Nota Técnica 2023 aqui cadastrada. Conteúdo central (TARV para todos, TDF+3TC+DTG) é consistente com o conhecimento geral, mas não foi comparado linha a linha ao módulo 2024 — pontosCriticos abaixo NÃO foram alterados até confirmação humana.",
     temasRelacionados: ["R041", "R042", "R108"],
@@ -435,6 +442,176 @@ export const DIRETRIZES_CONTROLADAS = [
       "Sigilo em adolescentes: garantido, exceto quando há risco grave à vida/saúde do próprio paciente ou de terceiros, ou quando o adolescente não tem capacidade de avaliar o próprio risco — situação em que se pode/deve envolver o responsável legal",
       "Notificação compulsória de doença ou de situação de violência não constitui quebra de sigilo — é dever legal do médico",
       "PROIBIDO: revelar informação sigilosa por conveniência, a pedido de terceiros sem justa causa, ou sem consentimento do paciente fora das exceções previstas",
+    ],
+    ativa: true,
+    historica: false,
+    substitui: null,
+  },
+
+  // ── FASE 2 — Macro Sprint de Governança Clínica: diretrizes novas propostas ──
+  // Todas nascem com status PENDENTE_REVISAO — nunca são selecionadas por
+  // detectarDiretrizDinamica/detectarDiretriz até validação humana explícita
+  // (ver DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md). Cobrem exatamente os 5
+  // recortes (R017/R023+R111/R029/R036/R096) que a auditoria identificou como
+  // exigindo grounding sem fonte cadastrada.
+
+  // ── 13. ICTERÍCIA NEONATAL (proposta — cobre R017) ──────────────────────────
+  {
+    id: "ictericia_neonatal",
+    tema: "Icterícia Neonatal",
+    palavrasChave: [
+      "icterícia neonatal", "icterícia do recém-nascido", "hiperbilirrubinemia neonatal",
+      "nomograma de bhutani", "fototerapia neonatal", "exsanguineotransfusão",
+    ],
+    fonte: "Manual de Orientação nº 20 — Hiperbilirrubinemia Indireta no Período Neonatal, Departamento Científico de Neonatologia da Sociedade Brasileira de Pediatria (SBP)",
+    ano: 2023,
+    titulo: "Hiperbilirrubinemia Indireta no Período Neonatal — Manual de Orientação nº 20 (SBP)",
+    orgao: "Sociedade Brasileira de Pediatria (SBP) — Departamento Científico de Neonatologia",
+    urlOficial: "https://portal.afya.com.br/pediatria/hiperbilirrubinemia-indireta-no-periodo-neonatal-atualizacao-2021-da-sbp-parte-1",
+    versao: "Manual nº 20, 29/09/2023",
+    anoPublicacao: 2023,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // busca verificada, PDF do manual completo nao lido nesta sessao
+    validadeOuProximaRevisao: "ler o manual completo (nao só resumos) antes de promover",
+    observacoes: "Diretriz nova, proposta na Fase 2 para cobrir R017. Escopo estritamente NEONATAL — não usar para icterícia em lactente maior, criança ou colestase de outra etiologia.",
+    temasRelacionados: ["R017"],
+    pontosCriticos: [
+      "Hiperbilirrubinemia 'significativa' (indicação usual de fototerapia): BT geral ≥12 mg/dL, mas a decisão real depende do NOMOGRAMA DE BHUTANI (idade gestacional + idade pós-natal em horas + nível de bilirrubina) — nunca um corte único isolado sem esses 3 eixos",
+      "Hiperbilirrubinemia 'severa': BT próxima do nível de exsanguineotransfusão, geralmente ≥20 mg/dL, ou qualquer valor de BT associado a sinais de encefalopatia bilirrubínica aguda (EBA)",
+      "Hiperbilirrubinemia 'extrema': BT no nível de exsanguineotransfusão, geralmente ≥25 mg/dL, ou qualquer valor com sinais de EBA",
+      "Reavaliação pós-alta deve ser agendada conforme a ZONA DE RISCO do nomograma de Bhutani no momento da alta, não por um prazo fixo genérico igual para todos os RN",
+      "Icterícia precoce (<24h de vida) nunca deve ser classificada como fisiológica sem investigar hemólise (armadilha clássica do tema)",
+    ],
+    ativa: true,
+    historica: false,
+    substitui: null,
+  },
+
+  // ── 14. DIVERTICULITE AGUDA / CLASSIFICAÇÃO DE HINCHEY (proposta — cobre R023/R111) ──
+  {
+    id: "diverticulite",
+    tema: "Diverticulite Aguda — Classificação de Hinchey",
+    palavrasChave: [
+      "diverticulite", "classificação de hinchey", "diverticulose complicada",
+    ],
+    fonte: "Classificação de Hinchey + recomendações WSES (World Society of Emergency Surgery) 2020 sobre diverticulite aguda (via fontes secundárias — documento WSES primário não lido)",
+    ano: 2020,
+    titulo: "Classificação de Hinchey para diverticulite aguda + WSES 2020 (referência internacional)",
+    orgao: "World Society of Emergency Surgery (WSES) — sociedade internacional; sem PCDT/MS brasileiro específico identificado",
+    urlOficial: null,
+    versao: "WSES 2020 (não confirmado se há edição mais recente)",
+    anoPublicacao: 2020,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // CONFIANCA REDUZIDA: apenas fontes secundarias (blogs educacionais), documento WSES primario nao localizado/lido
+    validadeOuProximaRevisao: "localizar e ler o documento WSES primário antes de promover; confirmar se antibiótico de rotina em quadro leve ainda é recomendado (ver nota de conflito com R111 abaixo)",
+    observacoes: "CONFIANÇA REDUZIDA — via fontes secundárias/educacionais, não o documento WSES primário. Risco de conflito interno: R111 (Mapa Mestre, faixa R101-R120) já registra que diverticulite aguda NÃO COMPLICADA pode ser tratada SEM antibiótico rotineiro — isso pode contradizer o ponto crítico de posologia abaixo, que veio de fonte secundária mais antiga/genérica. NÃO promover sem resolver essa divergência interna com o documento primário.",
+    temasRelacionados: ["R023", "R111"],
+    pontosCriticos: [
+      "Classificação de Hinchey: I = abscesso pericólico | II = abscesso pélvico/retroperitoneal | III = peritonite purulenta | IV = peritonite fecal",
+      "Diverticulite não complicada (sem sinais de sepse, boa tolerância oral, sem comorbidade significativa/imunossupressão/peritonite/febre alta/leucocitose importante) pode ser tratada ambulatorialmente",
+      "WSES 2020: lavagem e drenagem laparoscópica NÃO são tratamento de 1ª linha em peritonite por diverticulite colônica aguda (Hinchey III/IV)",
+      "[NÃO USAR SEM CONFIRMAÇÃO — CONFLITO INTERNO NÃO RESOLVIDO] posologia de antibiótico oral em quadro leve — fonte secundária cita esquema de 7-10 dias, mas R111 do Mapa Mestre já indica que antibiótico rotineiro pode não ser necessário em diverticulite não complicada; não incluir dose/duração de antibiótico em questão até essa divergência ser resolvida por leitura do documento primário",
+    ],
+    ativa: true,
+    historica: false,
+    substitui: null,
+  },
+
+  // ── 15. TVP / ESCORE DE WELLS (proposta — cobre R029) ───────────────────────
+  {
+    id: "tvp_wells",
+    tema: "Trombose Venosa Profunda — Escore de Wells",
+    palavrasChave: [
+      "escore de wells", "trombose venosa profunda", "probabilidade pré-teste tvp",
+    ],
+    fonte: "Escore de Wells (validação original) + uso corrente endossado por diretrizes de referência (ex.: CHEST/ACCP) — documento primário CHEST/ACCP não lido",
+    ano: 2021,
+    titulo: "Escore de Wells para TVP — validação original + uso corrente (CHEST/ACCP)",
+    orgao: "Escore validado internacionalmente; sem PCDT/MS brasileiro específico identificado",
+    urlOficial: null,
+    versao: "não confirmada — documento primário não localizado nesta sessão",
+    anoPublicacao: null,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // via fontes educacionais secundarias, documento CHEST/ACCP primario nao lido
+    validadeOuProximaRevisao: "localizar e ler a diretriz CHEST/ACCP primária antes de promover; confirmar limitações em gestante/oncológico/internado",
+    observacoes: "Diretriz nova, proposta na Fase 2 para cobrir R029 (já gerado como SA_2026_2_Q6 sem grounding formal — esta entrada, se validada, cobriria tentativas futuras do mesmo tema).",
+    temasRelacionados: ["R029"],
+    pontosCriticos: [
+      "Wells ≤0 = baixa probabilidade pré-teste (~3% prevalência de TVP) | 1-2 = moderada (~17%) | ≥3 = alta (50-75%)",
+      "Probabilidade baixa ou moderada → solicitar D-dímero; se negativo, exclui TVP com segurança",
+      "Probabilidade alta → ultrassonografia com Doppler venoso DIRETAMENTE, sem necessidade de D-dímero prévio (armadilha central do recorte: pedir D-dímero em alta probabilidade atrasa o exame definitivo)",
+      "[LIMITAÇÃO EXPLÍCITA] o escore de Wells é ferramenta de PROBABILIDADE PRÉ-TESTE, nunca diagnóstico isolado — sempre exige teste complementar; validação reduzida em gestantes, pacientes internados e pacientes oncológicos ativos, populações em que o escore isolado não deve ser a base da decisão",
+    ],
+    ativa: true,
+    historica: false,
+    substitui: null,
+  },
+
+  // ── 16. DISTOCIA DE OMBRO (proposta — cobre R036) ───────────────────────────
+  {
+    id: "distocia_ombro",
+    tema: "Distocia de Ombro",
+    palavrasChave: [
+      "distocia de ombro", "manobra de mcroberts", "manobra de rubin", "manobra de gaskin",
+    ],
+    fonte: "Guia de Habilidades — Distócia de Ombro, FEBRASGO",
+    ano: 2023,
+    titulo: "Guia de Habilidades — Distócia de Ombro (FEBRASGO)",
+    orgao: "Federação Brasileira das Associações de Ginecologia e Obstetrícia (FEBRASGO)",
+    urlOficial: "https://www.febrasgo.org.br/images/GUIA_DE_HABILIDADES_DISTOCIA_DE_OMBRO.pdf",
+    versao: "Emissão 25/03/2023",
+    anoPublicacao: 2023,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // titulo/data/orgao confirmados por busca; download do PDF falhou nesta sessao (falha tecnica), texto integral nao lido
+    validadeOuProximaRevisao: "baixar e ler o PDF completo (falha técnica de download nesta sessão); confirmar contraindicação de pressão fúndica no texto oficial",
+    observacoes: "Diretriz nova, proposta na Fase 2 para cobrir R036.",
+    temasRelacionados: ["R036"],
+    pontosCriticos: [
+      "Sequência recomendada: 1) manobra de McRoberts (hiperextensão de coxas/agachamento) → 2) pressão suprapúbica (manobra de Rubin I, 30s contínua + 30s pulsada se sem sucesso) → 3) posição de quatro apoios (manobra de Gaskin) → 4) manobras internas/rotação do ombro posterior",
+      "Distocia de ombro ocorre em até 3% dos partos vaginais, INCLUSIVE sem nenhum fator de risco identificável previamente — fator de risco não deve ser tratado como preditor absoluto",
+      "[A CONFIRMAR NO TEXTO OFICIAL — não afirmar como fato já verificado] pressão fúndica (manobra de Kristeller) é classicamente contraindicada em distocia de ombro por poder agravar o encravamento do ombro — mencionada em conhecimento geral, não confirmada linha a linha no Guia FEBRASGO 2023 nesta sessão",
+    ],
+    ativa: true,
+    historica: false,
+    substitui: null,
+  },
+
+  // ── 17. VIOLÊNCIA DOMÉSTICA E NOTIFICAÇÃO (proposta — cobre R096) ───────────
+  {
+    id: "violencia_domestica",
+    tema: "Violência Doméstica — Notificação Compulsória",
+    palavrasChave: [
+      "violência doméstica", "notificação compulsória", "violência contra a mulher",
+      "lei maria da penha",
+    ],
+    fonte: "Lei nº 13.931/2019 (notificação compulsória de violência contra a mulher) + Portaria de Consolidação MS nº 4/2017 (Lista Nacional de Notificação Compulsória) — textos legais não lidos na íntegra, apenas ementas/resumos verificados",
+    ano: 2019,
+    titulo: "Lei nº 13.931/2019 — Notificação compulsória de violência contra a mulher (+ normas correlatas de notificação compulsória em saúde)",
+    orgao: "Congresso Nacional / Ministério da Saúde",
+    urlOficial: null,
+    versao: "Lei 13.931/2019, vigente desde 10/03/2020",
+    anoPublicacao: 2019,
+    dataUltimaRevisao: "2026-07-24",
+    revisadoPor: null,
+    status: "PENDENTE_REVISAO",
+    statusDocumental: "PENDENTE_AJUSTE", // causa raiz confirmada das 3 falhas de R096 — textos legais nao lidos na integra, nenhum prazo numerico incluido intencionalmente
+    validadeOuProximaRevisao: "ler o texto integral da Lei 13.931/2019 e da Portaria de Consolidação MS nº 4/2017 antes de promover; confirmar qualquer prazo antes de incluir número",
+    observacoes: "Diretriz nova, proposta na Fase 2 para cobrir R096 — causa raiz confirmada das 3 falhas de geração na Fase 1 (recorte induzia citação de norma/prazo legal sem fonte). Cruza com `etica_medica` (art. 73 CEM) para o ponto de sigilo x dever legal.",
+    temasRelacionados: ["R096"],
+    pontosCriticos: [
+      "Violência contra a mulher (suspeita ou confirmada) atendida em serviço de saúde = NOTIFICAÇÃO COMPULSÓRIA obrigatória, independente da vontade da vítima de prosseguir com queixa formal (Lei 13.931/2019)",
+      "NOTIFICAÇÃO COMPULSÓRIA EM SAÚDE ≠ DENÚNCIA POLICIAL/BOLETIM DE OCORRÊNCIA — são atos distintos; a notificação do serviço de saúde não substitui nem depende do registro de BO pela vítima (armadilha central do recorte: tratar os dois como sinônimos)",
+      "Notificação compulsória é dever legal do médico e NÃO constitui quebra de sigilo (mesmo princípio do art. 73 do Código de Ética Médica, diretriz `etica_medica`)",
+      "Lei Maria da Penha (11.340/2006) é o marco de MEDIDAS PROTETIVAS (afastamento do agressor etc.), acionado por pedido da vítima ou decisão judicial — não é, em si, o mecanismo de notificação compulsória em saúde; não confundir os dois marcos legais",
+      "[NÃO USAR SEM CONFIRMAÇÃO] prazo exato de notificação (ex.: 'em até 24h') mencionado em fontes secundárias mas não confirmado no texto legal primário nesta sessão — não incluir prazo numérico específico em questão até confirmação humana",
     ],
     ativa: true,
     historica: false,

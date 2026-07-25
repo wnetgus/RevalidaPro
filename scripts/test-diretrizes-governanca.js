@@ -139,6 +139,141 @@ teste("10. diretrizes não tocadas nesta fase continuam sem status e continuam v
   assert.equal(detectarDiretriz("Dengue", "")?.id, "dengue");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FASE 2 — Macro Sprint de Governança Clínica: 13 casos adicionais exigidos
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 11. as seis diretrizes antigas (Fase 1) continuam bloqueadas enquanto não confirmadas
+teste("11. as 6 diretrizes prioritárias continuam bloqueadas (avaliarBloqueioDiretriz)", () => {
+  const casos = [
+    ["dm", "Diabetes mellitus tipo 2"],
+    ["rastreamento_colo", "Rastreamento do câncer de colo do útero"],
+    ["vacinacao", "Calendário nacional de vacinação"],
+    ["has", "Hipertensão arterial sistêmica"],
+    ["sifilis", "Sífilis"],
+    ["hiv", "HIV"],
+  ];
+  for (const [id, tema] of casos) {
+    const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, tema, "");
+    assert.equal(avaliacao.bloqueado, true, `${id} deveria estar bloqueada`);
+    assert.equal(avaliacao.diretriz.id, id);
+  }
+});
+
+// 12. as cinco novas diretrizes não liberam geração antes da validação
+teste("12. as 5 diretrizes novas (Fase 2) não liberam geração antes da validação", () => {
+  const casos = [
+    ["ictericia_neonatal", "Icterícia neonatal fototerapia"],
+    ["diverticulite", "Diverticulite classificação de Hinchey"],
+    ["tvp_wells", "Escore de Wells trombose venosa profunda"],
+    ["distocia_ombro", "Distocia de ombro manobra de McRoberts"],
+    ["violencia_domestica", "Violência doméstica notificação compulsória"],
+  ];
+  for (const [id, tema] of casos) {
+    assert.equal(detectarDiretriz(tema, ""), null, `${id} não deveria estar vigente`);
+    const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, tema, "");
+    assert.equal(avaliacao.bloqueado, true, `${id} deveria estar bloqueada`);
+    assert.equal(avaliacao.diretriz.id, id);
+  }
+});
+
+// 13. conteúdo substituído (SUBSTITUIDA) não é injetado
+teste("13. diretriz SUBSTITUIDA nunca é retornada por detectarDiretrizDinamica", () => {
+  const d = detectarDiretrizDinamica(listaTeste, "testesubstituida", "");
+  assert.equal(d, null);
+});
+
+// 14. afirmações antigas críticas foram corrigidas/marcadas (não presentes isoladas)
+teste("14. metformina não aparece mais como 1ª linha universal sem condição", () => {
+  const dm = DIRETRIZES_CONTROLADAS.find(x => x.id === "dm");
+  const textoCompleto = dm.pontosCriticos.join(" || ");
+  assert.doesNotMatch(
+    textoCompleto,
+    /1ª linha: Metformina 500–2000 mg\/dia \(se TFG ≥30 e sem contraindicações\)$/,
+    "não deveria existir mais a afirmação antiga sem condicionalidade"
+  );
+  assert.match(textoCompleto, /1ª linha CONDICIONAL/, "deveria existir a versão corrigida condicional");
+});
+
+// 15. conteúdo atômico carrega fonte, versão e seção (metadados presentes nas 5 novas)
+teste("15. as 5 diretrizes novas carregam titulo/orgao/urlOficial/versao/observacoes", () => {
+  const idsNovos = ["ictericia_neonatal", "diverticulite", "tvp_wells", "distocia_ombro", "violencia_domestica"];
+  for (const id of idsNovos) {
+    const d = DIRETRIZES_CONTROLADAS.find(x => x.id === id);
+    assert.ok(d, `${id} deveria existir`);
+    assert.ok(d.titulo, `${id}.titulo ausente`);
+    assert.ok(d.orgao, `${id}.orgao ausente`);
+    assert.ok(d.versao, `${id}.versao ausente`);
+    assert.ok(d.observacoes, `${id}.observacoes ausente`);
+    assert.equal(d.status, STATUS_DIRETRIZ.PENDENTE_REVISAO, `${id} deveria estar PENDENTE_REVISAO`);
+  }
+});
+
+// 16. recorte com grounding obrigatório é bloqueado se a diretriz (nova) não estiver liberada
+teste("16. tema correspondente a diretriz nova não vigente é bloqueado antes de gerar", () => {
+  const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, "Icterícia neonatal", "");
+  assert.equal(avaliacao.bloqueado, true);
+});
+
+// 17. temas qualitativos dispensáveis permanecem compatíveis (regressão)
+teste("17. tema sem correspondência a nenhuma diretriz (nova ou antiga) continua gerando", () => {
+  const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, "Transtorno do espectro autista sinais de alerta", "");
+  assert.equal(avaliacao.bloqueado, false);
+});
+
+// 18. R096 não confunde notificação com denúncia
+teste("18. violencia_domestica distingue explicitamente notificação de denúncia policial", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "violencia_domestica");
+  const texto = d.pontosCriticos.join(" || ");
+  assert.match(texto, /NOTIFICAÇÃO COMPULSÓRIA EM SAÚDE ≠ DENÚNCIA POLICIAL/);
+});
+
+// 19. TVP/Wells não é apresentado como diagnóstico isolado
+teste("19. tvp_wells contém a limitação explícita de não ser diagnóstico isolado", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "tvp_wells");
+  const texto = d.pontosCriticos.join(" || ");
+  assert.match(texto, /nunca diagnóstico isolado/);
+});
+
+// 20. distocia de ombro não recomenda pressão fúndica
+teste("20. distocia_ombro não recomenda pressão fúndica (só menciona como contraindicação a confirmar)", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "distocia_ombro");
+  const texto = d.pontosCriticos.join(" || ");
+  // não pode haver uma linha que RECOMENDE pressão fúndica
+  const recomendaPressaoFundica = d.pontosCriticos.some(
+    p => /pressão fúndica|kristeller/i.test(p) && /recomend|indicad/i.test(p) && !/contraindicad|a confirmar/i.test(p)
+  );
+  assert.equal(recomendaPressaoFundica, false, "não deveria haver recomendação de pressão fúndica");
+  assert.match(texto, /contraindicada/i);
+});
+
+// 21. rastreamento não é aplicado a paciente sintomática como se fosse rotina
+teste("21. rastreamento_colo distingue rastreamento de rotina vs. paciente sintomática", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "rastreamento_colo");
+  const texto = d.pontosCriticos.join(" || ");
+  assert.match(texto, /NÃO se aplica a paciente sintomática/,
+    "pontosCriticos deveria registrar explicitamente a distinção rastreamento x investigação sintomática");
+});
+
+// 22. vacinação mantém separação por população e ano (não mistura faixas etárias)
+teste("22. vacinacao (bloco meningocócico) especifica faixa etária, não regra genérica única", () => {
+  const d = DIRETRIZES_CONTROLADAS.find(x => x.id === "vacinacao");
+  const pontoACWY = d.pontosCriticos.find(p => /ACWY/.test(p));
+  assert.ok(pontoACWY, "deveria existir ponto crítico sobre ACWY");
+  assert.match(pontoACWY, /12 meses/, "deveria especificar a faixa etária exata (12 meses), não uma regra genérica");
+});
+
+// 23. nenhuma chamada de IA ocorre quando há bloqueio científico (mesmo sinal usado por RoboGerador.jsx)
+teste("23. bloqueio científico produz o mesmo sinal que RoboGerador.jsx usa para `continue` (0 chamadas à IA)", () => {
+  const temasBloqueados = [
+    "Diabetes mellitus tipo 2", "Violência doméstica notificação compulsória", "Escore de Wells trombose venosa profunda",
+  ];
+  for (const tema of temasBloqueados) {
+    const avaliacao = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, tema, "");
+    assert.equal(avaliacao.bloqueado, true, `"${tema}" deveria bloquear antes de qualquer chamada à IA`);
+  }
+});
+
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);
 if (falhas.length > 0) {
   console.log("\nFALHAS:");
