@@ -974,3 +974,7 @@ Atualização (2026-07-24): **R002** e **R034** já foram gerados, aprovados e s
 ## 8. Como manter este arquivo atualizado
 
 Após cada lote real, atualizar manualmente as colunas Questão/Modelo/Resumo/Status para os recortes usados, com base no log real do RoboGerador (ID, modelo, `📚 salvo/reaproveitado/rejeitado`).
+
+## 9. Macro Review de Governança (2026-07-24) — pré-requisito antes de retomar
+
+Auditoria arquitetural read-only concluída — ver `MACRO_REVIEW_GOVERNANCA_CLINICA_2026_2.md`. **Achado crítico (C1):** se a coleção Firestore `diretrizes` estiver populada em produção, o bloqueio de governança das Fases 1–3 pode estar inerte (documentos antigos não têm o campo `status`, tratado como "vigente" por ausência). Isso não foi verificado empiricamente (zero acesso ao Firestore nesta auditoria). **Recomendação antes de retomar os 15 recortes qualitativos:** confirmar o estado real da coleção Firestore e, se necessário, aplicar a correção mínima da Fase 4A (tratar `status` ausente em documento Firestore como `PENDENTE_REVISAO`, não como vigente). Produção em massa continua **PAUSADA** até nova autorização explícita.

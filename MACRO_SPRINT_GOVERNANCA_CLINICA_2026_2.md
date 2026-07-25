@@ -167,3 +167,13 @@ Nenhuma fonte de blog, cursinho, página comercial ou texto de IA foi usada — 
 ## Percentual estimado de conclusão da Macro Sprint
 
 **~15%.** Concluído: schema de governança + mecanismo de bloqueio + 6 diretrizes prioritárias trazidas a `PENDENTE_REVISAO` com fonte oficial real (não `VIGENTE_CONFIRMADA` — ainda falta revisão humana nomeada). Pendente: confirmação humana das 6, Fase 2 (5 diretrizes novas), revisão dos 120 recortes, revisão de Q1–Q12.
+
+---
+
+## MACRO REVIEW — Auditoria Arquitetural (2026-07-24, pós-Fase 3)
+
+Ver documento completo: `MACRO_REVIEW_GOVERNANCA_CLINICA_2026_2.md`.
+
+**Achado que reclassifica a limitação nº 4 acima (Fase 1):** o que estava descrito como "os outros consumidores se beneficiam indiretamente, sem log explícito" é **mais grave do que registrado na época**. Confirmado por leitura de código: `RoboGerador.jsx`, `ResumoGerador.jsx` e `ImportadorPro.jsx` carregam diretrizes do Firestore (`collection(db, "diretrizes")`) **preferencialmente à lista estática**, e a função `semearBase()` (`PainelDiretrizes.jsx`) que já semeou/semeia essa coleção **nunca escreveu os campos novos de governança** (`status`, `statusDocumental`, `statusModulos` etc.) — apenas o schema legado (`tema_id, tema, versao, fonte, ano, ativa, historica, substitui, palavrasChave, pontosCriticos`). Como a ausência do campo `status` é tratada como "vigente" (`_statusUtilizavel`), **se a coleção Firestore de produção estiver populada, todo o mecanismo de bloqueio construído nas Fases 1–3 pode estar inerte** — os 35 testes automatizados não detectam isso porque testam exclusivamente a lista estática, nunca o formato de documento que realmente chega via Firestore. Classificado como **CRÍTICO** na Macro Review (achado C1) — primeira correção recomendada da Fase 4A, ainda **não verificada empiricamente contra o Firestore real** (zero acesso ao Firestore nesta auditoria, por restrição) e **não corrigida** (auditoria é read-only).
+
+**Percentual revisado após a Macro Review: ~55%** (trabalho de conteúdo/documentação inalterado; a Macro Review não fecha lacunas documentais, apenas as mapeia com mais precisão e adiciona a Fase 4A como pré-requisito antes de deploy/retomada em escala).
