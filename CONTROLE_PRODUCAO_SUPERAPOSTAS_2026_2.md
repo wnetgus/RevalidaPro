@@ -552,10 +552,12 @@ Fluxo adotado a partir de agora: **3 recortes distintos da mesma grande área, 1
 | 8 | `SA_2026_2_Q8` | R035 | Clínica Médica | CONTA — resumo salvo |
 | 9 | `SA_2026_2_Q9` | R039 | Clínica Médica | CONTA — resumo salvo |
 | 10 | `SA_2026_2_Q10` | R031 | Clínica Médica | CONTA — resumo salvo |
+| 11 | `SA_2026_2_Q11` | R084 | Preventiva | CONTA — APROVADO |
+| 12 | `SA_2026_2_Q12` | R100 | Preventiva | CONTA — REVISÃO DE RESUMO |
 
-**Total confirmado: 10 de 120.** Não contam (falha pontual, IDs não consumidos): R002, R024, R019, R003. Excluído (revisão humana): R041.
+**Total confirmado: 12 de 120.** Não contam (falha pontual, IDs não consumidos): R002, R024, R019, R003. **Em recuperação (não conta, não descartado): R096.** Excluído (revisão humana): R041.
 
-**Balanço por área até aqui:** Cirurgia 1 · Pediatria 2 · Preventiva 1 · Ginecologia e Obstetrícia 2 · **Clínica Médica 4**.
+**Balanço por área até aqui:** Cirurgia 1 · Pediatria 2 · **Preventiva 3** · Ginecologia e Obstetrícia 2 · Clínica Médica 4.
 
 ---
 
@@ -580,7 +582,53 @@ Cuidados paliativos — critérios de elegibilidade e comunicação de prognóst
 
 **Motivo:** R008/R009 (Ética Médica, ALTO) já têm IDs de DEV anterior (`SA_2026_2_Q16`/`Q20`) — não são pendentes reais, descartados. R019/R033/R041 já usados/excluídos. Entre Cirurgia (pool residual: R069/R072 MEDIO + R110 sem prioridade classificada, sendo R072 com risco numérico explícito via "ângulo de Cobb") e Preventiva (pool residual: R084/R096/R100, MEDIO/BAIXO mas estruturalmente qualitativos/categóricos, mesmo perfil que já funcionou em R010), Preventiva ofereceu 3 recortes limpos e mais seguros — sem inventar prioridade ALTO onde a fonte real diz MEDIO/BAIXO. Cirurgia fica reservada para o lote seguinte.
 
-**Status:** `PENDENTE — AGUARDANDO GERAÇÃO EM PRODUÇÃO` (primeiro aprovado será `SA_2026_2_Q11`, já que Q1–Q10 já foram consumidos).
+**Status:** ✅ **LOTE ENCERRADO — 2/3 aprovadas, 1 em recuperação** (ver encerramento e taxonomia abaixo).
+
+## TAXONOMIA OFICIAL DE STATUS (vigente a partir de 2026-07-24)
+
+Um recorte selecionado por prevalência/aposta nunca desaparece silenciosamente por falha técnica ou reprovação do validador. Falha ≠ descarte editorial. Quatro status possíveis:
+
+1. **APROVADO** — questão válida e salva. Conta nas 120.
+2. **PENDENTE — RECUPERAÇÃO** — todas as tentativas da rodada falharam, mas o recorte continua obrigatório e deve retornar em lote futuro de recuperação. Não conta nas 120, não é descartado, não é tratado como concluído.
+3. **REVISÃO DE RESUMO** — questão aprovada e salva; só o resumo precisa de revisão. Conta normalmente nas 120.
+4. **SUBSTITUÍDO FORMALMENTE** — só com justificativa editorial explícita e recorte equivalente da mesma aposta. Nunca silencioso.
+
+### R084 — encerramento (2026-07-24)
+
+**Questão:** `SA_2026_2_Q11` — **APROVADA E SALVA**. Status: **APROVADO — CONTA PARA AS 120.**
+
+### R096 — encerramento (2026-07-24)
+
+**Status: `PENDENTE — RECUPERAÇÃO`.** Todas as 3 tentativas falharam — **nenhuma questão salva, nenhum ID consumido**. Motivos consolidados: pistas estruturais na alternativa correta (REGRA SA-1); linguagem absoluta sem grounding controlado (REGRA SA-4); tentativa de preencher fonte/ano sem diretriz injetada (REGRA SA-4). **Não conta nas 120. Não foi descartado. Não deve ser tratado como concluído.** Volta obrigatoriamente em lote futuro de recuperação da área Preventiva — ver Fila de Recuperação e recomendação técnica abaixo. Não retentado agora.
+
+### R100 — encerramento (2026-07-24)
+
+**Questão:** `SA_2026_2_Q12` — **APROVADA E SALVA**. Resumo `Cuidados paliativos--idoso`: em revisão. **Status: `REVISÃO DE RESUMO` — CONTA normalmente nas 120.**
+
+## FILA DE RECUPERAÇÃO
+
+| Rxxx | Área | Tema | Tentativas | Motivo consolidado | Grounding necessário | Status | Próxima tentativa |
+|---|---|---|---|---|---|---|---|
+| R096 | Preventiva | Violência doméstica — sinais de alerta e fluxo de notificação compulsória | 3 (todas Haiku/Opus, esgotadas) | Pista estrutural (SA-1) + linguagem absoluta sem grounding (SA-4) + fonte/ano inventados sem diretriz injetada (SA-4) | **AUDITAR** — recorte não tem `exige_grounding` na fonte (marcado NÃO), mas repetidamente induz citação de norma/prazo legal (Lei Maria da Penha, ECA, prazo de notificação) sem fonte controlada disponível — ver recomendação técnica abaixo | `PENDENTE — RECUPERAÇÃO` | a definir (após lote de recuperação nº1 da área Preventiva, conforme cadência da seção seguinte) |
+
+## RECOMENDAÇÃO TÉCNICA — RECUPERAÇÃO DE R096
+
+Auditoria de código confirma: `diretrizesControladas.js` **não tem nenhuma entrada** para violência doméstica/notificação compulsória (`grep` por "violencia"/"maria da penha"/"notificacao_compulsoria" = zero ocorrências). Isso explica o padrão de falha: o recorte, mesmo marcado `exige_grounding: false` na fonte, tematicamente convida a IA a citar base legal (Lei 11.340/2006, ECA, prazo de notificação em fluxograma do SUS) para dar realismo à questão — e qualquer citação desse tipo, sem diretriz injetada, é barrada pela REGRA SA-4 (mesmo padrão-raiz de R002/R024/R019/R003/R025, mas na área jurídica/ética em vez de clínica).
+
+**Das 4 estratégias avaliadas:**
+1. **Grounding normativo controlado** — adicionar uma entrada mínima em `diretrizesControladas.js` (ex.: `id: "violencia_domestica"`) com `pontosCriticos` cobrindo só o essencial: notificação compulsória é obrigatória independente da vontade da vítima; notificação ≠ denúncia policial (não exige registro de ocorrência); fluxo é sanitário (ficha de notificação), não judicial. **Precedente direto:** a diretriz `dengue` foi adicionada exatamente por este motivo (recorte sem grounding formal, mas que induzia números/fonte sem suporte) — mesmo padrão, mesma solução, sem inventar nada, sem imprecisão (regra legal real e estável, sem posologia/protocolo variável).
+2. **Reformulação editorial do recorte** — isoladamente, insuficiente: já falhou 3x mesmo com o recorte atual sendo puramente comportamental/qualitativo; o problema não é a redação do recorte, é a ausência de fonte para a IA se apoiar quando ela tenta (por conta própria) enriquecer a questão com base legal.
+3. **Simples nova tentativa** — isoladamente, baixa probabilidade de sucesso: o padrão já se repetiu de forma consistente nas 3 tentativas (mesmas duas classes de motivo).
+4. **Combinação recomendada: 1 + 3.** Adicionar grounding mínimo (opção 1, requer autorização e é alteração de código — não feita agora) e só então reagendar R096 num lote de recuperação futuro (opção 3, já apoiado por fonte).
+
+**Preserva a aposta central do recorte** (reconhecer sinais/suspeita de violência e aplicar o fluxo de notificação corretamente, sem confundir com denúncia policial) — a correção proposta é só de suporte documental (grounding), não de conteúdo pedagógico.
+
+## CADÊNCIA OPERACIONAL — LOTES NORMAIS + RECUPERAÇÃO
+
+- Continuar lotes normais de 3 recortes, mesma área por lote, alternando entre as 5 áreas.
+- **A cada 3–4 lotes normais, executar 1 lote de recuperação** — reunindo recortes em `PENDENTE — RECUPERAÇÃO`, também respeitando a regra de mesma área por execução.
+- Nenhum recorte prioritário fica pendente indefinidamente: todo item da Fila de Recuperação precisa de uma data/lote de retorno definido antes de ser considerado resolvido.
+- R096 é o primeiro (e único, por ora) item da fila — entra no próximo lote de recuperação da área Preventiva, condicionado à adição do grounding mínimo (recomendação técnica acima), sujeito à sua autorização.
 
 ---
 
