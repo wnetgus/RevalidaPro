@@ -9,13 +9,13 @@
 
 ## ⛔ PRODUÇÃO EM MASSA PAUSADA (2026-07-24) — Macro Sprint de Governança Clínica em andamento
 
-Ver `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (commit `2d5eca0`) e `MACRO_SPRINT_GOVERNANCA_CLINICA_2026_2.md` (commit da Fase 1: `9fd5da2`).
+Ver `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (2d5eca0), `MACRO_SPRINT_GOVERNANCA_CLINICA_2026_2.md` (Fase 1: `9fd5da2`; Fase 2: `a9e4d3c`/`1c131f6`), `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md` e `MATRIZ_GROUNDING_R001_R120.md` (1c131f6).
 
 - **Nenhuma nova questão deve ser gerada até nova autorização explícita.**
-- **Q1–Q12** (já produzidas e contando para as 120) **aguardam revisão posterior** — nenhuma foi descartada, nenhuma perde o status de "conta para as 120" enquanto a revisão não aponta o contrário.
-- **R096 permanece `PENDENTE — RECUPERAÇÃO`** — inalterado por esta pausa, segue na fila de recuperação da área Preventiva.
+- **Q1–Q12** (já produzidas e contando para as 120) **aguardam revisão posterior** — nenhuma foi descartada, nenhuma perde o status de "conta para as 120" enquanto a revisão não aponta o contrário. **Ainda não iniciada** (aguardando nova autorização, conforme restrição explícita da Fase 2).
+- **R096 permanece `PENDENTE — RECUPERAÇÃO`** — agora com diretriz `violencia_domestica` proposta (não vigente) cobrindo o tema; segue na fila de recuperação da área Preventiva, aguardando validação humana da diretriz antes de nova tentativa.
 - Contagem oficial no momento da pausa: **12/120** (Q1–Q12, ver seção de contagem abaixo).
-- 6 diretrizes controladas (dm, rastreamento_colo, vacinacao, has, sifilis, hiv) foram marcadas `PENDENTE_REVISAO` e **bloqueiam geração grounded nesses temas** até confirmação humana nomeada — ver Macro Sprint para detalhes.
+- **11 diretrizes controladas** — as 6 da Fase 1 (dm, rastreamento_colo, vacinacao, has, sifilis, hiv) + as 5 novas propostas na Fase 2 (ictericia_neonatal, diverticulite, tvp_wells, distocia_ombro, violencia_domestica) — estão todas `PENDENTE_REVISAO` e **bloqueiam geração grounded nesses temas** até confirmação humana nomeada. **Matriz completa em `MATRIZ_GROUNDING_R001_R120.md`: 55/120 recortes sem bloqueio automático conhecido, 65/120 bloqueados.**
 - Retomada da produção depende de: (a) autorização explícita do usuário, e (b) não há mais bloqueio técnico ativo para o(s) tema(s) do próximo lote pretendido.
 
 ---

@@ -1,6 +1,48 @@
 # MACRO SPRINT — GOVERNANÇA CLÍNICA E ATUALIZAÇÃO DE DIRETRIZES 2026.2
 
-**Fase concluída:** FASE 1 — Correção das diretrizes críticas existentes. **Data:** 2026-07-24. **Autorização:** com base em `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (commit `2d5eca0`).
+**Fases concluídas:** FASE 1 (correção das diretrizes críticas existentes) e FASE 2 (consolidação científica + cobertura dos recortes críticos). **Data:** 2026-07-24. **Referências:** `AUDITORIA_ATUALIZACAO_CLINICA_NORMATIVA_2026_2.md` (2d5eca0), `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md` (1c131f6), `MATRIZ_GROUNDING_R001_R120.md` (1c131f6).
+
+---
+
+## FASE 2 — Consolidação científica e cobertura dos recortes críticos (2026-07-24)
+
+**Objetivo:** construir a base científica auditável para validação humana futura, e criar (como propostas, não vigentes) as 5 diretrizes que faltavam para R017/R023/R029/R036/R096.
+
+**Método de pesquisa real (não busca superficial):** para `dm`, `sifilis`, `hiv` e `vacinacao`, o **texto integral do documento oficial foi baixado e extraído** (PDF→texto real via `pdf-parse`, 58 a 118 páginas cada) — as correções de conteúdo vêm de citação direta do documento primário, não de resumo de busca. Para `has`, `rastreamento_colo` e as 5 diretrizes novas, a base é busca web verificada (título/órgão/data confirmados), sem leitura do PDF completo — confiança marcada explicitamente em cada dossiê (ver `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md`).
+
+**Achados por leitura direta do documento primário:**
+- `dm`: confirmada a citação exata da SBD Ed.2025 — metformina 1ª linha só quando risco CV baixo/intermediário + sem doença cardiorrenal + sem obesidade + HbA1c <7,5% (Classe I, Nível B). Corrige e confirma a correção já feita na Fase 1.
+- `sifilis`: **conteúdo confirmado ESTÁVEL** — o esquema de penicilina benzatina por estágio no PCDT-IST 2024 é idêntico ao já cadastrado desde 2022. Só a citação estava defasada.
+- `hiv`: **conteúdo confirmado ESTÁVEL** — esquema de 1ª linha (tenofovir+lamivudina+dolutegravir) e "Tratar Todos" idênticos ao já cadastrado. PEP/PrEP não relidos nesta sessão.
+- `vacinacao`: confirmado por citação exata do PDF — esquema básico de Men C (3 e 5 meses) inalterado; **só o reforço aos 12 meses muda para Men ACWY**. Demais blocos do calendário (BCG, Penta, VIP/VOP etc.) não relidos.
+
+**5 diretrizes novas propostas** (nenhuma vigente — todas `PENDENTE_REVISAO`, cobrindo exatamente os recortes identificados na Fase 1):
+- `ictericia_neonatal` (R017) — SBP Manual nº 20/2023, escopo estritamente neonatal.
+- `diverticulite` (R023/R111) — Classificação de Hinchey + WSES 2020, **confiança reduzida** (só fonte secundária) e **conflito interno não resolvido** registrado explicitamente (posologia de antibiótico vs. R111 já indicar que pode não ser necessário).
+- `tvp_wells` (R029) — Escore de Wells, com limitação explícita de nunca ser diagnóstico isolado.
+- `distocia_ombro` (R036) — FEBRASGO Guia de Habilidades 25/03/2023, sequência McRoberts→Rubin I→Gaskin.
+- `violencia_domestica` (R096) — separa explicitamente notificação compulsória (Lei 13.931/2019) de denúncia policial e de Lei Maria da Penha — resolve a causa raiz das 3 falhas de geração da Fase 1.
+
+**Matriz R001-R120** (`MATRIZ_GROUNDING_R001_R120.md`): todos os 120 recortes lidos e classificados. **55 podem gerar agora** (sem bloqueio automático conhecido); **65 bloqueados** (grounding obrigatório sem diretriz vigente, incluindo os 5 novos temas + as 6 diretrizes antigas ainda pendentes). 4 linhas (R002/R003/R019/R024) foram corrigidas manualmente para refletir falhas reais já observadas em produção, sobrepondo a classificação automática — limitação de método registrada explicitamente no documento.
+
+**Novo campo `statusDocumental`** (`PRONTA_PARA_VALIDACAO_HUMANA` / `PENDENTE_AJUSTE`) adicionado às 11 diretrizes — paralelo ao `status` de execução (que continua sendo o único que bloqueia geração), não o substitui.
+
+**Testes:** 13 casos novos (11-23) somados aos 10 da Fase 1 — **23/23 passam**. Build PASS (743 módulos). Lint: 0 erros.
+
+**Commits Fase 2:** `a9e4d3c` (código: 5 diretrizes novas + 13 testes), `1c131f6` (documentação: dossiê + matriz).
+
+**Nenhuma diretriz foi promovida a `VIGENTE_CONFIRMADA` nesta fase** — todos os campos `VALIDADO POR`/`DATA DA VALIDAÇÃO`/`DECISÃO`/`OBSERVAÇÕES DO RESPONSÁVEL` permanecem vazios em `DOSSIER_VALIDACAO_DIRETRIZES_2026_2.md`, aguardando revisor nomeado.
+
+**Perguntas que dependem de validação humana (resumo — ficha completa no dossiê):**
+1. As classes de 1ª linha por comorbidade e agentes IV de emergência de `has` mudaram entre 2024→2025?
+2. O fluxo de citologia (ASC-US/LSIL/HSIL) de `rastreamento_colo` ainda se aplica em algum cenário de transição? Conduta se DNA-HPV indisponível?
+3. Os demais blocos do calendário vacinal (além do meningocócico) mudaram na IN 2026?
+4. As seções de PEP/PrEP de `hiv` mudaram no módulo 2024?
+5. `diverticulite`: antibiótico de rotina em quadro leve ainda é recomendado, ou R111 (Mapa Mestre) está correto ao dizer que não? (conflito interno não resolvido)
+6. `tvp_wells` e `distocia_ombro`: confirmar contra os documentos primários (CHEST/ACCP e FEBRASGO PDF completo, respectivamente) — não lidos nesta sessão.
+7. `violencia_domestica`: qual o prazo real de notificação (se houver) segundo o texto integral da Lei 13.931/2019 — não incluído até confirmação.
+
+**Percentual estimado de conclusão da Macro Sprint: ~40%.** Concluído: schema + bloqueio (Fase 1), 6 diretrizes existentes trazidas a PENDENTE_REVISAO com fonte oficial real e 4 delas com texto primário integralmente lido, 5 diretrizes novas propostas com o mesmo padrão, matriz completa dos 120 recortes, 23 testes. Pendente: confirmação humana nomeada de todas as 11, resolução do conflito `diverticulite`/R111, leitura dos documentos primários ainda não obtidos (`has`, `rastreamento_colo`, `tvp_wells`, `distocia_ombro`, `violencia_domestica` na íntegra), revisão de Q1–Q12, retomada de produção.
 
 ---
 
