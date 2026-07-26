@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import { getQuestoes, invalidarCacheQuestoes } from "../utils/questoesCache";
+import { obterHeadersAutenticados } from "../utils/apiAuth";
 import {
   doc, setDoc, getDocs, collection, query, where,
   serverTimestamp, writeBatch
@@ -330,9 +331,17 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       : (import.meta.env.VITE_FUNCTIONS_BASE_URL ||
          "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/gerarQuestoesIA";
 
+    // Micro Sprint 4B.2: gerarQuestoesIA exige Firebase ID token — esta é a
+    // ÚNICA função que fala com o endpoint neste arquivo (ABCD via
+    // chamarIABruto, legado A-E e "Resumo do Tema" chamam todas esta mesma
+    // chamarIA local). Corrige a falha da 4B.1: este componente NUNCA
+    // importou o chamarIA de promptEngine.js (que já foi corrigido) — define
+    // o seu próprio, com o mesmo nome, que nunca recebeu o fix. Se não houver
+    // sessão, lança ANTES do fetch (0 chamadas de rede).
+    const headersAuth = await obterHeadersAutenticados(auth);
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headersAuth },
       body: JSON.stringify({ system: systemPrompt, prompt: promptUsuario, ...(model ? { model } : {}) }),
     });
 
@@ -1437,9 +1446,10 @@ Requisitos gerais:
         `Responda SOMENTE com array JSON: [{"id":"...","tema_mestre":"..."}]\n` +
         JSON.stringify(loteParaIA);
 
+      const headersAuth = await obterHeadersAutenticados(auth);
       const resp = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headersAuth },
         body: JSON.stringify({ system: PROMPT_MIGRACAO, prompt: promptUsuario }),
       });
 
