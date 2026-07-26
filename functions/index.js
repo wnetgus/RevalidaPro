@@ -6,6 +6,7 @@
 const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
+const { chamarAnthropicViaGate } = require("./gate");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -143,20 +144,8 @@ exports.gerarQuestoesIA = functions
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST")   { res.status(405).json({ erro: "Método não permitido" }); return; }
 
-    // ── VALIDAÇÃO DA CHAVE ───────────────────────────────────────────────────
-    const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    if (!ANTHROPIC_API_KEY || ANTHROPIC_API_KEY === "sua_chave_aqui") {
-      console.error("ANTHROPIC_API_KEY não configurada.");
-      res.status(500).json({ erro: "Chave da IA não configurada no servidor." });
-      return;
-    }
-
     try {
       const { system, prompt, model } = req.body;
-      if (!prompt) {
-        res.status(400).json({ erro: "O campo 'prompt' é obrigatório." });
-        return;
-      }
 
       // Benchmark controlado (Fase 3 Super Apostas 2026.2): permite escolher
       // explicitamente o modelo, restrito a um allowlist — nunca repassa string
@@ -166,6 +155,12 @@ exports.gerarQuestoesIA = functions
       const MODELOS_PERMITIDOS = ["claude-haiku-4-5-20251001", "claude-opus-4-8"];
       const modeloEscolhido = MODELOS_PERMITIDOS.includes(model) ? model : "claude-haiku-4-5-20251001";
 
+      // ── GATE ÚNICO (Micro Sprint 4B.0) ───────────────────────────────────
+      // Nenhuma chamada a api.anthropic.com acontece fora de
+      // chamarAnthropicViaGate — na ausência da chave, de "prompt", ou de
+      // qualquer erro ao avaliar essas precondições, o gate bloqueia
+      // (autorizado:false) ANTES de qualquer rede: 0 chamadas à Anthropic.
+      //
       // ── PROMPT CACHING (auditoria de custo Super Apostas 2026.2) ──────────
       // O "system" de todo chamador deste endpoint (PROMPT_SISTEMA_ROBO,
       // PROMPT_SISTEMA_SUPERAPOSTAS_ABCD, PROMPT_SISTEMA_IMPORTADOR,
@@ -182,23 +177,29 @@ exports.gerarQuestoesIA = functions
       // mesmo lote, já que o "system" não muda por tema.
       // Cache é por modelo: troca Haiku→Opus dentro do fallback não reaproveita
       // a escrita feita em Haiku (each cria/lê sua própria entrada).
-      const anthropicRes = await globalThis.fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type":      "application/json",
-          "x-api-key":         ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
+      const resultado = await chamarAnthropicViaGate({
+        gateParams: {
+          apiKey: process.env.ANTHROPIC_API_KEY,
+          model: modeloEscolhido,
+          camposObrigatorios: { prompt },
         },
-        body: JSON.stringify({
+        corpo: {
           model:      modeloEscolhido,
           max_tokens: 8192, // aumentado de 4096 — 3 questões completas precisam de ~5000-6000 tokens
           system:     system
             ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
             : "",
           messages:   [{ role: "user", content: prompt }],
-        }),
+        },
       });
 
+      if (!resultado.autorizado) {
+        console.error("[gerarQuestoesIA] Gate bloqueou:", resultado.motivo);
+        res.status(403).json({ erro: resultado.motivo });
+        return;
+      }
+
+      const anthropicRes = resultado.response;
       if (!anthropicRes.ok) {
         const erroTexto = await anthropicRes.text();
         console.error("Erro Anthropic HTTP", anthropicRes.status, erroTexto);
