@@ -125,18 +125,21 @@ teste("9. as 6 diretrizes prioritárias da auditoria estão marcadas PENDENTE_RE
   assert.equal(detectarDiretriz("Hipertensão arterial sistêmica", ""), null, "has não deveria estar vigente");
 });
 
-// 10. compatibilidade das diretrizes não prioritárias é preservada
-teste("10. diretrizes não tocadas nesta fase continuam sem status e continuam vigentes", () => {
+// 10. diretrizes não tocadas nesta fase seguem sem status — e, após a correção
+//     fail-closed da Micro Sprint 4A.1 (Achado Crítico C1), isso agora BLOQUEIA
+//     em vez de liberar (antes desta correção, `status === undefined` era
+//     tratado como vigente; ver STATUS_DIRETRIZ em diretrizesControladas.js).
+teste("10. diretrizes sem status (não tocadas nesta fase) agora bloqueiam, fail-closed", () => {
   const idsNaoTocados = ["sepse", "asma", "tuberculose", "dengue", "etica_medica", "prenatal"];
   for (const id of idsNaoTocados) {
     const d = DIRETRIZES_CONTROLADAS.find(x => x.id === id);
     assert.ok(d, `diretriz ${id} deveria existir`);
     assert.equal(d.status, undefined, `diretriz ${id} não deveria ter status nesta fase (Fase 1 não a tocou)`);
   }
-  // regressão: continuam sendo detectadas normalmente (mesmo comportamento de antes da Macro Sprint)
-  assert.equal(detectarDiretriz("Sepse", "")?.id, "sepse");
-  assert.equal(detectarDiretriz("Asma", "")?.id, "asma");
-  assert.equal(detectarDiretriz("Dengue", "")?.id, "dengue");
+  // pós-correção C1: ausência de status já não é mais tratada como vigente
+  assert.equal(detectarDiretriz("Sepse", ""), null, "sepse sem status não deveria mais liberar grounding (fail-closed)");
+  assert.equal(detectarDiretriz("Asma", ""), null, "asma sem status não deveria mais liberar grounding (fail-closed)");
+  assert.equal(detectarDiretriz("Dengue", ""), null, "dengue sem status não deveria mais liberar grounding (fail-closed)");
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -383,6 +386,79 @@ teste("35. nenhuma das 17 diretrizes está VIGENTE_CONFIRMADA (nenhuma promoçã
   for (const d of comStatusExplicito) {
     assert.notEqual(d.status, STATUS_DIRETRIZ.VIGENTE_CONFIRMADA, `${d.id} não deveria estar VIGENTE_CONFIRMADA`);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MICRO SPRINT 4A.1 — Achado Crítico C1: fail-closed para status ausente/
+// vazio/desconhecido em documentos no formato real gravado pelo Firestore
+// (semearBase() nunca escreveu `status`/`statusDocumental`/`statusModulos`).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Fixture no formato exato que semearBase() grava no Firestore hoje (sem
+// nenhum campo de governança das Fases 1–3) — reproduz o documento "antigo".
+const docFirestoreAntigoSemStatus = {
+  tema_id: "fs_antigo", tema: "Doc Firestore Antigo", palavrasChave: ["fsantigo"],
+  fonte: "Fonte Firestore", ano: 2023, pontosCriticos: ["ponto fs 1"],
+  ativa: true, historica: false, substitui: null, origem: "sistema",
+  // sem `status` — exatamente o que semearBase() grava (Achado C1)
+};
+
+teste("36. [C1] documento Firestore antigo sem campo `status` é BLOQUEADO (fail-closed)", () => {
+  assert.equal(detectarDiretrizDinamica([docFirestoreAntigoSemStatus], "fsantigo", ""), null,
+    "antes da correção C1 este documento seria tratado como vigente por omissão de status");
+  const avaliacao = avaliarBloqueioDiretriz([docFirestoreAntigoSemStatus], "fsantigo", "");
+  assert.equal(avaliacao.bloqueado, true);
+});
+
+teste("37. [C1] documento com `status` vazio (\"\") é bloqueado", () => {
+  const d = { ...docFirestoreAntigoSemStatus, id: "fs_vazio", palavrasChave: ["fsvazio"], status: "" };
+  assert.equal(detectarDiretrizDinamica([d], "fsvazio", ""), null);
+  assert.equal(avaliarBloqueioDiretriz([d], "fsvazio", "").bloqueado, true);
+});
+
+teste("38. [C1] documento com `status` desconhecido/inválido é bloqueado", () => {
+  const d = { ...docFirestoreAntigoSemStatus, id: "fs_desconhecido", palavrasChave: ["fsdesconhecido"], status: "REVISADO_EXTERNAMENTE" };
+  assert.equal(detectarDiretrizDinamica([d], "fsdesconhecido", ""), null);
+  assert.equal(avaliarBloqueioDiretriz([d], "fsdesconhecido", "").bloqueado, true);
+});
+
+teste("39. [C1] documento com status explicitamente VIGENTE_CONFIRMADA continua liberando (regressão)", () => {
+  const d = { ...docFirestoreAntigoSemStatus, id: "fs_vigente", palavrasChave: ["fsvigenteok"], status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA };
+  assert.equal(detectarDiretrizDinamica([d], "fsvigenteok", "")?.id, "fs_vigente");
+  assert.equal(avaliarBloqueioDiretriz([d], "fsvigenteok", "").bloqueado, false);
+});
+
+teste("40. [C1] módulo filho com statusModulos \"pronto\" não libera a diretriz pai bloqueada", () => {
+  // statusModulos é granularidade interna (ex.: hiv.tarv_1a_linha) — não é
+  // consultada por _statusUtilizavel, que só olha o `status` de topo. Um
+  // módulo pronto não deve, por si só, liberar grounding para o tema.
+  const d = {
+    ...docFirestoreAntigoSemStatus, id: "fs_modulo_pai", palavrasChave: ["fsmodulopai"],
+    status: STATUS_DIRETRIZ.PENDENTE_REVISAO,
+    statusModulos: { moduloFilho: "PRONTA_PARA_VALIDACAO_HUMANA" },
+  };
+  const avaliacao = avaliarBloqueioDiretriz([d], "fsmodulopai", "");
+  assert.equal(avaliacao.bloqueado, true, "diretriz pai deveria permanecer bloqueada mesmo com módulo filho pronto");
+});
+
+teste("41. [C1] lista Firestore (preferida à estática) obedece a mesma regra fail-closed que a lista estática", () => {
+  // Mesma função (detectarDiretrizDinamica/avaliarBloqueioDiretriz) é usada
+  // tanto para DIRETRIZES_CONTROLADAS quanto para a lista vinda do Firestore
+  // (RoboGerador.jsx/ResumoGerador.jsx/ImportadorPro.jsx) — não há caminho de
+  // código separado que trate uma lista com mais permissividade que a outra.
+  const listaFirestoreSimulada = [docFirestoreAntigoSemStatus];
+  const avaliacaoFirestore = avaliarBloqueioDiretriz(listaFirestoreSimulada, "fsantigo", "");
+  const avaliacaoEstatica = avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, "Sepse", "");
+  assert.equal(avaliacaoFirestore.bloqueado, true);
+  // "sepse" também está sem status no arquivo estático — mesma regra, mesmo resultado
+  assert.equal(avaliacaoEstatica.bloqueado, true);
+});
+
+teste("42. [C1] Firestore vazio não quebra e não libera nada (cai para 'sem grounding', não para 'vigente')", () => {
+  assert.equal(detectarDiretrizDinamica([], "qualquer tema", ""), null);
+  const avaliacao = avaliarBloqueioDiretriz([], "qualquer tema", "");
+  assert.equal(avaliacao.bloqueado, false);
+  assert.equal(avaliacao.diretriz, null);
 });
 
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);

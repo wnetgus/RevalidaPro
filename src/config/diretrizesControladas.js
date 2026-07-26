@@ -655,13 +655,18 @@ const _casaPalavraChave = (texto, kw) => {
   return texto.includes(kwLower);
 };
 
-// ─── GOVERNANÇA CLÍNICA — STATUS DE VIGÊNCIA (Macro Sprint 2026.2) ───────────
-// Uma diretriz sem campo `status` é tratada como equivalente a
-// VIGENTE_CONFIRMADA — preserva 100% do comportamento anterior para toda
-// entrada que não passou pela auditoria de atualização (sepse, asma,
-// tuberculose, dengue, etica_medica, prenatal, nesta rodada). Só entradas
-// com `status` explicitamente diferente de VIGENTE_CONFIRMADA deixam de
-// contar como fonte segura para grounding.
+// ─── GOVERNANÇA CLÍNICA — STATUS DE VIGÊNCIA (Macro Sprint 2026.2, corrigido
+// na Micro Sprint 4A.1 — Achado Crítico C1) ───────────────────────────────
+// Fail-closed: só libera grounding quando `status` é EXPLICITAMENTE
+// VIGENTE_CONFIRMADA. Ausência de campo, string vazia ou qualquer valor
+// desconhecido bloqueiam. Isto vale tanto para a lista estática quanto para
+// documentos vindos do Firestore (mesma função, mesma regra) — corrige o
+// Achado C1: `semearBase()` (PainelDiretrizes.jsx) nunca gravou o campo
+// `status`, e o comportamento antigo (`status === undefined` liberava)
+// tratava esses documentos como vigentes por omissão. Como consequência
+// deste fix, as diretrizes ainda não auditadas nesta fase (sepse, asma,
+// tuberculose, dengue, etica_medica, prenatal — sem `status` no arquivo)
+// também passam a ser bloqueadas até receberem status explícito.
 export const STATUS_DIRETRIZ = {
   VIGENTE_CONFIRMADA: "VIGENTE_CONFIRMADA",
   PENDENTE_REVISAO: "PENDENTE_REVISAO",
@@ -669,7 +674,7 @@ export const STATUS_DIRETRIZ = {
   SUBSTITUIDA: "SUBSTITUIDA",
   BLOQUEADA: "BLOQUEADA",
 };
-const _statusUtilizavel = (d) => d.status === undefined || d.status === STATUS_DIRETRIZ.VIGENTE_CONFIRMADA;
+const _statusUtilizavel = (d) => d.status === STATUS_DIRETRIZ.VIGENTE_CONFIRMADA;
 
 // Encontra todos os candidatos por palavra-chave, ignorando status — usado
 // tanto pela seleção normal (que depois filtra por status) quanto pela
