@@ -153,7 +153,14 @@ exports.gerarQuestoesIA = functions
     // conceder privilégio — só o token verificado pelo Firebase Admin SDK.
     const autenticacao = await avaliarAutenticacaoEAutorizacao({
       authHeader: req.headers.authorization || "",
-      verificarIdToken: (token) => admin.auth().verifyIdToken(token),
+      // checkRevoked:true (Micro Sprint 4B.3A) — rejeita tokens cuja sessão
+      // foi revogada (auth/id-token-revoked) ou cujo usuário foi desabilitado
+      // (auth/user-disabled), além dos casos já cobertos (inválido/expirado).
+      // Consulta adicional ao backend do Firebase Auth — ver relatório da
+      // sprint para análise de latência. avaliarAutenticacaoEAutorizacao já
+      // trata qualquer erro do verificador de forma genérica e fail-closed,
+      // então nenhuma mudança é necessária em authGate.js.
+      verificarIdToken: (token) => admin.auth().verifyIdToken(token, true),
     });
     if (!autenticacao.ok) {
       res.status(autenticacao.httpStatus).json({ erro: autenticacao.motivo });

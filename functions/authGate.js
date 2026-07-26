@@ -36,8 +36,14 @@ function _extrairBearer(authHeader) {
 }
 
 // `verificarIdToken` é injetável — em produção é `(token) =>
-// admin.auth().verifyIdToken(token)`; nos testes locais é um mock, nunca a
-// rede/Firebase real (ver scripts/test-auth-gate-server.js).
+// admin.auth().verifyIdToken(token, true)` (checkRevoked:true desde a Micro
+// Sprint 4B.3A — rejeita também sessão revogada/usuário desabilitado, além
+// de inválido/expirado); nos testes locais é um mock, nunca a rede/Firebase
+// real (ver scripts/test-auth-gate-server.js). Esta função NÃO distingue o
+// motivo do erro do verificador — qualquer exceção (revogado, desabilitado,
+// expirado, inválido, ou falha de comunicação com o Firebase Auth) já cai no
+// catch genérico abaixo e bloqueia com a mesma mensagem fail-closed. Por
+// isso o checkRevoked não exigiu nenhuma mudança de lógica aqui.
 async function avaliarAutenticacaoEAutorizacao({ authHeader, verificarIdToken, allowlist = EMAILS_AUTORIZADOS_IA } = {}) {
   try {
     const token = _extrairBearer(authHeader);

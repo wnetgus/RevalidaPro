@@ -273,6 +273,132 @@ teste("21. [estrutural] gerarQuestoesIA chama avaliarAutenticacaoEAutorizacao AN
   assert.ok(idxAuth < idxGate, "autenticação deveria ser avaliada antes do gate de payload");
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MICRO SPRINT 4B.3A — checkRevoked:true (rejeita sessão revogada/usuário
+// desabilitado). authGate.js não mudou (o catch genérico já cobria qualquer
+// motivo de falha do verificador) — só a integração real em
+// functions/index.js passou a chamar verifyIdToken(token, true). Os testes
+// abaixo simulam os erros REAIS que o Firebase Admin SDK lança nesses casos
+// (mesmo shape: objeto Error com `.code`), nunca o SDK/rede real.
+// ═══════════════════════════════════════════════════════════════════════════
+
+class FirebaseAuthErrorSimulado extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+    this.name = "FirebaseAuthError";
+  }
+}
+
+const _verificarTokenRevogado = async () => {
+  throw new FirebaseAuthErrorSimulado("auth/id-token-revoked", "The Firebase ID token has been revoked.");
+};
+const _verificarUsuarioDesabilitado = async () => {
+  throw new FirebaseAuthErrorSimulado("auth/user-disabled", "The user record has been disabled by an administrator.");
+};
+const _verificarTokenExpiradoReal = async () => {
+  throw new FirebaseAuthErrorSimulado("auth/id-token-expired", "The Firebase ID token has expired.");
+};
+const _verificarArgumentError = async () => {
+  throw new FirebaseAuthErrorSimulado("auth/argument-error", "First argument to verifyIdToken() must be a Firebase ID token string.");
+};
+
+teste("22. [estrutural] a integração real (functions/index.js) injeta verifyIdToken com checkRevoked habilitado", () => {
+  const src = fs.readFileSync(path.join(_raiz, "functions/index.js"), "utf8");
+  assert.match(src, /verifyIdToken\(token,\s*true\)/, "gerarQuestoesIA deveria chamar admin.auth().verifyIdToken(token, true)");
+});
+
+await testeAsync("23. token válido (verificador com checkRevoked resolve normalmente) continua autorizado", async () => {
+  const r = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarTokenValido });
+  assert.equal(r.ok, true);
+});
+
+await testeAsync("24. auth/id-token-revoked → 401", async () => {
+  const r = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarTokenRevogado });
+  assert.equal(r.ok, false);
+  assert.equal(r.httpStatus, 401);
+});
+
+await testeAsync("25. auth/user-disabled → 401", async () => {
+  const r = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarUsuarioDesabilitado });
+  assert.equal(r.ok, false);
+  assert.equal(r.httpStatus, 401);
+});
+
+await testeAsync("26. auth/id-token-expired continua resultando em 401 (regressão do comportamento anterior ao checkRevoked)", async () => {
+  const r = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarTokenExpiradoReal });
+  assert.equal(r.ok, false);
+  assert.equal(r.httpStatus, 401);
+});
+
+await testeAsync("27. auth/argument-error (erro genérico do verificador) → bloqueia", async () => {
+  const r = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarArgumentError });
+  assert.equal(r.ok, false);
+  assert.equal(r.httpStatus, 401);
+});
+
+await testeAsync("28. token revogado → 0 chamadas ao gate de payload", async () => {
+  const { spy, contagem } = _criarSpyFetch();
+  const r = await _fluxoCompletoSimulado({
+    authHeader: "Bearer x", verificarIdToken: _verificarTokenRevogado,
+    camposObrigatorios: { prompt: "x" }, fetchImpl: spy,
+  });
+  assert.equal(r.etapa, "auth", "não deveria nem chegar a avaliar o gate de payload");
+  assert.equal(contagem(), 0);
+});
+
+await testeAsync("29. token revogado → 0 chamadas à Anthropic (spy)", async () => {
+  const { spy, contagem } = _criarSpyFetch();
+  await _fluxoCompletoSimulado({
+    authHeader: "Bearer x", verificarIdToken: _verificarTokenRevogado,
+    camposObrigatorios: { prompt: "x" }, fetchImpl: spy,
+  });
+  assert.equal(contagem(), 0);
+});
+
+await testeAsync("30. usuário desabilitado → 0 chamadas à Anthropic (spy)", async () => {
+  const { spy, contagem } = _criarSpyFetch();
+  await _fluxoCompletoSimulado({
+    authHeader: "Bearer x", verificarIdToken: _verificarUsuarioDesabilitado,
+    camposObrigatorios: { prompt: "x" }, fetchImpl: spy,
+  });
+  assert.equal(contagem(), 0);
+});
+
+await testeAsync("31. resposta (revogado/desabilitado) não contém o token bruto", async () => {
+  const tokenSecreto = "eyJhbGciOiJSUzI1NiIsInSECRETO_REVOGADO_NUNCA_APARECE";
+  const r1 = await avaliarAutenticacaoEAutorizacao({ authHeader: `Bearer ${tokenSecreto}`, verificarIdToken: _verificarTokenRevogado });
+  const r2 = await avaliarAutenticacaoEAutorizacao({ authHeader: `Bearer ${tokenSecreto}`, verificarIdToken: _verificarUsuarioDesabilitado });
+  assert.ok(!JSON.stringify(r1).includes(tokenSecreto));
+  assert.ok(!JSON.stringify(r2).includes(tokenSecreto));
+});
+
+await testeAsync("32. resposta (revogado/desabilitado) não contém o código interno do Firebase (ex.: \"auth/id-token-revoked\")", async () => {
+  const r1 = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarTokenRevogado });
+  const r2 = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarUsuarioDesabilitado });
+  assert.ok(!JSON.stringify(r1).includes("auth/id-token-revoked"), "motivo não deveria vazar o código interno do Firebase");
+  assert.ok(!JSON.stringify(r2).includes("auth/user-disabled"), "motivo não deveria vazar o código interno do Firebase");
+});
+
+await testeAsync("33. resposta (revogado/desabilitado) não contém stack trace", async () => {
+  const r1 = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarTokenRevogado });
+  const r2 = await avaliarAutenticacaoEAutorizacao({ authHeader: "Bearer x", verificarIdToken: _verificarUsuarioDesabilitado });
+  for (const r of [r1, r2]) {
+    assert.ok(!JSON.stringify(r).includes(".js:"), "resposta não deveria conter referência a arquivo/linha de stack trace");
+    assert.ok(!("stack" in r), "resposta não deveria ter campo stack");
+  }
+});
+
+await testeAsync("34. fluxo autorizado (token não revogado/não desabilitado) continua chegando ao gate de payload", async () => {
+  const { spy } = _criarSpyFetch();
+  const r = await _fluxoCompletoSimulado({
+    authHeader: "Bearer x", verificarIdToken: _verificarTokenValido,
+    camposObrigatorios: { prompt: "x" }, fetchImpl: spy,
+  });
+  assert.equal(r.etapa, "payload");
+  assert.equal(r.autorizado, true);
+});
+
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);
 if (falhas.length > 0) {
   console.log("\nFALHAS:");
