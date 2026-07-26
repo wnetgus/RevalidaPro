@@ -15,6 +15,9 @@
  *   - PROMPT_MIGRACAO e PROMPT_RESUMO_TEMA: exclusivos do RoboGerador, ficam nele
  */
 
+import { auth } from "../firebase";
+import { obterHeadersAutenticados } from "./apiAuth";
+
 // ─── SUPER APOSTAS — Ciclo de Nível de Aposta ────────────────────────────────
 // Sequência BAIXO → MEDIO → ALTO aplicada ciclicamente por questão.
 // Para lotes < 3 usa os últimos N do ciclo (garante nível máximo em lotes menores).
@@ -69,6 +72,13 @@ export const extrairJSONDoTexto = (str) => {
 // ─── CLIENTE DA CLOUD FUNCTION ────────────────────────────────────────────────
 // Chama gerarQuestoesIA, extrai e retorna o array de questões parseado.
 // Uso: const questoes = await chamarIA(PROMPT_SISTEMA_ROBO, promptTema)
+//
+// Micro Sprint 4B.1: gerarQuestoesIA agora exige Firebase ID token
+// (Authorization: Bearer <token>) — obtido aqui, na hora, via Firebase Auth.
+// Se não houver usuário autenticado, obterHeadersAutenticados lança ANTES do
+// fetch (0 chamadas à rede); o erro sobe para o try/catch de cada chamador
+// (RoboGerador.jsx, resumoEngine.js), que já tratam qualquer falha desta
+// função da mesma forma que um erro de rede comum.
 export const chamarIA = async (systemPrompt, promptUsuario) => {
   const isDev = window.location.hostname === "localhost" ||
                 window.location.hostname === "127.0.0.1";
@@ -77,9 +87,10 @@ export const chamarIA = async (systemPrompt, promptUsuario) => {
     : (import.meta.env.VITE_FUNCTIONS_BASE_URL ||
        "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/gerarQuestoesIA";
 
+  const headersAuth = await obterHeadersAutenticados(auth);
   const response = await fetch(endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headersAuth },
     body: JSON.stringify({ system: systemPrompt, prompt: promptUsuario }),
   });
 

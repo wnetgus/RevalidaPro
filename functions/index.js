@@ -7,6 +7,7 @@ const functions = require("firebase-functions/v1");
 const admin = require("firebase-admin");
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 const { chamarAnthropicViaGate } = require("./gate");
+const { avaliarAutenticacaoEAutorizacao } = require("./authGate");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -143,6 +144,21 @@ exports.gerarQuestoesIA = functions
 
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST")   { res.status(405).json({ erro: "Método não permitido" }); return; }
+
+    // ── AUTENTICAÇÃO + AUTORIZAÇÃO (Micro Sprint 4B.1) ───────────────────────
+    // Antes de QUALQUER outro gate ou chamada — token ausente/inválido/
+    // expirado (401) ou usuário autenticado sem autorização (403) bloqueiam
+    // aqui, sem nunca chegar ao gate de payload nem à Anthropic. Dados do
+    // corpo da requisição (email, isAdmin etc.) NUNCA são usados para
+    // conceder privilégio — só o token verificado pelo Firebase Admin SDK.
+    const autenticacao = await avaliarAutenticacaoEAutorizacao({
+      authHeader: req.headers.authorization || "",
+      verificarIdToken: (token) => admin.auth().verifyIdToken(token),
+    });
+    if (!autenticacao.ok) {
+      res.status(autenticacao.httpStatus).json({ erro: autenticacao.motivo });
+      return;
+    }
 
     try {
       const { system, prompt, model } = req.body;

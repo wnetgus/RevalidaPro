@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import { normalizarMateriaEstrita, pertenceAMateria } from "../utils/normalizarMateria";
 import { getQuestoes, invalidarCacheQuestoes } from "../utils/questoesCache";
+import { obterHeadersAutenticados } from "../utils/apiAuth";
 import { PROMPT_SISTEMA_RESUMO } from "../utils/promptEngine";
 import { classificarPorRegras } from "../utils/resumoEngine";
 import {
@@ -180,9 +181,10 @@ const ResumoGerador = () => {
     setMigrandoId(questao.id);
     addLog(`Classificando: "${(questao.enunciado || "").slice(0, 55)}..."`, "info");
     try {
+      const headersAuth = await obterHeadersAutenticados(auth);
       const resp = await fetch(ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headersAuth },
         body: JSON.stringify({
           system: PROMPT_MIGRACAO,
           prompt: `Classifique este enunciado:\n"${(questao.enunciado || "").slice(0, 600)}"`,
@@ -354,9 +356,10 @@ const ResumoGerador = () => {
         ? `Contexto clínico OBRIGATÓRIO: "${subcontexto_clinico}" — todo o conteúdo deve ser específico para este contexto.`
         : "Contexto: adulto padrão.";
 
+      const headersAuth = await obterHeadersAutenticados(auth);
       const resp = await fetch(ENDPOINT, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headersAuth },
         body: JSON.stringify({
           system: PROMPT_SISTEMA_RESUMO,
           prompt: `Tema: "${tema_mestre}"\n${contextoTexto}\n${blocoDir}Área: ${materia || "Medicina Geral"}`,

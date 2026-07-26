@@ -1,7 +1,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import React, { useState, useCallback, useEffect, useMemo } from "react";
-import { db } from "../firebase";
+import { db, auth } from "../firebase";
 import { invalidarCacheQuestoes } from "../utils/questoesCache";
+import { obterHeadersAutenticados } from "../utils/apiAuth";
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
 import {
   FaPlus, FaTrash, FaImage, FaCode, FaThList,
@@ -912,6 +913,13 @@ const ImportadorPro = () => {
         return;
       }
 
+      // ── AUTENTICAÇÃO (Micro Sprint 4B.1) ───────────────────────────
+      // gerarQuestoesIA agora exige Firebase ID token. Obtido uma vez aqui,
+      // após o gate clínico e antes de qualquer fetch — se não houver sessão,
+      // lança e aborta ANTES da primeira chamada de rede (nenhum lote chega
+      // a ser enviado).
+      const headersAuth = await obterHeadersAutenticados(auth);
+
       // ── AUTO-BATCHING ────────────────────────────────────────────────────────
       // Lotes > 5 questões são divididos em chamadas de até 5 para evitar
       // truncamento por limite de tokens do modelo (max_tokens: 8192 ≈ 5 questões).
@@ -948,7 +956,7 @@ const ImportadorPro = () => {
 
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...headersAuth },
           body: JSON.stringify({ system: PROMPT_SISTEMA, prompt: promptConstruido }),
         });
 
