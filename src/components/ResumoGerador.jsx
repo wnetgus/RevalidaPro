@@ -7,6 +7,7 @@ import { classificarPorRegras } from "../utils/resumoEngine";
 import {
   DIRETRIZES_CONTROLADAS,
   detectarDiretriz, detectarDiretrizDinamica, montarBlocoDiretriz,
+  avaliarBloqueioSeguro,
 } from "../config/diretrizesControladas";
 import {
   collection, getDocs, doc, setDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp
@@ -338,6 +339,16 @@ const ResumoGerador = () => {
       }
       const diretrizTema = diretrizCacheRef.current.get(temaKey);
       const blocoDir = diretrizTema ? montarBlocoDiretriz(diretrizTema) : "";
+
+      // ── Pré-check de governança clínica (Micro Sprint 4A.2) ──────────────
+      // Antes desta correção, uma diretriz bloqueada (PENDENTE_REVISAO etc.)
+      // virava silenciosamente `diretrizTema = null` / `blocoDir = ""` e o
+      // fetch abaixo prosseguia sem grounding, em vez de barrar a chamada.
+      const avaliacaoGovernanca = avaliarBloqueioSeguro(diretrizesRef.current, tema_mestre, "");
+      if (avaliacaoGovernanca.bloqueado) {
+        addLog(`✗ ${label} — BLOQUEADO (0 chamadas à IA): ${avaliacaoGovernanca.motivo}`, "erro");
+        return;
+      }
 
       const contextoTexto = subcontexto_clinico
         ? `Contexto clínico OBRIGATÓRIO: "${subcontexto_clinico}" — todo o conteúdo deve ser específico para este contexto.`

@@ -711,21 +711,53 @@ export const detectarDiretrizDinamica = (lista = [], temaMestre = "", subtema = 
 export const detectarDiretriz = (temaMestre = "", subtema = "") =>
   detectarDiretrizDinamica(DIRETRIZES_CONTROLADAS, temaMestre, subtema);
 
-// ─── AVALIAR BLOQUEIO POR GOVERNANÇA (Macro Sprint 2026.2) ───────────────────
+// ─── AVALIAR BLOQUEIO POR GOVERNANÇA (Macro Sprint 2026.2, endurecido na
+// Micro Sprint 4A.2 — fechamento sistêmico do fail-closed) ───────────────────
 // Chamada ANTES de montar o prompt/chamar a IA. Diferente de
 // detectarDiretrizDinamica (que silenciosamente ignora diretrizes não
 // vigentes e cai para "sem grounding"), esta função existe para DETECTAR que
 // havia uma diretriz relevante para o tema, mas ela não está em condições de
 // uso — permitindo barrar a geração com motivo explícito em vez de prosseguir
 // sem nenhum grounding para um tema que claramente precisa dele.
+//
+// Corrige, nesta Micro Sprint, um bug latente: quando havia uma candidata
+// utilizável e OUTRA candidata mais recente (maior ano) porém bloqueada, a
+// função liberava (bloqueado:false) mas devolvia a candidata MAIS RECENTE
+// (não-utilizável) como `diretriz` — o campo ficava inconsistente com a
+// decisão de liberação. Corrigido para: (1) `diretriz` no caso liberado é
+// sempre a própria candidata utilizável; (2) se existe candidata mais
+// recente que a única utilizável e essa mais recente NÃO está liberada,
+// bloqueia em vez de prosseguir silenciosamente com a versão antiga;
+// (3) se há mais de uma candidata utilizável ao mesmo tempo (ex.: duas
+// diretrizes ativas de temas diferentes cobrindo o mesmo ponto — caso dTpa em
+// `prenatal` x `vacinacao`, não resolvido nesta sprint), não há como decidir
+// com segurança qual rege o tema — bloqueia por ambiguidade.
 export const avaliarBloqueioDiretriz = (lista = [], temaMestre = "", subtema = "") => {
   const candidatas = _candidatasPorPalavraChave(lista, temaMestre, subtema);
   if (!candidatas.length) return { bloqueado: false, diretriz: null, motivo: null };
 
-  const melhorUtilizavel = candidatas.filter(_statusUtilizavel);
+  const utilizaveis = candidatas.filter(_statusUtilizavel);
   const melhorGeral = candidatas.reduce((best, cur) => (cur.ano > best.ano ? cur : best));
 
-  if (melhorUtilizavel.length > 0) return { bloqueado: false, diretriz: melhorGeral, motivo: null };
+  if (utilizaveis.length > 1) {
+    return {
+      bloqueado: true,
+      diretriz: null,
+      motivo: `${utilizaveis.length} diretrizes ativas e utilizáveis conflitam para este tema (${utilizaveis.map(u => u.id).join(", ")}) — bloqueado por ambiguidade, requer decisão humana`,
+    };
+  }
+
+  if (utilizaveis.length === 1) {
+    const unica = utilizaveis[0];
+    if (melhorGeral !== unica) {
+      return {
+        bloqueado: true,
+        diretriz: melhorGeral,
+        motivo: `existe versão mais recente (${melhorGeral.ano}) desta diretriz com status não utilizável (${melhorGeral.status}) — não é seguro prosseguir com a versão anterior (${unica.ano}) sem confirmação humana`,
+      };
+    }
+    return { bloqueado: false, diretriz: unica, motivo: null };
+  }
 
   const motivoPorStatus = {
     [STATUS_DIRETRIZ.PENDENTE_REVISAO]: "diretriz pendente de revisão humana (edição mais nova localizada, conteúdo não confirmado linha a linha)",
@@ -735,6 +767,37 @@ export const avaliarBloqueioDiretriz = (lista = [], temaMestre = "", subtema = "
   };
   const motivo = motivoPorStatus[melhorGeral.status] || `diretriz com status não utilizável (${melhorGeral.status})`;
   return { bloqueado: true, diretriz: melhorGeral, motivo };
+};
+
+// ─── AVALIAR BLOQUEIO COM FALLBACK PARA A LISTA ESTÁTICA (Micro Sprint 4A.2) ─
+// Os consumidores carregam uma lista "efetiva" (Firestore, se não-vazia,
+// senão a estática) e hoje só aplicam esse fallback ao TEXTO de grounding
+// (`detectarDiretrizDinamica(lista) || detectarDiretriz(...)`), nunca ao
+// bloqueio em si. Isso permitia um tema sem candidata na lista carregada
+// escapar do bloqueio mesmo quando a lista estática tem uma diretriz
+// correspondente e não utilizável para o mesmo tema — bloqueio silenciosamente
+// virando "sem grounding" em vez de barrar a chamada à IA. Esta função aplica
+// o MESMO fallback ao bloqueio: só é seguro tratar o tema como "sem diretriz
+// correspondente" se nem a lista efetiva nem a estática acusarem candidata.
+export const avaliarBloqueioComFallback = (lista = [], temaMestre = "", subtema = "") => {
+  const avaliacao = avaliarBloqueioDiretriz(lista, temaMestre, subtema);
+  if (avaliacao.bloqueado || avaliacao.diretriz) return avaliacao;
+  return avaliarBloqueioDiretriz(DIRETRIZES_CONTROLADAS, temaMestre, subtema);
+};
+
+// ─── AVALIAR BLOQUEIO À PROVA DE ERRO (Micro Sprint 4A.2) ────────────────────
+// Os pré-checks nos consumidores rodam antes (ou fora) do try/catch principal
+// de geração em alguns fluxos (ex.: loop de temas do RoboGerador.jsx) — uma
+// exceção não tratada aqui (doc malformado vindo do Firestore, palavrasChave
+// não-array, etc.) escaparia do bloqueio e poderia interromper todo o lote de
+// forma não controlada, ou pior, nunca decidir e deixar passar. Regra:
+// erro ao avaliar a governança = bloqueado (fail-closed), nunca fail-open.
+export const avaliarBloqueioSeguro = (lista, temaMestre, subtema) => {
+  try {
+    return avaliarBloqueioComFallback(lista, temaMestre, subtema);
+  } catch (e) {
+    return { bloqueado: true, diretriz: null, motivo: `erro ao avaliar governança clínica: ${e.message}` };
+  }
 };
 
 // ─── MONTAR BLOCO DE INJEÇÃO PARA O PROMPT ───────────────────────────────────

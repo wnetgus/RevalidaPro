@@ -23,6 +23,7 @@ import {
   DIRETRIZES_CONTROLADAS,
   detectarDiretriz, montarBlocoDiretriz,
   detectarDiretrizDinamica,
+  avaliarBloqueioSeguro,
 } from "../config/diretrizesControladas";
 
 // ─── HELPER: PRÓXIMO NÚMERO DE QUESTÃO ────────────────────────
@@ -899,6 +900,17 @@ const ImportadorPro = () => {
       const diretrizAtual = diretrizesAtivas.length > 0
         ? detectarDiretrizDinamica(diretrizesAtivas, temaMestreReal2, subtemaReal2)
         : detectarDiretriz(temaMestreReal2, subtemaReal2);
+
+      // ── Pré-check de governança clínica (Micro Sprint 4A.2) ─────────────────
+      // Antes desta correção, só se detectava a diretriz (já filtrada por
+      // status) para montar o texto de grounding — se estivesse bloqueada,
+      // `diretrizAtual` virava null e o código seguia direto para o fetch,
+      // gerando conteúdo protocolar sem grounding em vez de barrar a chamada.
+      const avaliacaoGovernanca = avaliarBloqueioSeguro(diretrizesAtivas, temaMestreReal2, subtemaReal2);
+      if (avaliacaoGovernanca.bloqueado) {
+        setErroIA(`🚫 Geração bloqueada (0 chamadas à IA) — ${avaliacaoGovernanca.motivo}`);
+        return;
+      }
 
       // ── AUTO-BATCHING ────────────────────────────────────────────────────────
       // Lotes > 5 questões são divididos em chamadas de até 5 para evitar

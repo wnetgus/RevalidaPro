@@ -24,7 +24,7 @@ import { gerarESalvarResumo } from "../utils/resumoEngine";
 import {
   DIRETRIZES_CONTROLADAS,
   detectarDiretriz, detectarDiretrizDinamica, montarBlocoDiretriz,
-  avaliarBloqueioDiretriz,
+  avaliarBloqueioSeguro,
 } from "../config/diretrizesControladas";
 import { statusRecorteSA } from "../config/recortesStatusSA";
 
@@ -559,6 +559,9 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
             case "erro_tecnico":
               addLog(`   ❌ Resumo do Tema falhou tecnicamente${chave} — ${r.erro}`, "erro");
               break;
+            case "bloqueado_diretriz":
+              addLog(`   🚫 Resumo do Tema BLOQUEADO (0 chamadas à IA)${chave} — ${r.motivo}`, "aviso");
+              break;
             default:
               addLog(`   ⚠️  Resumo do Tema — status inesperado: ${JSON.stringify(r)}`, "aviso");
           }
@@ -769,7 +772,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       // FONTE, não do recorte em si. Um tema sem nenhuma diretriz correspondente
       // não é afetado (continua gerando sem grounding, comportamento inalterado).
       if (formatoABCDAtual) {
-        const avaliacao = avaliarBloqueioDiretriz(diretrizesRef.current, tema, "");
+        const avaliacao = avaliarBloqueioSeguro(diretrizesRef.current, tema, "");
         if (avaliacao.bloqueado) {
           addLog(
             `   🚫 "${tema}" — GERAÇÃO BLOQUEADA (0 chamadas à IA). Diretriz "${avaliacao.diretriz?.tema}" com status ${avaliacao.diretriz?.status}: ${avaliacao.motivo}.`,
@@ -950,6 +953,24 @@ Requisitos gerais:
         // Comportamento INALTERADO por esta rodada (fora do escopo da
         // auditoria de custo, que mirou exclusivamente o formato ABCD 2026.2
         // usado no Lote 002). ───────────────────────────────────────────────
+
+        // ── Pré-check de governança clínica (Micro Sprint 4A.2) ─────────────
+        // Antes desta correção, o caminho legado só chamava
+        // detectarDiretrizDinamica/detectarDiretriz para montar o texto de
+        // grounding — se a diretriz correspondente estivesse bloqueada, essas
+        // funções retornavam null e o bloqueio virava silenciosamente "sem
+        // grounding", chamando a IA do mesmo jeito. Mesma checagem do ABCD,
+        // aplicada aqui pela primeira vez.
+        const avaliacaoLegado = avaliarBloqueioSeguro(diretrizesRef.current, tema, "");
+        if (avaliacaoLegado.bloqueado) {
+          addLog(
+            `   🚫 "${tema}" — GERAÇÃO BLOQUEADA (0 chamadas à IA). Diretriz "${avaliacaoLegado.diretriz?.tema}" com status ${avaliacaoLegado.diretriz?.status}: ${avaliacaoLegado.motivo}.`,
+            "aviso"
+          );
+          setTemasFalhos(prev => [...prev, tema]);
+          continue;
+        }
+
         let tentativa = 1;
         while (tentativa <= MAX_RETRIES && !abortRef.current) {
           if (tentativa > 1) {

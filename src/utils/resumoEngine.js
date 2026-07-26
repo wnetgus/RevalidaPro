@@ -18,7 +18,7 @@
 import { db } from "../firebase";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { PROMPT_SISTEMA_RESUMO, PROMPT_SISTEMA_RESUMO_SA, chamarIA, executarGeracaoResumoSA } from "./promptEngine";
-import { detectarDiretriz, montarBlocoDiretriz } from "../config/diretrizesControladas";
+import { detectarDiretriz, montarBlocoDiretriz, avaliarBloqueioSeguro, DIRETRIZES_CONTROLADAS } from "../config/diretrizesControladas";
 
 // ── Regras de contexto clínico (movidas de ResumoGerador.jsx) ─────────────────
 // Analisa texto da questão e retorna o subcontexto_clinico mais provável.
@@ -113,6 +113,23 @@ export const gerarESalvarResumo = async (questao) => {
     const docRef = doc(db, "teorias", key);
     const jaExiste = await getDoc(docRef);
     if (jaExiste.exists()) return { status: "dedup_firestore", key };
+
+    // ── Pré-check de governança clínica (Micro Sprint 4A.2) ──────────────────
+    // Antes desta correção, só se chamava detectarDiretriz (que já filtra por
+    // status) — se a diretriz do tema estivesse bloqueada, a função retornava
+    // null e o código seguia para chamarIA/executarGeracaoResumoSA como se
+    // não houvesse diretriz nenhuma ("sem grounding"), quando na verdade havia
+    // uma diretriz conhecida e não autorizada. Este módulo só tem acesso à
+    // lista estática (não carrega Firestore) — avalia o bloqueio sobre ela.
+    const avaliacao = avaliarBloqueioSeguro(DIRETRIZES_CONTROLADAS, tema, questao.subtema || "");
+    if (avaliacao.bloqueado) {
+      return {
+        status: "bloqueado_diretriz",
+        key,
+        motivo: avaliacao.motivo,
+        diretriz: avaliacao.diretriz ? { id: avaliacao.diretriz.id, fonte: avaliacao.diretriz.fonte, status: avaliacao.diretriz.status } : null,
+      };
+    }
 
     // Detecta diretriz estática para injeção no prompt
     const diretriz = detectarDiretriz(tema, questao.subtema || "");

@@ -6,14 +6,22 @@
 // Sai com código 1 se qualquer assert falhar (apto para uso em CI futuro).
 
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   DIRETRIZES_CONTROLADAS,
   detectarDiretrizDinamica,
   detectarDiretriz,
   avaliarBloqueioDiretriz,
+  avaliarBloqueioComFallback,
+  avaliarBloqueioSeguro,
   montarBlocoDiretriz,
   STATUS_DIRETRIZ,
 } from "../src/config/diretrizesControladas.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const _raiz = path.resolve(__dirname, "..");
 
 let passou = 0;
 const falhas = [];
@@ -459,6 +467,232 @@ teste("42. [C1] Firestore vazio não quebra e não libera nada (cai para 'sem gr
   const avaliacao = avaliarBloqueioDiretriz([], "qualquer tema", "");
   assert.equal(avaliacao.bloqueado, false);
   assert.equal(avaliacao.diretriz, null);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MICRO SPRINT 4A.2 — Fechamento sistêmico do bloqueio fail-closed:
+// (A) funções puras — conflito de candidatas, fallback, à prova de erro;
+// (B) prova de zero chamada externa via spy/contador (sem rede real);
+// (C) prova estrutural — confirma no CÓDIGO-FONTE REAL de cada consumidor que
+//     o guard de bloqueio antecede a chamada de rede/IA. Não substitui um
+//     teste de comportamento real (não há framework de DOM/mocking instalado
+//     nesta sprint para exercitar os componentes React), mas prova o fato
+//     objetivo que mais importa: a ordem do código garante 0 chamadas quando
+//     bloqueado — não é "só a função pura decide certo, o consumidor ignora".
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── (A) CONFLITO DE CANDIDATAS E FALLBACK ───────────────────────────────────
+
+teste("43. [4A.2] duas candidatas ativas e utilizáveis para o mesmo tema bloqueiam por ambiguidade", () => {
+  const lista = [
+    { id: "amb_a", tema: "Ambígua A", palavrasChave: ["ambiguoteste"], fonte: "Fonte A", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+    { id: "amb_b", tema: "Ambígua B", palavrasChave: ["ambiguoteste"], fonte: "Fonte B", ano: 2023, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+  ];
+  const avaliacao = avaliarBloqueioDiretriz(lista, "ambiguoteste", "");
+  assert.equal(avaliacao.bloqueado, true, "duas diretrizes utilizáveis conflitantes deveriam bloquear, não escolher uma arbitrariamente");
+  assert.match(avaliacao.motivo, /ambiguidade/i);
+});
+
+teste("44. [4A.2] candidata utilizável mais antiga NÃO contorna candidata mais recente bloqueada", () => {
+  const lista = [
+    { id: "vers_antiga", tema: "Versão Antiga", palavrasChave: ["versaoteste"], fonte: "Fonte 2020", ano: 2020, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+    { id: "vers_nova", tema: "Versão Nova", palavrasChave: ["versaoteste"], fonte: "Fonte 2025", ano: 2025, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.PENDENTE_REVISAO },
+  ];
+  const avaliacao = avaliarBloqueioDiretriz(lista, "versaoteste", "");
+  assert.equal(avaliacao.bloqueado, true, "antes da correção 4A.2, isto liberava com bloqueado:false usando a versão 2020");
+  assert.equal(avaliacao.diretriz.id, "vers_nova", "motivo deve referenciar a versão mais recente, que é a bloqueante");
+});
+
+teste("45. [4A.2] com uma única candidata utilizável (sem versão mais recente conflitante), libera normalmente", () => {
+  const lista = [
+    { id: "unica_ok", tema: "Única OK", palavrasChave: ["unicaok"], fonte: "Fonte Única", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+  ];
+  const avaliacao = avaliarBloqueioDiretriz(lista, "unicaok", "");
+  assert.equal(avaliacao.bloqueado, false);
+  assert.equal(avaliacao.diretriz.id, "unica_ok", "regressão do bug: diretriz devolvida deve ser a própria utilizável, não a 'melhorGeral' bruta");
+});
+
+teste("46. [4A.2] avaliarBloqueioComFallback usa a lista estática quando a lista efetiva não tem candidata", () => {
+  // "sepse" não tem status no arquivo estático (Fase 1 não tocou) — pós-C1,
+  // fica bloqueada. Lista efetiva vazia (Firestore sem dados) não deve virar
+  // "sem grounding, prossiga sem checar" — deve cair para a estática e herdar
+  // o mesmo bloqueio.
+  const avaliacao = avaliarBloqueioComFallback([], "Sepse", "");
+  assert.equal(avaliacao.bloqueado, true, "deveria herdar o bloqueio da lista estática (sepse sem status)");
+});
+
+teste("47. [4A.2] avaliarBloqueioComFallback NÃO recorre à estática quando a lista efetiva já decidiu (bloqueada ou liberada)", () => {
+  const listaEfetivaBloqueada = [
+    { id: "fx_bloqueada", tema: "FX Bloqueada", palavrasChave: ["fxbloqueada"], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.BLOQUEADA },
+  ];
+  const avaliacao = avaliarBloqueioComFallback(listaEfetivaBloqueada, "fxbloqueada", "");
+  assert.equal(avaliacao.bloqueado, true);
+  assert.equal(avaliacao.diretriz.id, "fx_bloqueada", "não deveria ter sido substituída por nenhuma candidata da lista estática");
+});
+
+// ─── (A) À PROVA DE ERRO ──────────────────────────────────────────────────────
+
+teste("48. [4A.2] avaliarBloqueioSeguro bloqueia (fail-closed) quando a avaliação lança exceção", () => {
+  // palavrasChave com valor não-string (null) faz `kw.toLowerCase()` lançar
+  // dentro de _casaPalavraChave — simula doc malformado vindo do Firestore.
+  const listaMalformada = [
+    { id: "malformado", tema: "Malformado", palavrasChave: [null], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+  ];
+  assert.doesNotThrow(() => avaliarBloqueioSeguro(listaMalformada, "qualquer coisa", ""));
+  const avaliacao = avaliarBloqueioSeguro(listaMalformada, "qualquer coisa", "");
+  assert.equal(avaliacao.bloqueado, true, "erro ao avaliar governança deve bloquear, nunca liberar (fail-closed)");
+  assert.match(avaliacao.motivo, /erro ao avaliar governança/i);
+});
+
+teste("49. [4A.2] avaliarBloqueioSeguro funciona normalmente (não bloqueia) quando não há erro", () => {
+  const avaliacao = avaliarBloqueioSeguro(DIRETRIZES_CONTROLADAS, "tema sem nenhuma diretriz correspondente xyz123", "");
+  assert.equal(avaliacao.bloqueado, false);
+});
+
+// ─── (B) PROVA DE ZERO CHAMADA EXTERNA (spy/contador, sem rede real) ─────────
+// Simula o padrão real usado em todos os consumidores após esta Micro Sprint:
+// avaliar governança primeiro, só invocar a "chamada externa" (aqui, um spy —
+// nunca fetch/chamarIA reais) se não bloqueado. Não é uma chamada de rede.
+function _simularConsumidor(lista, tema, subtema, spy) {
+  const avaliacao = avaliarBloqueioSeguro(lista, tema, subtema);
+  if (avaliacao.bloqueado) return { chamouIA: false, avaliacao };
+  spy();
+  return { chamouIA: true, avaliacao };
+}
+
+function _criarSpy() {
+  let chamadas = 0;
+  const spy = () => { chamadas++; };
+  return { spy, contagem: () => chamadas };
+}
+
+teste("50. [4A.2] status ausente → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  const doc = { id: "s50", tema: "T50", palavrasChave: ["spy50"], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false };
+  const r = _simularConsumidor([doc], "spy50", "", spy);
+  assert.equal(r.chamouIA, false);
+  assert.equal(contagem(), 0);
+});
+
+teste("51. [4A.2] status vazio (\"\") → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  const doc = { id: "s51", tema: "T51", palavrasChave: ["spy51"], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: "" };
+  _simularConsumidor([doc], "spy51", "", spy);
+  assert.equal(contagem(), 0);
+});
+
+teste("52. [4A.2] status desconhecido → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  const doc = { id: "s52", tema: "T52", palavrasChave: ["spy52"], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: "ALGO_NAO_MAPEADO" };
+  _simularConsumidor([doc], "spy52", "", spy);
+  assert.equal(contagem(), 0);
+});
+
+teste("53. [4A.2] PENDENTE_REVISAO → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  const doc = { id: "s53", tema: "T53", palavrasChave: ["spy53"], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.PENDENTE_REVISAO };
+  _simularConsumidor([doc], "spy53", "", spy);
+  assert.equal(contagem(), 0);
+});
+
+teste("54. [4A.2] VIGENTE_CONFIRMADA único → alcança a próxima etapa (spy chamado 1x)", () => {
+  const { spy, contagem } = _criarSpy();
+  const doc = { id: "s54", tema: "T54", palavrasChave: ["spy54"], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA };
+  const r = _simularConsumidor([doc], "spy54", "", spy);
+  assert.equal(r.chamouIA, true);
+  assert.equal(contagem(), 1);
+});
+
+teste("55. [4A.2] erro na avaliação → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  const docMalformado = { id: "s55", tema: "T55", palavrasChave: [null], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA };
+  assert.doesNotThrow(() => _simularConsumidor([docMalformado], "qualquer coisa", "", spy));
+  assert.equal(contagem(), 0);
+});
+
+teste("56. [4A.2] múltiplas candidatas conflitantes → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  const lista = [
+    { id: "s56a", tema: "T56A", palavrasChave: ["spy56"], fonte: "F", ano: 2024, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+    { id: "s56b", tema: "T56B", palavrasChave: ["spy56"], fonte: "F", ano: 2023, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+  ];
+  _simularConsumidor(lista, "spy56", "", spy);
+  assert.equal(contagem(), 0);
+});
+
+teste("57. [4A.2] candidata antiga utilizável não contorna a mais recente bloqueada → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  const lista = [
+    { id: "s57_antiga", tema: "T57 Antiga", palavrasChave: ["spy57"], fonte: "F", ano: 2020, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.VIGENTE_CONFIRMADA },
+    { id: "s57_nova", tema: "T57 Nova", palavrasChave: ["spy57"], fonte: "F", ano: 2025, pontosCriticos: ["p"], ativa: true, historica: false, status: STATUS_DIRETRIZ.PENDENTE_REVISAO },
+  ];
+  _simularConsumidor(lista, "spy57", "", spy);
+  assert.equal(contagem(), 0);
+});
+
+teste("58. [4A.2] Firestore vazio, tema conhecido bloqueado na estática → 0 chamadas à IA (spy)", () => {
+  const { spy, contagem } = _criarSpy();
+  // "sepse" sem status no arquivo estático → bloqueado pós-C1. Consumidor
+  // real passaria a lista efetiva (vazia) — avaliarBloqueioSeguro cai para a
+  // estática via avaliarBloqueioComFallback internamente.
+  _simularConsumidor([], "Sepse", "", spy);
+  assert.equal(contagem(), 0);
+});
+
+teste("59. [4A.2] tema sem nenhuma diretriz correspondente → comportamento preservado, spy chamado 1x", () => {
+  const { spy, contagem } = _criarSpy();
+  const r = _simularConsumidor(DIRETRIZES_CONTROLADAS, "tema totalmente aleatorio sem match nenhum 999", "", spy);
+  assert.equal(r.chamouIA, true, "regressão: tema não-protocolar deve continuar gerando normalmente");
+  assert.equal(contagem(), 1);
+});
+
+// ─── (C) PROVA ESTRUTURAL — guard antecede a chamada de rede no código real ──
+// Verificação de posição textual no arquivo-fonte real de cada consumidor:
+// confirma que a checagem de bloqueio aparece ANTES do fetch/chamarIA/
+// executarGeracaoSA correspondente. Categoria distinta dos testes de função
+// pura acima — aqui provamos a FIAÇÃO real do consumidor, não só a decisão.
+function _fonte(relPath) {
+  return fs.readFileSync(path.join(_raiz, relPath), "utf8");
+}
+function _assertOrdem(nomeArquivo, conteudo, marcadorGuarda, marcadorChamada, apartirDe = 0) {
+  const idxGuarda = conteudo.indexOf(marcadorGuarda, apartirDe);
+  const idxChamada = conteudo.indexOf(marcadorChamada, apartirDe);
+  assert.ok(idxGuarda !== -1, `${nomeArquivo}: marcador de guarda não encontrado — "${marcadorGuarda.slice(0, 60)}..."`);
+  assert.ok(idxChamada !== -1, `${nomeArquivo}: marcador de chamada não encontrado — "${marcadorChamada.slice(0, 60)}..."`);
+  assert.ok(idxGuarda < idxChamada, `${nomeArquivo}: guarda deveria vir ANTES da chamada externa`);
+  return idxChamada;
+}
+
+teste("60. [4A.2 estrutural] RoboGerador.jsx (ABCD) — bloqueio antecede executarGeracaoSA", () => {
+  const src = _fonte("src/components/RoboGerador.jsx");
+  _assertOrdem("RoboGerador.jsx", src, "avaliarBloqueioSeguro(diretrizesRef.current, tema, \"\")", "executarGeracaoSA(promptTema, systemPromptAtual");
+});
+
+teste("61. [4A.2 estrutural] RoboGerador.jsx (legado A–E) — bloqueio antecede chamarIA", () => {
+  const src = _fonte("src/components/RoboGerador.jsx");
+  const idxLegadoGuarda = src.indexOf("avaliacaoLegado.bloqueado");
+  assert.ok(idxLegadoGuarda !== -1, "guarda do fluxo legado não encontrada — regressão da Micro Sprint 4A.2");
+  _assertOrdem("RoboGerador.jsx (legado)", src, "avaliacaoLegado.bloqueado", "await chamarIA(promptTema, systemPromptAtual)", idxLegadoGuarda);
+});
+
+teste("62. [4A.2 estrutural] ImportadorPro.jsx — bloqueio antecede fetch(endpoint)", () => {
+  const src = _fonte("src/components/ImportadorPro.jsx");
+  _assertOrdem("ImportadorPro.jsx", src, "avaliacaoGovernanca.bloqueado", "fetch(endpoint, {");
+});
+
+teste("63. [4A.2 estrutural] ResumoGerador.jsx (gerarUm) — bloqueio antecede fetch(ENDPOINT)", () => {
+  const src = _fonte("src/components/ResumoGerador.jsx");
+  const idxGuarda = src.indexOf("avaliacaoGovernanca.bloqueado");
+  assert.ok(idxGuarda !== -1, "guarda de gerarUm não encontrada — regressão da Micro Sprint 4A.2");
+  _assertOrdem("ResumoGerador.jsx", src, "avaliacaoGovernanca.bloqueado", "fetch(ENDPOINT, {", idxGuarda);
+});
+
+teste("64. [4A.2 estrutural] resumoEngine.js — bloqueio antecede executarGeracaoResumoSA E chamarIA (fluxo legado INEP)", () => {
+  const src = _fonte("src/utils/resumoEngine.js");
+  const idxGuarda = src.indexOf("avaliacao.bloqueado");
+  assert.ok(idxGuarda !== -1, "guarda de gerarESalvarResumo não encontrada — regressão da Micro Sprint 4A.2");
+  _assertOrdem("resumoEngine.js (SA)", src, "avaliacao.bloqueado", "executarGeracaoResumoSA(", idxGuarda);
+  _assertOrdem("resumoEngine.js (legado INEP)", src, "avaliacao.bloqueado", "await chamarIA(PROMPT_SISTEMA_RESUMO, promptUsuario)", idxGuarda);
 });
 
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);
