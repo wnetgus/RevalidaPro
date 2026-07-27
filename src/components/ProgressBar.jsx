@@ -70,6 +70,6 @@ const st = {
     height: "100%",
     background: "linear-gradient(90deg, #4f46e5 0%, #a855f7 100%)",
     borderRadius: "20px",
-    transition: "0.6s cubic-bezier(0.4, 0, 0.2, 1)" // Transição suave "médica"
+    transition: "width 0.8s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease"
   }
 };

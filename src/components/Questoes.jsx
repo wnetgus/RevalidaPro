@@ -65,6 +65,7 @@ const Questoes = () => {
         </div>
       </header>
 
+      <style>{`.questao-card { transition: all 0.25s cubic-bezier(0.4,0,0.2,1); } .questao-card:hover { border-color: rgba(79,70,229,0.25); box-shadow: 0 12px 30px rgba(0,0,0,0.12); } .btn-expande:hover { opacity: 0.8; transform: translateX(3px); } .btn-expande:active { transform: translateX(1px); } .filter-bar:hover { border-color: rgba(79,70,229,0.25); }`}</style>
       {carregando ? (
         <div style={st.loader}>Sincronizando acervo médico...</div>
       ) : (
@@ -149,7 +150,7 @@ const st = {
   title: { fontSize: "24px", fontWeight: "900", margin: 0 },
   subtitle: { color: "#64748b", fontSize: "14px", margin: "5px 0 0 0" },
   filterBar: { display: "flex", alignItems: "center", gap: "12px", background: "#1e293b", padding: "12px 20px", borderRadius: "15px", border: "1px solid #334155" },
-  select: { background: "none", border: "none", color: "#fff", fontWeight: "bold", outline: "none", cursor: "pointer", fontSize: "14px" },
+  select: { background: "none", border: "none", color: "#fff", fontWeight: "bold", outline: "none", cursor: "pointer", fontSize: "14px", transition: "opacity 0.2s ease" },
   loader: { textAlign: "center", marginTop: "50px", color: "#818cf8", fontWeight: "bold" },
   list: { display: "flex", flexDirection: "column", gap: "25px", maxWidth: "900px", margin: "0 auto" },
   card: { background: "#1e293b", padding: "30px", borderRadius: "24px", border: "1px solid #334155", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" },
@@ -166,7 +167,7 @@ const st = {
   footer: { display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #334155", paddingTop: "20px" },
   gabBox: { fontSize: "14px", fontWeight: "bold", color: "#64748b" },
   gabTxt: { color: "#10b981", marginLeft: "5px", fontSize: "16px" },
-  btnExpande: { background: "none", border: "none", color: "#818cf8", fontWeight: "900", cursor: "pointer", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" },
+  btnExpande: { background: "none", border: "none", color: "#818cf8", fontWeight: "900", cursor: "pointer", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px", transition: "all 0.2s ease" },
   expArea: { marginTop: "25px", display: "flex", flexDirection: "column", gap: "15px", animation: "fadeIn 0.4s ease" },
   infoBox: { background: "#0f172a", padding: "20px", borderRadius: "15px", borderLeft: "5px solid" },
   infoLabel: { fontSize: "10px", fontWeight: "900", color: "#fff", display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px", letterSpacing: "1px" },

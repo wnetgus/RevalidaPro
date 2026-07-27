@@ -18,6 +18,12 @@ const Header = ({ user, logout, toggleSidebar }) => {
           backdrop-filter: blur(15px) saturate(180%) !important;
           -webkit-backdrop-filter: blur(15px) saturate(180%) !important;
         }
+        .header-glass button { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
+        .header-glass button:hover { transform: scale(1.05); background: rgba(30,41,59,0.9) !important; }
+        .header-glass button:active { transform: scale(0.95) !important; }
+        .header-glass [class*="userBadge"]:hover { background: rgba(30,41,59,0.8) !important; border-color: rgba(79,70,229,0.3) !important; }
+        .header-glass [class*="logoutBtn"]:hover { background: rgba(239,68,68,0.2) !important; }
+        .header-glass [class*="logoutBtn"]:active { transform: scale(0.92) !important; }
       `}</style>
       
       <header className="header-glass" style={st.header}>
@@ -90,7 +96,8 @@ const st = {
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
-    transition: "0.2s"
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
   },
   titleWrapper: { display: "flex", flexDirection: "column" },
   areaLabel: { fontSize: "15px", fontWeight: "900", letterSpacing: "0.5px" },
@@ -104,7 +111,8 @@ const st = {
     padding: "6px 14px 6px 6px", 
     borderRadius: "12px",
     border: "1px solid rgba(255,255,255,0.05)",
-    cursor: "pointer"
+    cursor: "pointer",
+    transition: "all 0.2s ease"
   },
   avatarCircle: {
     width: "30px",
@@ -126,7 +134,8 @@ const st = {
     borderRadius: "10px",
     display: "flex",
     alignItems: "center",
-    transition: "0.2s"
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
   }
 };
 

@@ -62,10 +62,20 @@ const Sidebar = ({ collapsed, setCollapsed, isAdmin, totalPendentes, totalChat }
             background: "#4f46e5", border: "none", borderRadius: "12px",
             width: "44px", height: "44px", display: "flex",
             alignItems: "center", justifyContent: "center",
-            color: "#fff", cursor: "pointer", boxShadow: "0 4px 15px rgba(79,70,229,0.4)"
+            color: "#fff", cursor: "pointer", boxShadow: "0 4px 15px rgba(79,70,229,0.4)",
+            transition: "transform 0.2s ease, box-shadow 0.2s ease"
           }}
+          onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(79,70,229,0.5)"; }}
+          onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.boxShadow = "0 4px 15px rgba(79,70,229,0.4)"; }}
+          onMouseDown={e => e.currentTarget.style.transform = "scale(0.95)"}
+          onMouseUp={e => e.currentTarget.style.transform = "scale(1.05)"}
         >
-          {mobileOpen ? <FaTimes size={18} /> : <FaBars size={18} />}
+          <div style={{
+            transition: "transform 0.3s ease",
+            transform: mobileOpen ? "rotate(90deg)" : "rotate(0deg)"
+          }}>
+            {mobileOpen ? <FaTimes size={18} /> : <FaBars size={18} />}
+          </div>
         </button>
       )}
 
@@ -90,7 +100,9 @@ const Sidebar = ({ collapsed, setCollapsed, isAdmin, totalPendentes, totalChat }
         transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         position: "fixed", left: 0, top: 0,
         zIndex: isMobile ? 1600 : 1000,
-        overflowY: "auto"
+        overflowY: "auto",
+        scrollbarWidth: "thin",
+        scrollbarColor: "#334155 transparent"
       }}>
         {/* LOGO */}
         <div style={{
@@ -196,10 +208,17 @@ const Sidebar = ({ collapsed, setCollapsed, isAdmin, totalPendentes, totalChat }
         <style>{`
           .nav-item { cursor: pointer; transition: all 0.2s ease; }
           .nav-item:hover { background: rgba(79,70,229,0.08); color: #818cf8 !important; transform: translateX(4px); }
+          .nav-item:active { transform: translateX(4px) scale(0.97); }
           .nav-item.active { background: linear-gradient(90deg, rgba(79,70,229,0.2) 0%, rgba(79,70,229,0.05) 100%); color: #fff !important; }
+          .nav-item-logout { transition: all 0.2s ease; }
           .nav-item-logout:hover { background: rgba(239,68,68,0.1); transform: scale(1.02); }
+          .nav-item-logout:active { transform: scale(0.98); }
           .badge-pulse { animation: badgePulse 2s ease-in-out infinite; }
           @keyframes badgePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } 50% { box-shadow: 0 0 0 5px rgba(239,68,68,0.15); } }
+          aside::-webkit-scrollbar { width: 4px; }
+          aside::-webkit-scrollbar-track { background: transparent; }
+          aside::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+          aside::-webkit-scrollbar-thumb:hover { background: #4f46e5; }
         `}</style>
       </aside>
     </>

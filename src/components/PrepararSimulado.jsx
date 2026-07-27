@@ -66,7 +66,7 @@ const PrepararSimulado = () => {
 
         {/* HEADER */}
         <header style={st.header}>
-          <button onClick={() => navigate("/")} style={st.btnVoltar}>
+          <button onClick={() => navigate("/")} className="prep-btn-voltar" style={st.btnVoltar}>
             <FaArrowLeft size={12} />
           </button>
           <div style={st.headerContent}>
@@ -86,6 +86,7 @@ const PrepararSimulado = () => {
               <button
                 key={n}
                 onClick={() => setQtd(n)}
+                className="prep-btn-qtd"
                 style={{
                   ...st.btnQtd,
                   background: qtd === n ? "linear-gradient(135deg, #4f46e5, #4338ca)" : "rgba(255,255,255,0.03)",
@@ -107,6 +108,7 @@ const PrepararSimulado = () => {
           <div style={st.gridModo}>
             <div
               onClick={() => setComTempo(true)}
+              className="prep-modo-card"
               style={{
                 ...st.modoCard,
                 borderColor: comTempo ? "#4f46e5" : "rgba(255,255,255,0.08)",
@@ -127,6 +129,7 @@ const PrepararSimulado = () => {
 
             <div
               onClick={() => setComTempo(false)}
+              className="prep-modo-card"
               style={{
                 ...st.modoCard,
                 borderColor: !comTempo ? "#10b981" : "rgba(255,255,255,0.08)",
@@ -163,6 +166,7 @@ const PrepararSimulado = () => {
                 <div
                   key={m.id}
                   onClick={() => toggleMateria(m.id)}
+                  className="prep-materia-card"
                   style={{
                     ...st.materiaCard,
                     borderColor: selecionada ? m.color : "rgba(255,255,255,0.08)",
@@ -201,7 +205,7 @@ const PrepararSimulado = () => {
           </div>
         </div>
 
-        <button onClick={iniciarSimulado} style={st.btnStart}>
+        <button onClick={iniciarSimulado} className="prep-btn-start" style={st.btnStart}>
           <FaBolt size={16} />
           INICIAR TREINAMENTO
         </button>
@@ -209,6 +213,19 @@ const PrepararSimulado = () => {
 
       <style>{`
         * { box-sizing: border-box; }
+        .prep-btn-qtd { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
+        .prep-btn-qtd:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(79,70,229,0.25) !important; }
+        .prep-btn-qtd:active { transform: translateY(0); }
+        .prep-modo-card { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
+        .prep-modo-card:hover { transform: translateY(-2px); }
+        .prep-modo-card:active { transform: translateY(0); }
+        .prep-materia-card { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
+        .prep-materia-card:hover { transform: translateY(-1px); }
+        .prep-materia-card:active { transform: scale(0.98); }
+        .prep-btn-start { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
+        .prep-btn-start:hover { transform: translateY(-2px); box-shadow: 0 16px 35px rgba(16,185,129,0.4) !important; }
+        .prep-btn-start:active { transform: translateY(0); }
+        .prep-btn-voltar:hover { background: rgba(255,255,255,0.1) !important; border-color: #4f46e5 !important; }
         @media (max-width: 768px) {
           .prep-grid-qtd { grid-template-columns: 1fr 1fr !important; }
           .prep-grid-modo { grid-template-columns: 1fr !important; }

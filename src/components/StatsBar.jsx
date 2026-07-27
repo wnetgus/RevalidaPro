@@ -49,7 +49,8 @@ const st = {
     display: "flex",
     alignItems: "center",
     gap: "12px",
-    borderRight: "1px solid #334155"
+    borderRight: "1px solid #334155",
+    transition: "all 0.2s ease"
   },
   label: {
     display: "block",

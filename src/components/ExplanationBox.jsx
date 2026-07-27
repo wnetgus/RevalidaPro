@@ -12,14 +12,15 @@ export default function ExplanationBox({ type = "info", title, text }) {
   const style = types[type] || types.info;
 
   return (
-    <div style={{
+    <div className="explanation-box" style={{
       background: style.bg,
       padding: "20px",
       borderRadius: "15px",
       borderLeft: `5px solid ${style.border}`,
       marginBottom: "20px",
-      transition: "0.3s"
+      transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
     }}>
+      <style>{`.explanation-box:hover { border-left-width: 7px; }`}</style>
       <div style={{
         display: "flex",
         alignItems: "center",

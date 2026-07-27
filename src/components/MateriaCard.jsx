@@ -20,7 +20,7 @@ const MateriaCard = ({ nome, bloqueado, onClick }) => {
   return (
     <div 
       onClick={() => !bloqueado && onClick()}
-      className="materia-card" // Dica: adicione uma classe para CSS hover se preferir
+      className="materia-card-detail"
       style={{
         ...st.card,
         cursor: bloqueado ? "not-allowed" : "pointer",
@@ -60,8 +60,9 @@ const st = {
     display: "flex",
     alignItems: "center",
     gap: "18px",
-    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-    position: "relative"
+    transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+    position: "relative",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
   },
   iconBox: { 
     width: "50px", 
@@ -71,6 +72,7 @@ const st = {
     alignItems: "center", 
     justifyContent: "center", 
     fontSize: "22px",
+    transition: "all 0.2s ease",
   },
   nomeTxt: { 
     fontWeight: "900", 
