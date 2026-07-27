@@ -1,6 +1,6 @@
 /**
- * REVALIDAPRO — Cloud Functions para Mercado Pago
- * Versao 3.0 — simplificado, sem CPF obrigatorio
+ * REVALIDAPRO — Cloud Functions
+ * Mercado Pago (pagamentos) + Anthropic (IA) + INEP (importação oficial)
  */
 
 const functions = require("firebase-functions/v1");
@@ -12,6 +12,18 @@ const { avaliarAppCheck } = require("./appCheckGate");
 
 admin.initializeApp();
 const db = admin.firestore();
+
+// Emails com permissão de administrador
+const EMAILS_ADMIN = ["drweynesouza@gmail.com", "wnetgus@gmail.com"];
+
+// Verifica token Bearer e retorna o decoded token se for admin, ou null
+async function verificarAdmin(authHeader) {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+  try {
+    const decoded = await admin.auth().verifyIdToken(authHeader.slice(7));
+    return EMAILS_ADMIN.includes(decoded.email) ? decoded : null;
+  } catch { return null; }
+}
 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const APP_URL = process.env.APP_URL || "https://revalidapro-f812e.web.app";
@@ -259,7 +271,254 @@ exports.gerarQuestoesIA = functions
     }
   });
 
-// ─── FUNÇÃO 3: WEBHOOK ────────────────────────────────────────────────────────
+// ─── FUNÇÃO 3: EXTRAÇÃO OFICIAL DE PROVA INEP ─────────────────────────────────
+// Recebe PDF em base64 + provaId, envia ao Claude como documento nativo,
+// extrai fielmente enunciados/alternativas/gabarito sem qualquer paráfrase,
+// e persiste o rascunho em importacoes_pendentes/{provaId}/questoes/{id}.
+//
+// Campos imutáveis gravados aqui: id, numeroQuestao, provaId, isOficial, ano,
+// origem_prova, enunciado, alternativaA-E, gabarito, temImagem.
+// Campos pedagógicos ficam vazios: preenchidos pela função enriquecerProvaINEP.
+//
+// Aceita gabaritoBase64 (PDF de gabarito separado) — comum no Revalida INEP.
+// Se omitido, gabarito fica "" para preenchimento manual na revisão.
+exports.extrairProvaINEP = functions
+  .region("us-central1")
+  .runWith({ timeoutSeconds: 300, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST")   { res.status(405).json({ erro: "Método não permitido" }); return; }
+
+    // ── AUTENTICAÇÃO — apenas admin ─────────────────────────────────────────
+    const admin_user = await verificarAdmin(req.headers.authorization || "");
+    if (!admin_user) {
+      res.status(403).json({ erro: "Acesso restrito ao administrador." }); return;
+    }
+
+    const {
+      pdfBase64,
+      mediaType = "application/pdf",
+      provaId,
+      totalEsperado,
+      gabaritoBase64,
+    } = req.body;
+
+    // ── PARSE provaId ─────────────────────────────────────────────────────────
+    const partes  = String(provaId).split(".");
+    const ano     = parseInt(partes[0]);
+    const semestre = parseInt(partes[1]);
+    if (isNaN(ano) || isNaN(semestre)) {
+      res.status(400).json({ erro: "provaId inválido. Use formato YYYY.S (ex: 2026.1)" }); return;
+    }
+
+    try {
+      // ── MONTAR MENSAGEM PARA O CLAUDE ─────────────────────────────────────
+      const content = [];
+
+      // PDF principal (questões)
+      content.push({
+        type: "document",
+        source: { type: "base64", media_type: mediaType, data: pdfBase64 },
+      });
+
+      // PDF de gabarito (opcional — publicado separadamente pelo INEP)
+      if (gabaritoBase64) {
+        content.push({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: gabaritoBase64 },
+        });
+      }
+
+      const totalInfo = totalEsperado
+        ? `A prova tem exatamente ${totalEsperado} questões.`
+        : "Extraia todas as questões encontradas.";
+
+      const gabaritoInfo = gabaritoBase64
+        ? "O segundo documento é o gabarito oficial. Use-o para preencher o campo \"gabarito\" de cada questão."
+        : "Se o gabarito não estiver no PDF, deixe o campo \"gabarito\" vazio (\"\").";
+
+      content.push({
+        type: "text",
+        text:
+`Você é um extrator fiel de provas médicas oficiais do Revalida INEP ${provaId}.
+
+Sua ÚNICA função é extrair o texto EXATAMENTE como aparece no PDF — sem alterar, corrigir, resumir ou parafrasear nenhuma palavra.
+
+${gabaritoInfo}
+${totalInfo}
+
+REGRAS ABSOLUTAS:
+1. NUNCA reescreva ou parafraseie o enunciado — copie letra por letra
+2. NUNCA corrija erros ortográficos ou gramaticais do original
+3. NUNCA adicione interpretações ou informações ausentes no PDF
+4. Para alternativas: inclua apenas o texto da alternativa, SEM a letra inicial (sem "A)", "(A)", "a." etc.)
+5. Para gabarito: use apenas a letra minúscula: a, b, c, d ou e
+6. Se a questão tiver imagem essencial ao enunciado, escreva "[IMAGEM]" no local exato onde ela aparece
+7. Quebre o enunciado em parágrafos naturais usando \\n onde necessário
+8. Preserve numeração das questões exatamente como na prova
+
+Retorne SOMENTE um JSON array válido, sem markdown, sem blocos de código, sem texto antes ou depois:
+[
+  {
+    "numeroQuestao": 1,
+    "enunciado": "texto exato do enunciado...",
+    "alternativaA": "texto exato sem a letra",
+    "alternativaB": "texto exato sem a letra",
+    "alternativaC": "texto exato sem a letra",
+    "alternativaD": "texto exato sem a letra",
+    "alternativaE": "texto exato sem a letra",
+    "gabarito": "c",
+    "temImagem": false
+  }
+]`,
+      });
+
+      // ── CHAMADA AO CLAUDE — via Gate único (Micro Sprint 4B.0) ────────────
+      // Mesmo gate de gerarQuestoesIA: ausência da chave ou de pdfBase64/
+      // provaId bloqueia (403) antes de qualquer chamada à Anthropic.
+      const resultadoGate = await chamarAnthropicViaGate({
+        gateParams: {
+          apiKey: process.env.ANTHROPIC_API_KEY,
+          model: "claude-sonnet-4-6",
+          camposObrigatorios: { pdfBase64, provaId },
+        },
+        corpo: {
+          model:      "claude-sonnet-4-6",
+          max_tokens: 32768,
+          messages:   [{ role: "user", content }],
+        },
+        headersExtras: {
+          // Beta: aumenta max_tokens até 128K — necessário para provas com 120 questões
+          "anthropic-beta": "output-128k-2025-02-19",
+        },
+      });
+
+      if (!resultadoGate.autorizado) {
+        console.error("[extrairProvaINEP] Gate bloqueou:", resultadoGate.motivo);
+        res.status(403).json({ erro: resultadoGate.motivo }); return;
+      }
+
+      const anthropicRes = resultadoGate.response;
+      if (!anthropicRes.ok) {
+        const erroTexto = await anthropicRes.text();
+        console.error("[extrairProvaINEP] Erro Anthropic:", anthropicRes.status, erroTexto);
+        res.status(502).json({ erro: `Erro na extração via IA (${anthropicRes.status}).` }); return;
+      }
+
+      const data        = await anthropicRes.json();
+      const textoResposta = (data.content?.[0]?.text || "").trim();
+
+      // ── PARSE DO JSON RETORNADO ───────────────────────────────────────────
+      let questoesRaw;
+      try {
+        // Remove blocos de código se o modelo os incluiu mesmo sendo instruído a não
+        const jsonStr = textoResposta
+          .replace(/^```(?:json)?\n?/i, "")
+          .replace(/\n?```$/i, "")
+          .trim();
+        questoesRaw = JSON.parse(jsonStr);
+        if (!Array.isArray(questoesRaw) || questoesRaw.length === 0)
+          throw new Error("Resposta não é um array válido");
+      } catch (e) {
+        console.error("[extrairProvaINEP] Parse falhou. Trecho:", textoResposta.substring(0, 800));
+        res.status(422).json({
+          erro: "IA retornou formato inválido. Verifique o PDF e tente novamente.",
+          trecho: textoResposta.substring(0, 500),
+        });
+        return;
+      }
+
+      // ── MONTAR DOCUMENTOS FINAIS (campos imutáveis + pedagógicos vazios) ─
+      const idBase  = `${ano}_${semestre}`;
+      const questoes = questoesRaw.map(q => ({
+        // ── IMUTÁVEIS ──
+        id:           `${idBase}_Q${q.numeroQuestao}`,
+        numeroQuestao: Number(q.numeroQuestao),
+        provaId,
+        isOficial:    true,
+        ano,
+        origem_prova: `INEP Revalida ${provaId}`,
+        enunciado:    String(q.enunciado    || ""),
+        alternativaA: String(q.alternativaA || ""),
+        alternativaB: String(q.alternativaB || ""),
+        alternativaC: String(q.alternativaC || ""),
+        alternativaD: String(q.alternativaD || ""),
+        alternativaE: String(q.alternativaE || ""),
+        gabarito:     String(q.gabarito     || "").toLowerCase(),
+        temImagem:    Boolean(q.temImagem),
+        imagemUrl:    "",
+        // ── PEDAGÓGICOS — vazios, a serem preenchidos em enriquecerProvaINEP ──
+        materia:       "",
+        tema_mestre:   "",
+        subtema:       "",
+        raciocinio:    "",
+        tto:           "",
+        dicaMestre:    "",
+        justificativaA: "",
+        justificativaB: "",
+        justificativaC: "",
+        justificativaD: "",
+        justificativaE: "",
+        // ── METADADOS DE STAGING ──
+        revisado:     false,
+        statusSchema: "incompleto",
+        criadoEm:     admin.firestore.FieldValue.serverTimestamp(),
+      }));
+
+      // ── PERSISTIR NO FIRESTORE (batch atômico) ────────────────────────────
+      // Limite: 500 operações/batch. Revalida INEP tem ~120 questões → seguro.
+      const batch      = db.batch();
+      const docPrincipal = db.collection("importacoes_pendentes").doc(provaId);
+
+      batch.set(docPrincipal, {
+        provaId, ano, semestre,
+        totalQuestoes: questoes.length,
+        totalEsperado: totalEsperado || questoes.length,
+        status:     "extraido",
+        criadoPor:  admin_user.email,
+        criadoEm:   admin.firestore.FieldValue.serverTimestamp(),
+        atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      for (const q of questoes) {
+        batch.set(docPrincipal.collection("questoes").doc(q.id), q);
+      }
+
+      await batch.commit();
+
+      const aviso = (totalEsperado && questoes.length !== Number(totalEsperado))
+        ? `Atenção: extração retornou ${questoes.length} questões, esperava ${totalEsperado}.`
+        : null;
+
+      console.log(
+        `[extrairProvaINEP] ${provaId}: ${questoes.length} questões extraídas por ${admin_user.email}.` +
+        (aviso ? ` AVISO: ${aviso}` : "")
+      );
+
+      res.status(200).json({
+        sucesso:       true,
+        provaId,
+        totalExtraido: questoes.length,
+        totalEsperado: totalEsperado || questoes.length,
+        aviso,
+      });
+
+    } catch (e) {
+      console.error("[extrairProvaINEP] Erro interno:", e.message || e);
+      res.status(500).json({ erro: "Erro interno na extração. Verifique os logs." });
+    }
+  });
+
+// ─── FUNÇÃO 4 (futura): enriquecerProvaINEP ───────────────────────────────────
+// Adiciona campos pedagógicos (materia, tema_mestre, subtema, raciocinio, tto,
+// dicaMestre, justificativaA-E) sem tocar nos campos imutáveis.
+// Implementação: F2 do pipeline oficial INEP.
+
+// ─── FUNÇÃO 5: WEBHOOK ────────────────────────────────────────────────────────
 exports.webhookMercadoPago = functions
   .region("us-central1")
   .https.onRequest(async (req, res) => {
