@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { db } from "../firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { pertenceAMateria } from "../utils/normalizarMateria";
+import { getQuestoes } from "../utils/questoesCache";
 import {
   FaArrowLeft, FaArrowRight, FaSearch, FaCheckCircle,
   FaBolt, FaBookOpen, FaHourglassHalf, FaSpinner,
@@ -109,15 +109,20 @@ const BuscarPorTema = () => {
   }, []);
 
   // ── Carrega questões ao selecionar matéria ──────────────────────────────────
+  // Estratégia: carrega TODAS as questões na primeira chamada e guarda em cache.
+  // As chamadas seguintes (troca de matéria) reutilizam o dataset já carregado.
+  // O filtro por matéria usa pertenceAMateria() para tratar valores fragmentados
+  // como "Clínica Médica / Preventiva" sem depender de igualdade estrita no Firestore.
   const selecionarMateria = async (m) => {
     setMateria(m);
     setLoading(true);
     setGrupos([]);
     setBuscaTema("");
     try {
-      const q = query(collection(db, "questoes"), where("materia", "==", m.id));
-      const snap = await getDocs(q);
-      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // getQuestoes() usa cache de módulo — lê Firestore apenas 1x por sessão
+      const todas = await getQuestoes();
+      // Filtra em memória — correto para matérias fragmentadas
+      const lista = todas.filter(q => pertenceAMateria(q.materia, m.id));
       setGrupos(agrupar(lista));
     } catch (e) {
       console.error("Erro ao carregar questões:", e);
