@@ -10,7 +10,18 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist_test
 *.local
+
+# Firebase CLI local cache (regenerated on every deploy)
+.firebase
+
+# Claude Code local tool config (not part of the product)
+.claude/settings.json
+
+# Artefatos gerados/temporários de sessões de importação
+tmp_pdf_images
+questoes_2026_1_codex.json
 
 # Editor directories and files
 .vscode/*
