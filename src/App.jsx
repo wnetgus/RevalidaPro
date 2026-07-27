@@ -65,11 +65,8 @@ function App() {
         // Busca dados direto do servidor para decisão de bloqueio/expiração
         // sem interferência do IndexedDB cache do Firestore
         let unsubDoc = () => {};
-        // Se email não verificado, Login.jsx já chama signOut — não acessa Firestore
-        if (!user.emailVerified && !EMAILS_ADMIN.includes(user.email)) {
-          setCarregando(false);
-          return;
-        }
+        // Email verification is now advisory — users access immediately after signup.
+        // A soft reminder banner is shown in the UI if email is not yet verified.
 
         getDocFromServer(doc(db, "usuarios", user.uid))
           .then((snap) => {
@@ -317,6 +314,12 @@ function App() {
   return (
     <UserContext.Provider value={dadosUsuario}>
     <div style={{ display: "flex", background: "#020617", minHeight: "100vh" }}>
+
+      {/* ── AVISO DISCRETO: confirmar e-mail ─────────────────────────────── */}
+      {usuario && !usuario.emailVerified && !EMAILS_ADMIN.includes(usuario.email) && (
+        <EmailVerifBanner email={usuario.email} />
+      )}
+
       <Sidebar
         collapsed={collapsed}
         setCollapsed={setCollapsed}
@@ -356,6 +359,37 @@ function App() {
       </main>
     </div>
     </UserContext.Provider>
+  );
+}
+
+// ── Banner discreto de verificação de e-mail ─────────────────────────────────
+// Aparece no topo da tela para usuários que ainda não confirmaram o e-mail.
+// Completamente dispensável — fecha com o X e não bloqueia nenhuma função.
+function EmailVerifBanner({ email }) {
+  const [visivel, setVisivel] = React.useState(true);
+  if (!visivel) return null;
+  return (
+    <div style={{
+      position: "fixed", top: 0, left: 0, right: 0, zIndex: 8000,
+      background: "rgba(79,70,229,0.92)", backdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      gap: "12px", padding: "10px 20px", flexWrap: "wrap",
+    }}>
+      <span style={{ fontSize: "15px" }}>📧</span>
+      <span style={{ color: "#fff", fontSize: "13px", fontWeight: "600", lineHeight: 1.5 }}>
+        Enviamos um e-mail de confirmação para <strong>{email}</strong>. Verifique sua caixa de entrada (ou SPAM) para ativar sua conta.
+      </span>
+      <button
+        onClick={() => setVisivel(false)}
+        style={{
+          background: "rgba(255,255,255,0.15)", border: "none", color: "#fff",
+          borderRadius: "8px", padding: "4px 12px", cursor: "pointer",
+          fontSize: "12px", fontWeight: "700", flexShrink: 0,
+        }}
+      >
+        OK, entendi ✕
+      </button>
+    </div>
   );
 }
 

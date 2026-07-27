@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { auth } from "../firebase";
 import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { loginComGoogle } from "../utils/googleAuth";
 import {
   FaEnvelope, FaLock, FaGraduationCap, FaArrowRight,
   FaUserPlus, FaStethoscope, FaEye, FaEyeSlash, FaCheckCircle
@@ -12,8 +13,23 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingGoogle, setLoadingGoogle] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [erro, setErro] = useState("");
+
+  const handleGoogle = async () => {
+    setErro("");
+    setLoadingGoogle(true);
+    try {
+      await loginComGoogle();
+      // onAuthStateChanged no App.jsx assume o controle automaticamente
+    } catch (error) {
+      if (error.code !== "auth/popup-closed-by-user" && error.code !== "auth/cancelled-popup-request") {
+        setErro("Erro ao entrar com Google. Tente novamente.");
+      }
+    }
+    setLoadingGoogle(false);
+  };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -27,14 +43,8 @@ const Login = () => {
         password
       );
 
-      const skipVerification = import.meta.env.VITE_SKIP_EMAIL_VERIFICATION === "true";
-      if (!skipVerification && !userCredential.user.emailVerified) {
-        setErro("⚠️ E-mail não verificado. Acesse sua caixa de entrada e clique no link enviado.");
-        await signOut(auth);
-        setLoading(false);
-        return;
-      }
-
+      // Email verification is now advisory only — user gets immediate access.
+      // App.jsx shows a soft reminder banner if emailVerified is false.
       setLoading(false);
 
     } catch (error) {
@@ -357,6 +367,47 @@ const Login = () => {
               </div>
             )}
 
+            {/* BOTÃO GOOGLE */}
+            <button
+              type="button"
+              onClick={handleGoogle}
+              disabled={loadingGoogle || loading}
+              style={{
+                width: "100%", padding: "14px", borderRadius: "14px",
+                border: "1px solid #334155", background: "#1e293b",
+                color: "#f1f5f9", fontWeight: "700", fontSize: "14px",
+                cursor: loadingGoogle ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                gap: "12px", transition: "all 0.2s", fontFamily: "inherit",
+                opacity: loadingGoogle ? 0.7 : 1,
+                marginBottom: "4px",
+              }}
+              onMouseEnter={e => { if (!loadingGoogle) e.currentTarget.style.borderColor = "#4f46e5"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "#334155"; }}
+            >
+              {loadingGoogle ? (
+                <span style={{ fontSize: "13px", color: "#94a3b8" }}>Conectando…</span>
+              ) : (
+                <>
+                  {/* Ícone oficial Google SVG */}
+                  <svg width="18" height="18" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                  Continuar com Google
+                </>
+              )}
+            </button>
+
+            {/* SEPARADOR */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "2px 0" }}>
+              <div style={{ flex: 1, height: "1px", background: "#1e293b" }} />
+              <span style={{ color: "#475569", fontSize: "12px", fontWeight: "600" }}>ou entre com e-mail</span>
+              <div style={{ flex: 1, height: "1px", background: "#1e293b" }} />
+            </div>
+
             {/* FORMULÁRIO */}
             <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
 
@@ -389,24 +440,15 @@ const Login = () => {
               {/* SENHA */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <label style={{
-                    color: "#94a3b8", fontSize: "11px", fontWeight: "700",
-                    textTransform: "uppercase", letterSpacing: "0.5px"
-                  }}>
+                  <label style={{ color: "#94a3b8", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                     Senha
                   </label>
-                  <span
-                    onClick={handleResetPassword}
-                    style={{ fontSize: "11px", color: "#4f46e5", cursor: "pointer", fontWeight: "700" }}
-                  >
-                    Esqueceu a senha?
-                  </span>
+                  <button type="button" onClick={handleResetPassword} style={{ background: "none", border: "none", color: "#4f46e5", fontSize: "12px", fontWeight: "600", cursor: "pointer", padding: 0 }}>
+                    Esqueci minha senha
+                  </button>
                 </div>
                 <div style={{ position: "relative" }}>
-                  <FaLock style={{
-                    position: "absolute", left: "14px", top: "50%",
-                    transform: "translateY(-50%)", color: "#4f46e5", fontSize: "14px"
-                  }} />
+                  <FaLock style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#4f46e5", fontSize: "14px" }} />
                   <input
                     className="login-input"
                     type={showPass ? "text" : "password"}
@@ -415,55 +457,65 @@ const Login = () => {
                     onChange={e => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    style={{ paddingRight: "46px" }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    style={{
-                      position: "absolute", right: "14px", top: "50%",
-                      transform: "translateY(-50%)", background: "none",
-                      border: "none", color: "#64748b", cursor: "pointer",
-                      fontSize: "16px", display: "flex", alignItems: "center",
-                      padding: "4px"
-                    }}
-                  >
-                    {showPass ? <FaEyeSlash /> : <FaEye />}
+                  <button type="button" onClick={() => setShowPass(v => !v)} style={{ position: "absolute", right: "14px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: 0 }}>
+                    {showPass ? <FaEyeSlash size={15} /> : <FaEye size={15} />}
                   </button>
                 </div>
               </div>
 
               {/* BOTÃO ENTRAR */}
-              <button
-                type="submit"
-                className="btn-login"
-                disabled={loading}
-              >
-                {loading ? "VALIDANDO..." : <><FaArrowRight size={13} /> ACESSAR PLATAFORMA</>}
+              <button type="submit" className="btn-login" disabled={loading}>
+                {loading
+                  ? <span style={{ fontSize: "14px" }}>Entrando…</span>
+                  : <><FaArrowRight size={13} /> ACESSAR PLATAFORMA</>}
               </button>
-            </form>
 
-            {/* RODAPÉ */}
-            <div style={{
-              marginTop: "28px",
-              textAlign: "center",
-              padding: "18px",
-              borderRadius: "16px",
-              background: "rgba(255,255,255,0.02)",
-              border: "1px solid rgba(255,255,255,0.04)"
-            }}>
-              <p style={{ fontSize: "13px", color: "#64748b", margin: 0 }}>
-                Ainda não tem acesso?
+              <p style={{ textAlign: "center", color: "#475569", fontSize: "13px", margin: "4px 0 0" }}>
+                Não tem conta?{" "}
+                <button type="button" onClick={() => navigate("/register")} style={{ background: "none", border: "none", color: "#4f46e5", fontWeight: "700", cursor: "pointer", fontSize: "13px", padding: 0 }}>
+                  Cadastre-se grátis
+                </button>
               </p>
-              <span
-                onClick={() => navigate("/register")}
-                className="link-register"
-              >
-                <FaUserPlus size={12} /> SOLICITAR MINHA CONTA
-              </span>
+            </form>
+          </div>
+        </div>
+
+        {/* PAINEL DIREITO */}
+        <div className="login-right">
+          <div style={{ position: "absolute", top: "10%", right: "8%", fontSize: "200px", opacity: 0.04 }}><FaStethoscope /></div>
+          <div style={{ maxWidth: "480px", textAlign: "center", zIndex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "28px" }}>
+              <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: "50%", width: "80px", height: "80px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <FaGraduationCap size={38} color="white" />
+              </div>
+            </div>
+            <h1 style={{ fontSize: "clamp(28px,3.5vw,46px)", fontWeight: "900", marginBottom: "20px", lineHeight: 1.15 }}>
+              A plataforma que<br />aprova médicos.
+            </h1>
+            <p style={{ fontSize: "16px", color: "rgba(255,255,255,0.75)", lineHeight: 1.7, marginBottom: "36px" }}>
+              Banco de questões INEP, simulados oficiais e caderno de erros inteligente — tudo em um só lugar.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px", textAlign: "left" }}>
+              {[
+                "Questões comentadas baseadas no INEP",
+                "Simulados com cronômetro e gabarito",
+                "Desempenho e estatísticas em tempo real",
+                "Super Apostas com temas quentes",
+              ].map((item, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <FaCheckCircle color="#10b981" size={15} style={{ flexShrink: 0 }} />
+                  <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "14px" }}>{item}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
+
+        {/* AVISO FIXO — verificação de e-mail */}
+        {false && (
+          <div style={{ display: "none" }} />
+        )}
       </div>
     </>
   );
