@@ -7,6 +7,7 @@ import {
   memoryLocalCache
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { initializeAppCheck, ReCaptchaV3Provider, getToken } from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -30,3 +31,47 @@ export const db = initializeFirestore(app, {
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+
+// ── App Check (Micro Sprint 4B.3B.1 — infraestrutura, SEM chave real) ──────
+// Nenhum provider fica ativo por padrão: só inicializa quando
+// VITE_FIREBASE_APPCHECK_SITE_KEY existir (configuração externa da 4B.3B.2/
+// 3B.3, ainda não feita). Sem a variável, `appCheck`/`obterTokenAppCheck`
+// ficam `null` e nada muda — src/utils/apiAuth.js já trata isso como "sem
+// App Check" (mesmo comportamento de sempre para RoboGerador/ImportadorPro/
+// ResumoGerador/promptEngine, nenhum dos quais foi tocado nesta sprint).
+//
+// Debug Provider: só ativa via VITE_FIREBASE_APPCHECK_DEBUG === "true",
+// nunca por padrão. NUNCA deve ficar habilitado em um build de produção —
+// isso é responsabilidade operacional de uma sprint futura (garantir que a
+// variável nunca exista no ambiente de build de produção), não deste código.
+const APPCHECK_SITE_KEY = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY;
+const APPCHECK_DEBUG    = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG === "true";
+
+if (APPCHECK_DEBUG) {
+  self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+}
+
+let _appCheck = null;
+if (APPCHECK_SITE_KEY) {
+  try {
+    _appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(APPCHECK_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (e) {
+    // Não inicializar duas vezes: initializeAppCheck lança se já houver uma
+    // instância para este app (ex.: HMR do Vite reexecutando este módulo).
+    // Não é fatal — a instância anterior continua válida — só não crasha o
+    // app por isso.
+    console.warn("[firebase] App Check: inicialização ignorada —", e.message);
+  }
+}
+export const appCheck = _appCheck;
+
+// Função injetável (não a instância bruta) — mesmo padrão de verificador
+// injetável usado no servidor (authGate.js/gate.js). null quando não há App
+// Check configurado, para que src/utils/apiAuth.js trate isso como "não
+// enviar X-Firebase-AppCheck" sem precisar saber o motivo.
+export const obterTokenAppCheck = appCheck
+  ? async () => (await getToken(appCheck)).token
+  : null;

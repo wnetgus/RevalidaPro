@@ -8,6 +8,7 @@ const admin = require("firebase-admin");
 const fetch = (...args) => import("node-fetch").then(({ default: f }) => f(...args));
 const { chamarAnthropicViaGate } = require("./gate");
 const { avaliarAutenticacaoEAutorizacao } = require("./authGate");
+const { avaliarAppCheck } = require("./appCheckGate");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -140,7 +141,10 @@ exports.gerarQuestoesIA = functions
     // ── CORS: sempre primeiro, antes de qualquer lógica ─────────────────────
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    // X-Firebase-AppCheck adicionado na Micro Sprint 4B.3B.1 — sem isso, um
+    // navegador rejeitaria o preflight assim que um client real passasse a
+    // enviar esse header (hoje nenhum client envia — ver PENDÊNCIAS).
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Firebase-AppCheck");
 
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST")   { res.status(405).json({ erro: "Método não permitido" }); return; }
@@ -164,6 +168,22 @@ exports.gerarQuestoesIA = functions
     });
     if (!autenticacao.ok) {
       res.status(autenticacao.httpStatus).json({ erro: autenticacao.motivo });
+      return;
+    }
+
+    // ── APP CHECK (Micro Sprint 4B.3B.1) ─────────────────────────────────────
+    // Depois da autenticação/autorização, antes do gate de payload — prova
+    // que a chamada vem de uma instância legítima do app (não quem é o
+    // usuário, isso já foi decidido acima). Sem token/inválido/erro do
+    // verificador = 401, 0 chamadas ao gate de payload, 0 chamadas à
+    // Anthropic. verificarAppCheckToken é injetável — em produção é
+    // admin.appCheck().verifyToken(token); nos testes é sempre um mock.
+    const appCheckResultado = await avaliarAppCheck({
+      appCheckHeader: req.headers["x-firebase-appcheck"],
+      verificarAppCheckToken: (token) => admin.appCheck().verifyToken(token),
+    });
+    if (!appCheckResultado.ok) {
+      res.status(appCheckResultado.httpStatus).json({ erro: appCheckResultado.motivo });
       return;
     }
 
