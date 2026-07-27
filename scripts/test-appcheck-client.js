@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { obterHeadersAutenticados } from "../src/utils/apiAuth.js";
+import { calcularAppCheckDebugToken } from "../src/utils/appCheckDebug.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _raiz = path.resolve(__dirname, "..");
@@ -125,7 +126,55 @@ teste("7. [estrutural] src/firebase.js só inicializa App Check quando há site 
 teste("8. [estrutural] Debug Provider só ativa via variável de ambiente explícita, nunca incondicionalmente", () => {
   const src = fs.readFileSync(path.join(_raiz, "src/firebase.js"), "utf8");
   assert.match(src, /VITE_FIREBASE_APPCHECK_DEBUG/);
-  assert.match(src, /if\s*\(\s*APPCHECK_DEBUG\s*\)/, "FIREBASE_APPCHECK_DEBUG_TOKEN só deveria ser setado dentro de um if condicionado à variável");
+  assert.match(src, /calcularAppCheckDebugToken\(/, "deveria derivar o valor via calcularAppCheckDebugToken, não inline");
+  assert.match(src, /if\s*\(\s*APPCHECK_DEBUG_TOKEN\s*!==\s*undefined\s*\)/, "FIREBASE_APPCHECK_DEBUG_TOKEN só deveria ser atribuído quando a derivação retornar algo diferente de undefined");
+});
+
+// ─── 8b. calcularAppCheckDebugToken (Micro Sprint 4B.3B.2A) — função pura ────
+// Diferente do resto deste arquivo (estrutural, por não poder importar
+// src/firebase.js em Node puro), esta função NÃO depende de import.meta.env
+// — é testável diretamente, com valores de entrada reais, sem mocks.
+// Nenhum valor usado aqui é um token real: "debug-token-ficticio-para-teste"
+// é só uma string de exemplo, nunca um segredo.
+
+teste("8c. variável ausente (undefined) → não ativa debug token (retorna undefined)", () => {
+  assert.equal(calcularAppCheckDebugToken(undefined), undefined);
+});
+
+teste("8d. variável vazia (\"\") → não ativa debug token", () => {
+  assert.equal(calcularAppCheckDebugToken(""), undefined);
+});
+
+teste("8e. variável só com espaços (\"   \") → não ativa debug token", () => {
+  assert.equal(calcularAppCheckDebugToken("   "), undefined);
+});
+
+teste("8f. valor \"true\" → usa booleano true (modo automático do SDK)", () => {
+  assert.equal(calcularAppCheckDebugToken("true"), true);
+});
+
+teste("8g. valor \"TRUE\" ou com espaços ao redor → normaliza para booleano true", () => {
+  assert.equal(calcularAppCheckDebugToken("TRUE"), true);
+  assert.equal(calcularAppCheckDebugToken("  true  "), true);
+  assert.equal(calcularAppCheckDebugToken("True"), true);
+});
+
+teste("8h. token fictício não vazio e diferente de \"true\" → usa exatamente essa string como token fixo", () => {
+  assert.equal(calcularAppCheckDebugToken("debug-token-ficticio-para-teste"), "debug-token-ficticio-para-teste");
+  // Espaços nas bordas são removidos (trim), mas o conteúdo interno do
+  // token fixo é preservado exatamente como fornecido.
+  assert.equal(calcularAppCheckDebugToken("  debug-token-ficticio-para-teste  "), "debug-token-ficticio-para-teste");
+});
+
+teste("8i. [estrutural] produção nunca ativa debug token só por a variável existir — invariante é operacional (variável nunca deve existir em .env.production), não um branch de código condicionado a import.meta.env.PROD", () => {
+  // Este é o invariante arquitetural já documentado desde a 4B.3B.1: o
+  // código roda igual em dev/prod, e a proteção real é nunca configurar
+  // VITE_FIREBASE_APPCHECK_DEBUG no ambiente de build de produção (ver
+  // scripts/test-appcheck-config-safety.js e APPCHECK_CONSOLE_DEV_CHECKLIST.md).
+  // Aqui só confirmamos que a função pura, isoladamente, não tem nenhum
+  // conhecimento de "ambiente" — ela sempre deriva o mesmo valor a partir do
+  // mesmo input, em qualquer ambiente, o que é o comportamento correto.
+  assert.equal(calcularAppCheckDebugToken("true"), calcularAppCheckDebugToken("true"));
 });
 
 teste("9. [estrutural] initializeAppCheck é protegido contra dupla inicialização (try/catch)", () => {

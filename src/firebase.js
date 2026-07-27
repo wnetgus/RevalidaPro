@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider, getToken } from "firebase/app-check";
+import { calcularAppCheckDebugToken } from "./utils/appCheckDebug";
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -40,15 +41,26 @@ export const storage = getStorage(app);
 // App Check" (mesmo comportamento de sempre para RoboGerador/ImportadorPro/
 // ResumoGerador/promptEngine, nenhum dos quais foi tocado nesta sprint).
 //
-// Debug Provider: só ativa via VITE_FIREBASE_APPCHECK_DEBUG === "true",
-// nunca por padrão. NUNCA deve ficar habilitado em um build de produção —
-// isso é responsabilidade operacional de uma sprint futura (garantir que a
+// Debug Provider: VITE_FIREBASE_APPCHECK_DEBUG controla dois modos seguros
+// (Micro Sprint 4B.3B.2A), nunca ativos por padrão:
+//   - ausente ou vazia (após trim): Debug Provider desligado, nada é definido.
+//   - "true" (tolerante a espaços e caixa — "TRUE", " true " etc.): modo
+//     automático do SDK, que GERA um token novo a cada execução — é preciso
+//     reabrir o Console e registrar o novo token sempre que ele mudar.
+//   - qualquer outra string não vazia: usada como TOKEN FIXO — registre esse
+//     mesmo valor uma única vez no Console App Check e ele passa a ser
+//     reaproveitado entre reloads/reinícios, em vez de mudar a cada execução
+//     (esse é o problema real que motivou este modo).
+// NUNCA deve ficar habilitado em um build de produção — isso é
+// responsabilidade operacional de uma sprint futura (garantir que a
 // variável nunca exista no ambiente de build de produção), não deste código.
-const APPCHECK_SITE_KEY = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY;
-const APPCHECK_DEBUG    = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG === "true";
+// Derivação em calcularAppCheckDebugToken (src/utils/appCheckDebug.js) —
+// extraída para ser testável em Node puro (ver scripts/test-appcheck-client.js).
+const APPCHECK_SITE_KEY     = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY;
+const APPCHECK_DEBUG_TOKEN  = calcularAppCheckDebugToken(import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG);
 
-if (APPCHECK_DEBUG) {
-  self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+if (APPCHECK_DEBUG_TOKEN !== undefined) {
+  self.FIREBASE_APPCHECK_DEBUG_TOKEN = APPCHECK_DEBUG_TOKEN;
 }
 
 let _appCheck = null;

@@ -98,9 +98,17 @@ teste("4. src/firebase.js: leitura da site key não tem fallback para nenhum val
   assert.doesNotMatch(linha[1], /\|\|/, "não deveria haver nenhum fallback (||) na leitura da site key — ausência da env var deve resultar em null, nunca em um valor substituto");
 });
 
-teste("5. src/firebase.js: comparação do Debug é estrita (=== \"true\"), não apenas truthy", () => {
-  const src = fs.readFileSync(path.join(_raiz, "src/firebase.js"), "utf8");
-  assert.match(src, /VITE_FIREBASE_APPCHECK_DEBUG\s*===\s*"true"/, "deveria comparar estritamente com a string \"true\" — qualquer outro valor mantém o debug desligado");
+teste("5. src/firebase.js delega a leitura do Debug a calcularAppCheckDebugToken, cuja comparação com \"true\" é estrita (após normalização de caixa/espaços)", () => {
+  // Desde a Micro Sprint 4B.3B.2A a derivação foi extraída para
+  // src/utils/appCheckDebug.js (função pura, testável sem import.meta.env —
+  // ver scripts/test-appcheck-client.js, testes 8c-8i, para os casos de
+  // valor). Aqui só confirmamos que firebase.js delega corretamente e que a
+  // comparação continua estrita, não apenas truthy.
+  const srcFirebase = fs.readFileSync(path.join(_raiz, "src/firebase.js"), "utf8");
+  assert.match(srcFirebase, /calcularAppCheckDebugToken\(/, "src/firebase.js deveria delegar a derivação do debug token a calcularAppCheckDebugToken");
+
+  const srcDebug = fs.readFileSync(path.join(_raiz, "src/utils/appCheckDebug.js"), "utf8");
+  assert.match(srcDebug, /toLowerCase\(\)\s*===\s*"true"/, "a comparação com \"true\" deveria ser estrita (após normalizar caixa) — qualquer outro valor não vazio deveria virar token fixo, não desligar nem ativar por acidente");
 });
 
 teste("6. src/firebase.js: nenhum console.log/console.error da site key, do token de App Check ou do debug token", () => {
