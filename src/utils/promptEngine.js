@@ -651,6 +651,39 @@ const _contemPosologiaEspecifica = (texto) => {
   return _PADROES_POSOLOGIA.some((re) => re.test(t));
 };
 
+// ─── ENFORCEMENT DO ENUNCIADO (REGRA SA-5 / achado real Lote 002, Q19) ───────
+// A REGRA SA-5 e o limite de 80-200 palavras já existem no prompt, mas nada em
+// código verificava se o modelo obedeceu — dependia 100% da instrução ser
+// seguida. Heurística simples (sem IA/NLP/regex complexa): um enunciado real
+// de caso clínico sempre carrega pelo menos um marcador de idade, contexto
+// assistencial ou paciente apresentando queixa. Sua ausência total é sinal
+// forte de pergunta "seca"/flashcard, não de caso clínico.
+const _contarPalavras = (texto) => String(texto || "").split(/\s+/).filter(Boolean).length;
+
+const _MARCADORES_CASO_CLINICO = [
+  /\d+\s*anos\b/i,
+  /\d+\s*meses\b/i,
+  /\d+\s*dias\s+de\s+vida\b/i,
+  /\brec[eé]m[\s-]?nascid[oa]\b/i,
+  /\bpaciente\b/i,
+  /\bgestante\b/i,
+  /\bcrian[çc]a\b/i,
+  /\blactente\b/i,
+  /\bidos[oa]\b/i,
+  /\b(UBS|UPA|PS|enfermaria|ambulat[oó]rio|pr[eé]-natal)\b/i,
+  /\bcomparece\b/i,
+  /\bapresenta(-se)?\b/i,
+  /\brefere\b/i,
+  /\bqueixa\b/i,
+  /\badmitid[oa]\b/i,
+  /\bencaminhad[oa]\b/i,
+  /\bd[aá]\s+entrada\b/i,
+  /\bprocura\s+(a|o)\b/i,
+];
+
+const _pareceCasoClinico = (enunciado) =>
+  _MARCADORES_CASO_CLINICO.some((re) => re.test(String(enunciado || "")));
+
 // ─── SUPORTE NUMÉRICO ESTRITO — saneamento final pré-produção em escala ──────
 // grounding=true não é autorização para o modelo completar/inventar precisão:
 // todo número que aparece num campo normativo (tto, dicaMestre, pontos do
@@ -822,6 +855,18 @@ export const validarLoteSA = (lista, { abcd = false, grounding = false, groundin
     if (abcd && q?.alts?.e?.texto) motivos.push("contém alternativa E em questão do formato ABCD");
     if (!gabaritoLower || !letras.includes(gabaritoLower)) {
       motivos.push(`gabarito "${q?.gabarito}" inválido para o formato ${abcd ? "ABCD" : "ABCDE"}`);
+    }
+
+    // ── Enforcement do enunciado (REGRA SA-5 + limite 80-200 palavras) ──────
+    if (abcd) {
+      const palavrasEnunciado = _contarPalavras(q?.enunciado);
+      if (palavrasEnunciado < 80) {
+        motivos.push(`enunciado com ${palavrasEnunciado} palavras — abaixo do mínimo de 80 (REGRA SA-5, risco de flashcard)`);
+      } else if (palavrasEnunciado > 200) {
+        motivos.push(`enunciado com ${palavrasEnunciado} palavras — acima do máximo de 200`);
+      } else if (!_pareceCasoClinico(q?.enunciado)) {
+        motivos.push('enunciado sem marcador de caso clínico (idade, contexto assistencial ou paciente apresentando queixa) — parece pergunta seca/flashcard, viola REGRA SA-5');
+      }
     }
 
     const textos  = letras.map((l) => String(q?.alts?.[l]?.texto || "").trim());
@@ -1013,6 +1058,7 @@ const _FEEDBACK_ANTI_PISTA = "Tentativa anterior rejeitada porque a alternativa 
 const _FEEDBACK_DICA_MESTRE_FORMATO = 'A Dica Mestre anterior não tinha exatamente 4 blocos separados por " ↓ ". Gere novamente com exatamente 4 blocos nessa ordem: frase memorável ↓ o sinal que muda tudo ↓ o caminho certo ↓ por que erram.';
 const _FEEDBACK_GABARITO_INCONSISTENTE = 'A nota da alternativa correta anterior não seguiu a regra: deve começar exatamente com "CORRETA", e somente ela pode ter essa marcação. Corrija essa consistência na nova geração.';
 const _FEEDBACK_CORRUPCAO_TEXTUAL = "A resposta anterior teve corrupção de encoding (caractere inválido misturado ao texto). Gere novamente em português padrão, sem caracteres fora do esperado.";
+const _FEEDBACK_ENUNCIADO_CURTO_OU_FLASHCARD = "O enunciado anterior violou a REGRA SA-5 (estilo Revalida/ENAMED): ficou curto demais, fora da faixa de 80-200 palavras, ou sem um caso clínico real (idade, contexto assistencial como UBS/UPA/PS/enfermaria/pré-natal, e um paciente apresentando queixa). Reescreva como um caso clínico narrativo completo, dentro do limite de palavras, terminando na pergunta de fechamento — não como uma pergunta seca de flashcard.";
 
 // Feedback dinâmico: extrai o(s) número(s) exatos já identificados por
 // _numerosSemSuporte no texto do motivo (nunca recalcula — usa o mesmo
@@ -1037,6 +1083,7 @@ const _CATEGORIAS_CORRIGIVEIS_SA = [
   { tipo: "dica_mestre_formato",    teste: (t) => /dicaMestre não tem exatamente 4 blocos/.test(t), feedback: () => _FEEDBACK_DICA_MESTRE_FORMATO },
   { tipo: "gabarito_inconsistente", teste: (t) => /nenhuma justificativa começa com|mais de uma alternativa marcada|justificativa marcada como/.test(t), feedback: () => _FEEDBACK_GABARITO_INCONSISTENTE },
   { tipo: "corrupcao_textual",      teste: (t) => /corrupção de encoding/.test(t), feedback: () => _FEEDBACK_CORRUPCAO_TEXTUAL },
+  { tipo: "enunciado_flashcard",    teste: (t) => /abaixo do mínimo de 80|acima do máximo de 200|sem marcador de caso clínico/.test(t), feedback: () => _FEEDBACK_ENUNCIADO_CURTO_OU_FLASHCARD },
 ];
 
 const _classificarFalhaSA = (motivos, erroTecnico) => {
