@@ -1248,7 +1248,7 @@ export const validarResumoSA = (pontos, { grounding = false, groundingTexto = ""
 //   resposta sem "pontos"/vazia. Artefato da geração, não do recorte.
 const _MOTIVO_GROUNDING_BLOQUEIO_RESUMO = /não aparece\(m\) no conteúdo da diretriz controlada injetada/;
 
-const _FEEDBACK_RESUMO_ABSOLUTO = 'A tentativa anterior foi rejeitada porque usou linguagem absoluta ("sempre"/"nunca"/"obrigatório"/"padrão-ouro"/"patognomônico"/percentual específico) sem diretriz controlada injetada. Reescreva preservando o valor pedagógico, em linguagem qualitativa e sem afirmações absolutas desnecessárias.';
+const _FEEDBACK_RESUMO_ABSOLUTO = 'A tentativa anterior foi rejeitada porque usou linguagem absoluta ("sempre"/"nunca"/"obrigatório"/"padrão-ouro"/"patognomônico"/percentual específico) sem diretriz controlada injetada. A rejeição é por presença literal da palavra em QUALQUER lugar do texto — inclusive dentro de exemplo, fala hipotética de familiar/paciente ou entre aspas; não há contexto que isente. Reescreva a(s) frase(s) inteira(s) sem essas palavras, preservando o valor pedagógico em linguagem qualitativa.';
 const _FEEDBACK_RESUMO_NUMERO_ORFAO = "A tentativa anterior introduziu número(s) clínico(s) sem diretriz controlada injetada. Reescreva sem esse(s) número(s) — inclusive intervalos/faixas (ex: \"1-2 horas\") —, preservando o valor pedagógico em linguagem qualitativa.";
 const _FEEDBACK_RESUMO_POSOLOGIA = "A tentativa anterior usou posologia numérica (dose/via/intervalo/duração) sem diretriz controlada injetada. Reescreva sem esses dados posológicos específicos, em linguagem qualitativa.";
 const _FEEDBACK_RESUMO_CORRUPCAO = "A resposta anterior teve corrupção de encoding (caractere inválido misturado ao texto). Gere novamente em português padrão, sem caracteres fora do esperado.";
@@ -1450,6 +1450,8 @@ Sem diretriz controlada, você NÃO PODE inventar/completar:
 • recomendação terapêutica específica (classe, procedimento ou "sempre fazer X antes de Y") sem fonte;
 • afirmações absolutas do tipo "sempre", "nunca", "obrigatório", "deve ser feito em todos os casos/pacientes", "padrão-ouro", "patognomônico" — mesmo que soem clinicamente plausíveis, elas viram uma citação de norma que este resumo não pode fazer sem fonte real;
 • fonte, diretriz ou ano não injetados neste prompt.
+
+ATENÇÃO — esta proibição vale em QUALQUER lugar do texto, sem exceção de contexto: dentro de exemplos ilustrativos, em frases hipotéticas atribuídas a um familiar/cuidador/paciente, dentro de aspas, no bloco "Outras formas de cobrança" e em qualquer recomendação prática. Não existe forma segura de escrever essas palavras sem diretriz controlada — mesmo como citação de exemplo ou fala de terceiro, a presença literal do termo rejeita o resumo inteiro. Se a frase que você quer escrever só funciona com uma dessas palavras, reescreva a frase inteira sem elas — nunca as inclua "entre aspas" pensando que isso as isenta.
 
 Frases-substituto seguras (use este registro, não o imperativo/numérico):
 "deve ser avaliado conforme o contexto clínico" · "considerar investigação por imagem quando indicado" · "encaminhar para avaliação especializada diante de sinais de alarme" · "seguir protocolo vigente aplicável" · "tratamento depende da etiologia e gravidade; diante de sinais de complicação, encaminhar para avaliação especializada".
