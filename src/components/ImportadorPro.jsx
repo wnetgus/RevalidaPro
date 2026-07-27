@@ -3,7 +3,7 @@ import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { db, auth, obterTokenAppCheck } from "../firebase";
 import { invalidarCacheQuestoes } from "../utils/questoesCache";
 import { obterHeadersAutenticados } from "../utils/apiAuth";
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, getDocs } from "firebase/firestore";
 import {
   FaPlus, FaTrash, FaImage, FaCode, FaThList,
   FaBookMedical, FaTimes, FaStethoscope, FaLightbulb,
@@ -68,6 +68,19 @@ const obterProximoNumeroQuestao = async (provaId, saEdicao = null) => {
 // Previne duplicatas como "Sepse - Grave" / "sepse grave" / "SEPSE GRAVE".
 const normChave = (s) =>
   String(s).trim().toLowerCase().replace(/[-_/,]/g, " ").replace(/\s+/g, " ").trim();
+
+const normalizarTabelaDados = (tabelaDados) => {
+  if (!tabelaDados || !Array.isArray(tabelaDados.linhas) || tabelaDados.linhas.length === 0) return tabelaDados;
+  if (tabelaDados.linhas.every(l => l !== null && typeof l === "object" && !Array.isArray(l))) return tabelaDados;
+  return {
+    ...tabelaDados,
+    linhas: tabelaDados.linhas.map(linha =>
+      Array.isArray(linha)
+        ? Object.fromEntries(linha.map((val, i) => [`c${i}`, String(val ?? "")]))
+        : linha
+    ),
+  };
+};
 
 // PROMPT_SISTEMA importado de promptEngine.js como PROMPT_SISTEMA_IMPORTADOR.
 
@@ -664,10 +677,27 @@ const ImportadorPro = () => {
   const [destino, setDestino] = useState("inep");
   const [edicaoSuperApostas, setEdicaoSuperApostas] = useState("2026_1");
   const [nivelAposta, _setNivelAposta] = useState("ALTO"); // fallback; atribuição real é automática
+  const [edicoesINEP, setEdicoesINEP] = useState([
+    "2026.1", "2026.2", "2025.1", "2025.2", "2024.1", "2024.2",
+    "2023.1", "2023.2", "2022.1", "2022.2", "2021.1", "2021.2"
+  ]);
 
   // Cleanup do interval ao desmontar o componente
   React.useEffect(() => {
     return () => { if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current); };
+  }, []);
+
+  // Carrega edições INEP da coleção edicoesRevalida; mantém fallback se vazia
+  React.useEffect(() => {
+    getDocs(collection(db, "edicoesRevalida")).then(snap => {
+      if (snap.empty) return;
+      const lista = snap.docs
+        .map(d => d.data())
+        .filter(d => d.ativo !== false)
+        .sort((a, b) => b.ano - a.ano || a.semestre - b.semestre)
+        .map(d => `${d.ano}.${d.semestre}`);
+      if (lista.length > 0) setEdicoesINEP(lista);
+    }).catch(() => {});
   }, []);
 
   // ─── TAXONOMIA PERSISTENTE — FIRESTORE ───────────────────────
@@ -850,6 +880,14 @@ const ImportadorPro = () => {
           subtema: q.subtema || "Geral",
           ano: anoProva,
           imagemUrl: q.imagemUrl || "",
+          imagemStoragePath: q.imagemStoragePath || "",
+          imagemLegenda: q.imagemLegenda || "",
+          imagemTipo: q.imagemTipo || "",
+          graficoDados: q.graficoDados || null,
+          temImagem: Boolean(q.imagemUrl || q.imagemStoragePath || q.temImagem),
+          tabelaDados: normalizarTabelaDados(q.tabelaDados) || null,
+          descricaoTabela: q.descricaoTabela || "",
+          recursoVisual: q.recursoVisual || null,
           // Status de atualização de diretriz — automático, sem ação do admin
           status_atualizacao: calcularStatusAtualizacao(q.ano_diretriz),
           // Metadados Super Apostas (apenas quando destino = super_apostas)
@@ -913,7 +951,7 @@ const ImportadorPro = () => {
         return;
       }
 
-      // ── AUTENTICAÇÃO (Micro Sprint 4B.1) ───────────────────────────
+      // ── AUTENTICAÇÃO (Micro Sprint 4B.1) ─────────────────────────────────────
       // gerarQuestoesIA agora exige Firebase ID token. Obtido uma vez aqui,
       // após o gate clínico e antes de qualquer fetch — se não houver sessão,
       // lança e aborta ANTES da primeira chamada de rede (nenhum lote chega
@@ -1027,7 +1065,15 @@ const ImportadorPro = () => {
           ano:            q.ano || anoProva,
           provaId:        isSA ? "" : provaEdicao,  // provaId vazio = isolamento módulo INEP
           isOficial:      isSA ? false : isOficial,
-          imagemUrl:      q.imagemUrl || "",
+          imagemUrl:          q.imagemUrl || "",
+          imagemStoragePath:  q.imagemStoragePath || "",
+          imagemLegenda:      q.imagemLegenda || "",
+          imagemTipo:         q.imagemTipo || "",
+          graficoDados:       q.graficoDados || null,
+          temImagem:          Boolean(q.imagemUrl || q.imagemStoragePath || q.temImagem),
+          tabelaDados:        normalizarTabelaDados(q.tabelaDados) || null,
+          descricaoTabela:    q.descricaoTabela || "",
+          recursoVisual:      q.recursoVisual || null,
           // ── TAXONOMIA CONTROLADA: sobrescreve qualquer valor gerado pela IA ──
           materia:      materiaGerador,
           tema_mestre:  temaMestreFinal,
@@ -1084,7 +1130,7 @@ const ImportadorPro = () => {
     setQuestoes([...questoes, {
       materia: "Clínica Médica", subtema: "", banca: "Revalida INEP", ano: "",
       provaId: provaEdicao, isOficial: isOficial,
-      enunciado: "", imagemUrl: "",
+      enunciado: "", imagemUrl: "", imagemStoragePath: "", imagemLegenda: "", imagemTipo: "", graficoDados: null, tabelaDados: null, descricaoTabela: "", recursoVisual: null,
       alts: {
         a: { texto: "", nota: "" }, b: { texto: "", nota: "" },
         c: { texto: "", nota: "" }, d: { texto: "", nota: "" }, e: { texto: "", nota: "" }
@@ -1117,8 +1163,6 @@ const ImportadorPro = () => {
         setPublicando(false);
         return;
       }
-      // Verificação secundária: se alguma questão do lote for do módulo super_apostas
-      // mas o destino atual for inep com isOficial=true, bloqueia
       const temSAcomINEP = questoes.some(q => q.modulo === "super_apostas" && isOficial);
       if (temSAcomINEP) {
         alert("🚫 BLOQUEADO: O lote contém questões do Super Apostas que não podem ser enviadas com flag INEP.");
@@ -1129,13 +1173,11 @@ const ImportadorPro = () => {
       const isSA = destino === "super_apostas";
 
       // Pré-calcula o próximo número para questões sem ID (manuais).
-      // Cruza Firestore + lote local para nunca sobrescrever documentos existentes.
       const questoesSemId = questoes.filter(q => !q.id);
       let proximoNumeroFallback = 1;
       let contadorFallback = 0;
       if (questoesSemId.length > 0) {
         const chaveRef = isSA ? `SA_${edicaoSuperApostas}` : (provaEdicao || "");
-        // SA: consulta por "edicao"; INEP/Geral: consulta por "provaId"
         const proxFs = chaveRef
           ? await obterProximoNumeroQuestao(chaveRef, isSA ? edicaoSuperApostas : null)
           : 1;
@@ -1147,8 +1189,9 @@ const ImportadorPro = () => {
         proximoNumeroFallback = Math.max(proxFs, maxLocalSemId + 1);
       }
 
-      for (let i = 0; i < questoes.length; i++) {
-        const q = questoes[i];
+      // ── 1ª PASSAGEM: montar todos os {qId, finalData} antes de qualquer escrita ──
+      const lote = [];
+      for (const q of questoes) {
         const finalData = {
           ...q,
           raciocinio: normalizarRaciocinio(q.raciocinio) || q.raciocinio || "",
@@ -1163,14 +1206,20 @@ const ImportadorPro = () => {
           justificativaD: q.justificativaD || q.alts?.d?.nota || "",
           justificativaE: q.justificativaE || q.alts?.e?.nota || "",
           instituicao: q.banca || "INEP",
+          imagemLegenda: q.imagemLegenda || "",
+          imagemTipo: q.imagemTipo || "",
+          graficoDados: q.graficoDados || null,
+          temImagem: Boolean(q.imagemUrl || q.imagemStoragePath || q.temImagem),
+          tabelaDados: normalizarTabelaDados(q.tabelaDados) || null,
+          descricaoTabela: q.descricaoTabela || "",
+          recursoVisual: q.recursoVisual || null,
           criadoEm: serverTimestamp(),
-          // Super Apostas: reforça metadados e isolamento mesmo em publicarLote
           ...(isSA ? {
             modulo: "super_apostas",
             edicao: q.edicao || edicaoSuperApostas,
             nivel_aposta: q.nivel_aposta || nivelAposta,
             origem_prova: "IA",
-            provaId: "",     // garante que nunca entre em queries INEP
+            provaId: "",
             isOficial: false,
           } : {}),
         };
@@ -1178,27 +1227,85 @@ const ImportadorPro = () => {
 
         let qId;
         if (q.id) {
-          // Questão já tem ID correto atribuído (ex: gerado via IA ou JSON com id explícito)
           qId = q.id;
         } else {
-          // Fallback: gera ID no padrão ANO_EDICAO_QNUMERO para questões manuais ou sem id
-          const provaRef   = finalData.provaId || provaEdicao || "";
-          const partesFb   = provaRef.split(".");
-          const ano        = partesFb[0] || String(new Date().getFullYear());
-          const edicao     = partesFb[1] || "1";
-          const numAtual   = proximoNumeroFallback + contadorFallback;
+          const provaRef = finalData.provaId || provaEdicao || "";
+          const partesFb = provaRef.split(".");
+          const ano      = partesFb[0] || String(new Date().getFullYear());
+          const edicao   = partesFb[1] || "1";
+          const numAtual = proximoNumeroFallback + contadorFallback;
           qId = `${ano}_${edicao}_Q${numAtual}`;
           finalData.numeroQuestao = finalData.numeroQuestao || numAtual;
           contadorFallback++;
         }
+        // Garante que o campo id está gravado no documento
+        finalData.id = qId;
+        lote.push({ qId, finalData });
+      }
 
-        console.log(`[publicar] Salvando questão ${i + 1}/${questoes.length} → id: ${qId}`);
+      // ── PATCH 2: VALIDAÇÃO DE SCHEMA (apenas INEP oficial) ───────────────────
+      // alternativaE/justificativaE são opcionais: provas INEP oficiais usam ABCD.
+      // E só é exigida se a questão realmente tiver 5 alternativas.
+      if (!isSA && isOficial) {
+        const OBRIGATORIOS_BASE = [
+          "id", "numeroQuestao", "provaId", "ano", "materia",
+          "tema_mestre", "subtema", "enunciado", "gabarito",
+          "alternativaA", "alternativaB", "alternativaC", "alternativaD",
+          "justificativaA", "justificativaB", "justificativaC", "justificativaD",
+          "raciocinio", "dicaMestre",
+        ];
+        const errosSchema = [];
+        for (const { qId, finalData } of lote) {
+          const temE = finalData.alternativaE && finalData.alternativaE.trim() !== "";
+          const OBRIGATORIOS = temE
+            ? [...OBRIGATORIOS_BASE, "alternativaE", "justificativaE"]
+            : OBRIGATORIOS_BASE;
+          const faltando = OBRIGATORIOS.filter(c => {
+            const v = finalData[c];
+            return v === undefined || v === null || v === "";
+          });
+          // gabarito deve corresponder às alternativas disponíveis
+          const gabaritosValidos = temE ? ["a","b","c","d","e"] : ["a","b","c","d"];
+          if (finalData.gabarito && !gabaritosValidos.includes(finalData.gabarito)) {
+            faltando.push(`gabarito "${finalData.gabarito}" inválido (deve ser ${gabaritosValidos.join("|")})`);
+          }
+          if (finalData.isOficial !== true) faltando.push("isOficial (deve ser true)");
+          if (faltando.length > 0) errosSchema.push(`${qId}: faltam [${faltando.join(", ")}]`);
+        }
+        if (errosSchema.length > 0) {
+          alert(`🚫 Publicação bloqueada — schema incompleto:\n\n${errosSchema.join("\n")}`);
+          setPublicando(false);
+          return;
+        }
+      }
+
+      // ── PATCH 1: ANTI-OVERWRITE — verifica colisão antes de qualquer escrita ──
+      const colisoes = (
+        await Promise.all(lote.map(({ qId }) => getDoc(doc(db, "questoes", qId))))
+      ).reduce((acc, snap, i) => {
+        if (snap.exists()) acc.push(lote[i].qId);
+        return acc;
+      }, []);
+      if (colisoes.length > 0) {
+        alert(
+          `🚫 Publicação bloqueada: já existem questões com estes IDs:\n\n${colisoes.join(", ")}\n\n` +
+          `Revise o JSON ou remova duplicatas.`
+        );
+        setPublicando(false);
+        return;
+      }
+
+      // ── ESCRITA — somente após todas as validações passarem ──────────────────
+      for (let i = 0; i < lote.length; i++) {
+        const { qId, finalData } = lote[i];
+        console.log(`[publicar] Salvando questão ${i + 1}/${lote.length} → id: ${qId}`);
         await setDoc(doc(db, "questoes", qId), finalData);
         gerarESalvarResumo(finalData).catch(() => {});
         setPublicados(i + 1);
       }
-      invalidarCacheQuestoes(); // força releitura na próxima vez que algum componente precisar
-      alert(`✅ ${questoes.length} questão(ões) publicada(s) com sucesso!`);
+
+      invalidarCacheQuestoes();
+      alert(`✅ ${lote.length} questão(ões) publicada(s) com sucesso!`);
       setQuestoes([]);
       setPublicados(0);
     } catch (e) {
@@ -1258,7 +1365,7 @@ const ImportadorPro = () => {
             <>
               <select value={provaEdicao} onChange={e => setProvaEdicao(e.target.value)} style={st.select}>
                 <option value="">Edição...</option>
-                {["2025.1", "2025.2", "2024.1", "2024.2", "2023.1", "2023.2", "2022.1", "2022.2", "2021.1", "2021.2"].map(e => (
+                {edicoesINEP.map(e => (
                   <option key={e} value={e}>{e}</option>
                 ))}
               </select>
@@ -1710,6 +1817,19 @@ const ImportadorPro = () => {
                     style={st.inputImg}
                   />
                 </div>
+
+                {/* LEGENDA DA IMAGEM — visível apenas quando imagemUrl está preenchido */}
+                {q.imagemUrl && (
+                  <div style={{ ...st.imgRow, marginTop: "-4px", borderColor: "rgba(79,70,229,0.15)" }}>
+                    <FaImage color="#475569" size={12} />
+                    <input
+                      placeholder="Legenda da imagem (ex: ECG — identifique o ritmo)"
+                      value={q.imagemLegenda || ""}
+                      onChange={e => handleChange(idx, "imagemLegenda", e.target.value)}
+                      style={{ ...st.inputImg, color: "#64748b" }}
+                    />
+                  </div>
+                )}
 
                 {/* ALTERNATIVAS (expansível) */}
                 {expandidos[idx] && (

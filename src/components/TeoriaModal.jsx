@@ -41,11 +41,11 @@ const COR_CONTEXTO = {
 const toResDocId = (tema) =>
   (tema || "").trim().replace(/[/.#[\]*]/g, "-");
 
-const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClose }) => {
+const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, resumoTema, onClose }) => {
   const [teoria, setTeoria] = useState(null);
   const [resumo, setResumo] = useState(null);  // resumos_temas (schema plano)
   const [carregando, setCarregando] = useState(true);
-  const [fonte, setFonte] = useState(null);    // "resumos_temas" | "teorias" | null
+  const [fonte, setFonte] = useState(null);    // "questao" | "resumos_temas" | "teorias" | null
 
   useEffect(() => {
     const buscar = async () => {
@@ -53,6 +53,14 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
       setResumo(null);
       setTeoria(null);
       setFonte(null);
+
+      // ── 0ª tentativa: resumoTema embutido na questão (Codex) — sem Firestore
+      if (resumoTema && typeof resumoTema === "object" &&
+          Object.values(resumoTema).some(v => v && String(v).trim() !== "")) {
+        setFonte("questao");
+        setCarregando(false);
+        return;
+      }
 
       try {
         // ── 1ª tentativa: teorias/{tema}--{contexto} — schema rico + específico
@@ -186,6 +194,51 @@ const TeoriaModal = ({ materia, subtema, tema_mestre, subcontexto_clinico, onClo
             <div style={s.loadBox}>
               <FaSpinner style={{ animation: "spin 0.8s linear infinite", fontSize: "20px", color: "#4f46e5" }} />
               <p style={s.loadTxt}>Buscando resumo...</p>
+            </div>
+
+          ) : fonte === "questao" ? (
+            /* ── resumoTema embutido na questão (gerado pelo Codex) ── */
+            <div>
+              {[
+                { key: "padraoReconhecimento",  label: "Padrão de Reconhecimento", color: "#818cf8" },
+                { key: "diagnosticoDiferencial", label: "Diagnóstico Diferencial",  color: "#34d399" },
+                { key: "condutaMomentoExato",    label: "Conduta no Momento Exato", color: "#60a5fa" },
+                { key: "diretrizAtual",          label: "Diretriz Atual",           color: "#a78bfa" },
+              ].map(({ key, label, color }) => resumoTema[key] && (
+                <div key={key} style={s.secaoResumo}>
+                  <span style={{ ...s.secaoLabel, color }}>{label}</span>
+                  <p style={s.secaoTexto}>{resumoTema[key]}</p>
+                </div>
+              ))}
+
+              {(resumoTema.armadilhaINEP || resumoTema.erroQueReprova) && (
+                <div style={s.secaoResumo}>
+                  <span style={{ ...s.secaoLabel, color: "#ef4444" }}>⚠ Armadilha INEP / Erro que Reprova</span>
+                  {resumoTema.armadilhaINEP && <p style={{ ...s.secaoTexto, color: "#fca5a5", marginBottom: resumoTema.erroQueReprova ? "6px" : 0 }}>{resumoTema.armadilhaINEP}</p>}
+                  {resumoTema.erroQueReprova && <p style={{ ...s.secaoTexto, color: "#fca5a5" }}>{resumoTema.erroQueReprova}</p>}
+                </div>
+              )}
+
+              {resumoTema.regraDeOuro && (
+                <div style={{ ...s.dicaMestreBox, background: "rgba(79,70,229,0.06)", border: "1px solid rgba(79,70,229,0.2)" }}>
+                  <span style={{ ...s.dicaMestreLabel, color: "#818cf8" }}>⭐ Regra de Ouro</span>
+                  <p style={{ ...s.dicaMestreTexto, color: "#c7d2fe" }}>{resumoTema.regraDeOuro}</p>
+                </div>
+              )}
+
+              {resumoTema.quandoINEPQuerTePegar && (
+                <div style={{ ...s.dicaMestreBox, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                  <span style={{ ...s.dicaMestreLabel, color: "#ef4444" }}>🚨 Quando o INEP Quer Te Pegar</span>
+                  <p style={{ ...s.dicaMestreTexto, color: "#fca5a5" }}>{resumoTema.quandoINEPQuerTePegar}</p>
+                </div>
+              )}
+
+              {resumoTema.dicaMestreResumo && (
+                <div style={s.dicaMestreBox}>
+                  <span style={s.dicaMestreLabel}>🏆 Dica do Mestre</span>
+                  <p style={s.dicaMestreTexto}>{resumoTema.dicaMestreResumo}</p>
+                </div>
+              )}
             </div>
 
           ) : teoria ? (

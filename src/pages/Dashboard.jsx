@@ -10,6 +10,7 @@ import {
   FaExternalLinkAlt, FaGift, FaCopy, FaCheck
 } from "react-icons/fa";
 import { SUPER_APOSTAS_CONFIG } from "../config/superApostasConfig";
+import ModalComparativo2026 from "../components/ModalComparativo2026";
 
 const WHATSAPP_CONTATO = "5587996666667"; 
 
@@ -33,6 +34,7 @@ const Dashboard = ({ usuario }) => {
   const [editandoMeta, setEditandoMeta] = useState(false);
   const [metaCustomInput, setMetaCustomInput] = useState("");
   const [anoSelecionado, setAnoSelecionado] = useState(null);
+  const [anosINEP, setAnosINEP] = useState(["2026", "2025", "2024", "2023", "2022", "2021"]);
   const [missoes, setMissoes] = useState([]);
   const [carregandoMissoes, setCarregandoMissoes] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -42,6 +44,9 @@ const Dashboard = ({ usuario }) => {
   const [showIndicacao, setShowIndicacao] = useState(false);
   const [msgCopiada, setMsgCopiada] = useState(false);
   const [showPlanoSeletor, setShowPlanoSeletor] = useState(false);
+  const [showComparativo, setShowComparativo] = useState(
+    () => !localStorage.getItem("rp_comparativo_2026_v1")
+  );
   // Tick para forçar recálculo dos valores derivados ao voltar ao dashboard
   const [, setTick] = useState(0);
   // Gatilho de retorno: exibe "Você parou em X%, vamos continuar?" ao voltar à aba
@@ -83,6 +88,20 @@ const Dashboard = ({ usuario }) => {
   useEffect(() => {
     const randomTip = DICAS_MESTRE[Math.floor(Math.random() * DICAS_MESTRE.length)];
     setDicaDoMestre(randomTip);
+  }, []);
+
+  // Carrega anos do INEP da coleção edicoesRevalida; fallback no estado inicial
+  useEffect(() => {
+    getDocs(collection(db, "edicoesRevalida")).then(snap => {
+      if (snap.empty) return;
+      const anos = [...new Set(
+        snap.docs
+          .map(d => d.data())
+          .filter(d => d.ativo !== false)
+          .map(d => String(d.ano))
+      )].sort((a, b) => b - a);
+      if (anos.length > 0) setAnosINEP(anos);
+    }).catch(() => {});
   }, []);
 
   // ── SINCRONIZAÇÃO COM CONTEXT ────────────────────────────────────────────
@@ -498,6 +517,12 @@ const Dashboard = ({ usuario }) => {
 
   return (
     <div style={st.mainWrapper}>
+
+      {/* Modal comparativo Super Apostas x INEP 2026.1 — aparece uma vez após login */}
+      {showComparativo && (
+        <ModalComparativo2026 onClose={() => setShowComparativo(false)} />
+      )}
+
       <div style={st.dashContainer}>
 
         {/* TOPO: Mais Médicos + Indique e Ganhe — 50/50 */}
@@ -983,7 +1008,17 @@ const Dashboard = ({ usuario }) => {
 
             {/* 🟢 Conquistas Recentes — erros recentes já resolvidos */}
             {errosRecentesResolvidos > 0 && (
-              <div style={st.conquistaBar}>
+              <div style={{
+                background: 'rgba(16,185,129,0.08)',
+                border: '1px solid rgba(16,185,129,0.2)',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                fontSize: '12px',
+                color: '#10b981',
+                fontWeight: '700',
+                marginBottom: '8px',
+                lineHeight: '1.4'
+              }}>
                 🟢 <strong>{errosRecentesResolvidos}</strong> erro{errosRecentesResolvidos !== 1 ? "s" : ""} recente{errosRecentesResolvidos !== 1 ? "s" : ""} resolvido{errosRecentesResolvidos !== 1 ? "s" : ""}! Continue assim, Doutor.
               </div>
             )}
@@ -1044,8 +1079,8 @@ const Dashboard = ({ usuario }) => {
         {/* SIMULADOS INEP ORIGINAIS */}
         <section style={st.acervoContainer}>
            <div style={st.acervoHeader}><FaArchive color="#fbbf24" size={16}/> <span style={{color: '#fff'}}>SIMULADOS INEP</span></div>
-           <div className="anos-grid" style={{ ...st.anosGrid, gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(5, 1fr)" }}>
-              {["2025", "2024", "2023", "2022", "2021"].map(ano => (
+           <div className="anos-grid" style={{ ...st.anosGrid, gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : `repeat(${Math.min(anosINEP.length, 6)}, 1fr)` }}>
+              {anosINEP.map(ano => (
                 <div key={ano} onClick={() => setAnoSelecionado(ano)} className="card-ano" style={st.cardAno}>
                     <strong style={{fontSize: '18px', color: '#fff'}}>{ano}</strong>
                     <small style={{color: '#94a3b8', fontWeight: 'bold', display: 'block', marginTop: '2px'}}>PROVA REAL</small>
@@ -1402,21 +1437,35 @@ const Dashboard = ({ usuario }) => {
       <style>{`
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 5000; padding: 20px; }
         .modal-content { background: #0f172a; border: 1px solid #334155; border-radius: 20px; padding: 30px; width: 100%; max-height: 90vh; overflow-y: auto; }
-        .materia-card { transition: 0.2s; cursor: pointer; border: 1px solid #334155; }
-        .materia-card:hover { transform: translateY(-3px); background: #2d3748 !important; border-color: #4f46e5; }
-        .card-ano { transition: 0.2s; cursor: pointer; border: 1px solid #334155; }
-        .card-ano:hover { background: #4f46e5 !important; transform: scale(1.03); }
-        .edicao-card { background: #1e293b; padding: 15px; border-radius: 12px; display: flex; gap: 15px; align-items: center; cursor: pointer; border: 1px solid #334155; transition: 0.2s; margin-bottom: 8px; }
+        .materia-card { transition: all 0.25s cubic-bezier(0.4,0,0.2,1); cursor: pointer; border: 1px solid #334155; }
+        .materia-card:hover { transform: translateY(-4px); background: #262f3f !important; border-color: #4f46e5; box-shadow: 0 10px 25px rgba(79,70,229,0.15); }
+        .materia-card:active { transform: translateY(-2px); }
+        .card-ano { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); cursor: pointer; border: 1px solid #334155; }
+        .card-ano:hover { background: #4f46e5 !important; transform: scale(1.05); box-shadow: 0 8px 20px rgba(79,70,229,0.25); }
+        .card-ano:active { transform: scale(0.98); }
+        .edicao-card { background: #1e293b; padding: 15px; border-radius: 12px; display: flex; gap: 15px; align-items: center; cursor: pointer; border: 1px solid #334155; transition: all 0.2s cubic-bezier(0.4,0,0.2,1); margin-bottom: 8px; }
         .edicao-card:hover { border-color: #4f46e5; transform: translateX(5px); background: #262f3f; }
+        .edicao-card:active { transform: translateX(3px); }
         .card-missao:hover { transform: translateX(5px); border-color: #ef4444; background: #0f172a !important; }
+        .express-card { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); }
         .express-card:hover { border-color: #ef4444 !important; transform: translateY(-2px); background: #262f3f !important; }
+        .express-card:active { transform: translateY(0); }
+        .super-apostas-card { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); }
         .super-apostas-card:hover { border-color: #ef4444 !important; transform: translateY(-2px); background: #262f3f !important; }
+        .super-apostas-card:active { transform: translateY(0); }
         .blink-text { animation: blink 2s infinite; }
         .pulse-online { position: absolute; bottom: 2px; right: 2px; width: 12px; height: 12px; background: #10b981; border: 2px solid #0f172a; border-radius: 50%; }
         .float-anim { animation: floating 3s ease-in-out infinite; }
         .icon-pulse { animation: pulseIcon 2s infinite; }
         .pulse-bt { animation: pulseButton 2s infinite; }
         .welcome-anim { animation: slideUp 0.5s ease-out; }
+        .carrossel-card { transition: all 0.2s cubic-bezier(0.4,0,0.2,1) !important; }
+        .carrossel-card:hover { transform: translateY(-2px); border-color: rgba(79,70,229,0.5) !important; }
+        .carrossel-card:active { transform: scale(0.98); }
+        .mini-stat { transition: all 0.2s cubic-bezier(0.4,0,0.2,1); }
+        .mini-stat:hover { background: #1a2332 !important; border-color: #334155 !important; }
+        .stat-item { transition: opacity 0.2s ease; }
+        .stat-item:hover { opacity: 0.8; }
         @keyframes floating { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         @keyframes pulseIcon { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.8; } }
         @keyframes pulseButton { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
@@ -1444,8 +1493,7 @@ const Dashboard = ({ usuario }) => {
           .carrossel-container { scroll-behavior: smooth; }
           .carrossel-container::-webkit-scrollbar { display: none; }
           .carrossel-container { -ms-overflow-style: none; scrollbar-width: none; }
-          .carrossel-card:hover { transform: translateY(-2px); border-color: rgba(79,70,229,0.5) !important; }
-          .carrossel-card:active { transform: scale(0.98); }
+          .carrossel-card:active { transform: scale(0.97); }
           .bottom-widgets { grid-template-columns: 1fr !important; }
           .hide-on-mobile { display: none; }
         }
@@ -1485,7 +1533,7 @@ const st = {
   heroDetails: { display: "flex", flexDirection: "column", gap: "10px", flex: 1 },
   clickableStat: { background: "#0f172a", padding: "12px", borderRadius: "14px", border: "1px solid #4f46e5", cursor: "pointer", display: "flex", gap: "12px", alignItems: "center", transition: '0.2s' },
   editLink: { fontSize: '8px', color: '#4f46e5', fontWeight: 'bold', textTransform: 'uppercase', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' },
-  miniStat: { background: "#0f172a", padding: "12px", borderRadius: "14px", border: "1px solid #1e293b", display: "flex", gap: "12px", alignItems: "center" },
+  miniStat: { background: "#0f172a", padding: "12px", borderRadius: "14px", border: "1px solid #1e293b", display: "flex", gap: "12px", alignItems: "center", transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)" },
   statCardLabel: { color: "#818cf8", fontWeight: "bold", fontSize: "10px", display: "block" },
   statCardValue: { color: "#fff", fontWeight: "900", fontSize: "16px", margin: 0 },
   bannerVip: { background: "linear-gradient(135deg, #064e3b, #022c22)", borderRadius: "20px", padding: "20px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", border: "1px solid #10b981", cursor: "pointer" },

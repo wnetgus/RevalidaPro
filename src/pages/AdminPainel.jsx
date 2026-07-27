@@ -139,6 +139,77 @@ const AdminPainel = () => {
   // Badge de alertas de vigilância pendentes
   const [alertasDiretrizesPendentes, setAlertasDiretrizesPendentes] = useState(0);
 
+  // ── ABA EDIÇÕES INEP ────────────────────────────────────────────────────────
+  const [edicoesRevalida, setEdicoesRevalida] = useState([]);
+  const [carregandoEdicoes, setCarregandoEdicoes] = useState(false);
+  const [novaEdicaoAno, setNovaEdicaoAno] = useState("");
+  const [novaEdicaoSemestre, setNovaEdicaoSemestre] = useState("1");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  const carregarEdicoes = async () => {
+    setCarregandoEdicoes(true);
+    try {
+      const snap = await getDocs(collection(db, "edicoesRevalida"));
+      const lista = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => b.ano - a.ano || a.semestre - b.semestre);
+      setEdicoesRevalida(lista);
+    } catch (e) { console.error(e); }
+    setCarregandoEdicoes(false);
+  };
+
+  const seedEdicoes = async () => {
+    setSalvandoEdicao(true);
+    const SEED = [
+      { ano: 2021, semestre: 1 }, { ano: 2021, semestre: 2 },
+      { ano: 2022, semestre: 1 }, { ano: 2022, semestre: 2 },
+      { ano: 2023, semestre: 1 }, { ano: 2023, semestre: 2 },
+      { ano: 2024, semestre: 1 }, { ano: 2024, semestre: 2 },
+      { ano: 2025, semestre: 1 }, { ano: 2025, semestre: 2 },
+      { ano: 2026, semestre: 1 }, { ano: 2026, semestre: 2 },
+    ];
+    try {
+      const batch = writeBatch(db);
+      for (const e of SEED) {
+        const id = `${e.ano}.${e.semestre}`;
+        batch.set(doc(db, "edicoesRevalida", id), {
+          id, ano: e.ano, semestre: e.semestre,
+          nome: `Revalida INEP ${id}`,
+          ativo: true, oficial: true,
+          criadoEm: serverTimestamp(),
+        }, { merge: true });
+      }
+      await batch.commit();
+      await carregarEdicoes();
+    } catch (e) { alert("Erro no seed: " + e.message); }
+    setSalvandoEdicao(false);
+  };
+
+  const toggleAtivoEdicao = async (id, ativoAtual) => {
+    try {
+      await updateDoc(doc(db, "edicoesRevalida", id), { ativo: !ativoAtual });
+      setEdicoesRevalida(prev => prev.map(e => e.id === id ? { ...e, ativo: !ativoAtual } : e));
+    } catch (e) { alert("Erro: " + e.message); }
+  };
+
+  const adicionarEdicao = async () => {
+    const ano = parseInt(novaEdicaoAno);
+    const semestre = parseInt(novaEdicaoSemestre);
+    if (!ano || ano < 2020 || ano > 2030) return alert("Ano inválido (2020–2030).");
+    const id = `${ano}.${semestre}`;
+    if (edicoesRevalida.find(e => e.id === id)) return alert(`Edição ${id} já existe.`);
+    setSalvandoEdicao(true);
+    try {
+      await setDoc(doc(db, "edicoesRevalida", id), {
+        id, ano, semestre, nome: `Revalida INEP ${id}`,
+        ativo: true, oficial: true, criadoEm: serverTimestamp(),
+      });
+      setNovaEdicaoAno("");
+      await carregarEdicoes();
+    } catch (e) { alert("Erro: " + e.message); }
+    setSalvandoEdicao(false);
+  };
+
   // Filtro de hierarquia na aba Médicos
   const [filtroUsuariosStatus, setFiltroUsuariosStatus] = useState("Todos");
 
@@ -193,6 +264,27 @@ const AdminPainel = () => {
       console.error("Erro ao carregar questões:", e);
     }
   };
+
+  const exportarParaCodex = async (provaId = "2026.1") => {
+    try {
+      const snap = await getDocs(
+        query(collection(db, "questoes"), where("provaId", "==", provaId), orderBy("numeroQuestao", "asc"))
+      );
+      const lista = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      const conteudo = JSON.stringify(lista, null, 2);
+      const blob = new Blob([conteudo], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `questoes_${provaId.replace(".", "_")}_codex.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      alert(`✅ ${lista.length} questões exportadas para questoes_${provaId.replace(".", "_")}_codex.json`);
+    } catch (e) {
+      console.error("Erro ao exportar:", e);
+      alert("Erro ao exportar questões. Verifique o console.");
+    }
+  };
   useEffect(() => { carregarDados(); }, []);
 
   // ── Alertas de vigilância pendentes — badge na aba Diretrizes ─────────────
@@ -228,6 +320,13 @@ const AdminPainel = () => {
       carregarQuestoes();
     }
   }, [aba, questoesCarregadas]);
+
+  // Carrega edições INEP ao abrir a aba pela primeira vez
+  useEffect(() => {
+    if (aba === "edicoes" && edicoesRevalida.length === 0) {
+      carregarEdicoes();
+    }
+  }, [aba]);
 
   // Escuta sala_chat últimas 24h em tempo real
   useEffect(() => {
@@ -591,6 +690,7 @@ const AdminPainel = () => {
           { id: "importador", label: "Importador" },
           { id: "robo", label: "🤖 Robô" },
           { id: "resumos", label: "📚 Resumos" },
+          { id: "edicoes", label: "📅 Edições INEP" },
           { id: "diretrizes", label: "🛡️ Diretrizes", badge: alertasDiretrizesPendentes },
         ].map(item => (
           <button key={item.id} onClick={() => setAba(item.id)} style={aba === item.id ? st.btnActive : st.btn}>
@@ -1151,7 +1251,10 @@ const AdminPainel = () => {
                     {filtroModulo !== "Todos" && <span style={{color: filtroModulo === "super_apostas" ? "#ef4444" : filtroModulo === "inep" ? "#818cf8" : "#10b981"}}> · {filtroModulo === "super_apostas" ? "Super Apostas" : filtroModulo === "inep" ? "INEP" : "Banco Geral"}</span>}
                   </span>
                 </div>
-                {selecionadas.length > 0 && <button onClick={deletarEmMassa} style={st.btnDanger}><FaTrash/> Excluir {selecionadas.length} Questões</button>}
+                <div style={{display:"flex", gap:"8px", flexWrap:"wrap"}}>
+                  <button onClick={() => exportarParaCodex("2026.1")} style={{...st.btn, background:"#0f172a", border:"1px solid #334155", color:"#94a3b8", fontSize:"11px", padding:"6px 12px"}}>⬇️ Exportar 2026.1 → Codex</button>
+                  {selecionadas.length > 0 && <button onClick={deletarEmMassa} style={st.btnDanger}><FaTrash/> Excluir {selecionadas.length} Questões</button>}
+                </div>
               </div>
             </div>
 
@@ -1438,6 +1541,104 @@ const AdminPainel = () => {
 
         {/* ABA RESUMOS — banco de resumos clínicos por tema_mestre */}
         {aba === "resumos" && <ResumoGerador />}
+
+        {/* ABA EDIÇÕES INEP */}
+        {aba === "edicoes" && (
+          <div style={{ padding: "24px", maxWidth: "700px", margin: "0 auto" }}>
+            <h3 style={{ color: "#fff", fontSize: "18px", marginBottom: "6px" }}>Edições Revalida INEP</h3>
+            <p style={{ color: "#64748b", fontSize: "13px", marginBottom: "24px" }}>
+              Gerencie as edições disponíveis no Dashboard (alunos) e no Importador (admin).<br/>
+              Mudanças refletem em tempo real — sem necessidade de alterar código.
+            </p>
+
+            {/* SEED */}
+            {edicoesRevalida.length === 0 && !carregandoEdicoes && (
+              <div style={{ background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)", borderRadius: "12px", padding: "16px 20px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "14px" }}>
+                <span style={{ fontSize: "28px" }}>🌱</span>
+                <div style={{ flex: 1 }}>
+                  <p style={{ color: "#fbbf24", fontWeight: "700", fontSize: "13px", margin: 0 }}>Coleção vazia</p>
+                  <p style={{ color: "#94a3b8", fontSize: "12px", margin: "2px 0 0" }}>
+                    Clique em Seed para popular com todas as edições de 2021.1 até 2026.2.
+                  </p>
+                </div>
+                <button
+                  onClick={seedEdicoes}
+                  disabled={salvandoEdicao}
+                  style={{ background: "#fbbf24", border: "none", borderRadius: "8px", padding: "8px 18px", color: "#0f172a", fontWeight: "800", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  {salvandoEdicao ? "Seedando..." : "Seed Inicial"}
+                </button>
+              </div>
+            )}
+
+            {/* LISTA */}
+            {carregandoEdicoes ? (
+              <p style={{ color: "#64748b", textAlign: "center", padding: "40px 0" }}>Carregando...</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "28px" }}>
+                {edicoesRevalida.map(ed => (
+                  <div key={ed.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#1e293b", border: `1px solid ${ed.ativo ? "rgba(16,185,129,0.25)" : "rgba(71,85,105,0.3)"}`, borderRadius: "10px", padding: "12px 16px" }}>
+                    <div style={{ display: "flex", align: "center", gap: "12px", alignItems: "center" }}>
+                      <span style={{ fontSize: "20px" }}>{ed.oficial ? "📋" : "🧪"}</span>
+                      <div>
+                        <p style={{ color: "#fff", fontWeight: "700", fontSize: "14px", margin: 0 }}>{ed.nome || ed.id}</p>
+                        <p style={{ color: "#475569", fontSize: "11px", margin: "1px 0 0" }}>
+                          ID: <code style={{ color: "#94a3b8" }}>{ed.id}</code> · {ed.oficial ? "Oficial INEP" : "Não oficial"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleAtivoEdicao(ed.id, ed.ativo)}
+                      title={ed.ativo ? "Desativar" : "Ativar"}
+                      style={{ background: ed.ativo ? "rgba(16,185,129,0.15)" : "rgba(71,85,105,0.2)", border: `1px solid ${ed.ativo ? "rgba(16,185,129,0.4)" : "rgba(71,85,105,0.4)"}`, borderRadius: "8px", padding: "6px 14px", color: ed.ativo ? "#10b981" : "#475569", fontWeight: "700", fontSize: "12px", cursor: "pointer" }}
+                    >
+                      {ed.ativo ? "ATIVO" : "INATIVO"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ADICIONAR NOVA */}
+            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "12px", padding: "20px" }}>
+              <p style={{ color: "#94a3b8", fontWeight: "700", fontSize: "13px", margin: "0 0 14px" }}>Adicionar nova edição</p>
+              <div style={{ display: "flex", gap: "10px", alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div>
+                  <label style={{ color: "#64748b", fontSize: "11px", display: "block", marginBottom: "4px" }}>Ano</label>
+                  <input
+                    type="number"
+                    value={novaEdicaoAno}
+                    onChange={e => setNovaEdicaoAno(e.target.value)}
+                    placeholder="2027"
+                    min="2020" max="2030"
+                    style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "8px", color: "#fff", padding: "8px 12px", fontSize: "14px", width: "90px", outline: "none" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: "#64748b", fontSize: "11px", display: "block", marginBottom: "4px" }}>Semestre</label>
+                  <select
+                    value={novaEdicaoSemestre}
+                    onChange={e => setNovaEdicaoSemestre(e.target.value)}
+                    style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: "8px", color: "#fff", padding: "8px 12px", fontSize: "14px", outline: "none" }}
+                  >
+                    <option value="1">1º semestre</option>
+                    <option value="2">2º semestre</option>
+                  </select>
+                </div>
+                <button
+                  onClick={adicionarEdicao}
+                  disabled={salvandoEdicao || !novaEdicaoAno}
+                  style={{ background: "#4f46e5", border: "none", borderRadius: "8px", padding: "9px 20px", color: "#fff", fontWeight: "700", fontSize: "13px", cursor: salvandoEdicao || !novaEdicaoAno ? "not-allowed" : "pointer", opacity: salvandoEdicao || !novaEdicaoAno ? 0.5 : 1 }}
+                >
+                  {salvandoEdicao ? "Salvando..." : "Adicionar"}
+                </button>
+              </div>
+              <p style={{ color: "#334155", fontSize: "11px", marginTop: "10px" }}>
+                Exemplo: Ano 2027 + Semestre 1 → cria edição <code style={{ color: "#64748b" }}>2027.1</code>, disponível automaticamente no Dashboard e no Importador.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ABA DIRETRIZES — engine de diretrizes controladas */}
         {aba === "diretrizes" && <PainelDiretrizes />}
