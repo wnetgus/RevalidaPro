@@ -54,8 +54,6 @@ export const storage = getStorage(app);
 // NUNCA deve ficar habilitado em um build de produção — isso é
 // responsabilidade operacional de uma sprint futura (garantir que a
 // variável nunca exista no ambiente de build de produção), não deste código.
-// Derivação em calcularAppCheckDebugToken (src/utils/appCheckDebug.js) —
-// extraída para ser testável em Node puro (ver scripts/test-appcheck-client.js).
 const APPCHECK_SITE_KEY     = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY;
 const APPCHECK_DEBUG_TOKEN  = calcularAppCheckDebugToken(import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG);
 
