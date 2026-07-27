@@ -769,6 +769,22 @@ const _contemAfirmacaoForte = (texto) => {
   return _PADROES_AFIRMACAO_FORTE.some((re) => re.test(t));
 };
 
+// Acha o termo exato e o trecho ao redor do 1º padrão que casar — usado para
+// dar feedback específico no retry (achado real Q26/Delirium: o retry
+// genérico não impediu o modelo de repetir "nunca" em outro trecho).
+const _localizarAfirmacaoForte = (texto) => {
+  const t = String(texto || "");
+  for (const re of _PADROES_AFIRMACAO_FORTE) {
+    const m = re.exec(t);
+    if (m) {
+      const inicio = Math.max(0, m.index - 30);
+      const fim = Math.min(t.length, m.index + m[0].length + 30);
+      return { termo: m[0], trecho: t.slice(inicio, fim).trim() };
+    }
+  }
+  return null;
+};
+
 // Valida/normaliza o formato da Dica Mestre. Só corrige automaticamente o caso
 // ─── SANIDADE TEXTUAL — EXCLUSIVA SUPER APOSTAS 2026.2 (hotfix pré-homologação) ──
 // Detecta corrupção de encoding real (ex: "Preднisona" com cirílico misturado),
@@ -1205,7 +1221,12 @@ export const validarResumoSA = (pontos, { grounding = false, groundingTexto = ""
       problemas.push('resumo contém posologia numérica (dose/via/intervalo/duração) sem diretriz controlada injetada — mesma regra do validarLoteSA (SA-3)');
     }
     if (_contemAfirmacaoForte(textoCompleto)) {
-      problemas.push('resumo usa termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — mesma regra do validarLoteSA (SA-4)');
+      const achado = _localizarAfirmacaoForte(textoCompleto);
+      problemas.push(
+        achado
+          ? `resumo usa termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — termo encontrado: "${achado.termo}", trecho: "${achado.trecho}" (mesma regra do validarLoteSA, SA-4)`
+          : 'resumo usa termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — mesma regra do validarLoteSA (SA-4)'
+      );
     }
     // Hotfix (achado real Q23/Cefaleia): _contemPosologiaEspecifica só cobre
     // padrões de DOSE medicamentosa (mg/mL/UI/frequência) — não pega corte
@@ -1248,17 +1269,28 @@ export const validarResumoSA = (pontos, { grounding = false, groundingTexto = ""
 //   resposta sem "pontos"/vazia. Artefato da geração, não do recorte.
 const _MOTIVO_GROUNDING_BLOQUEIO_RESUMO = /não aparece\(m\) no conteúdo da diretriz controlada injetada/;
 
-const _FEEDBACK_RESUMO_ABSOLUTO = 'A tentativa anterior foi rejeitada porque usou linguagem absoluta ("sempre"/"nunca"/"obrigatório"/"padrão-ouro"/"patognomônico"/percentual específico) sem diretriz controlada injetada. A rejeição é por presença literal da palavra em QUALQUER lugar do texto — inclusive dentro de exemplo, fala hipotética de familiar/paciente ou entre aspas; não há contexto que isente. Reescreva a(s) frase(s) inteira(s) sem essas palavras, preservando o valor pedagógico em linguagem qualitativa.';
+// Extrai termo/trecho literais gravados por validarResumoSA no motivo (nunca
+// recalcula — usa o mesmo achado que gerou a rejeição) e monta feedback
+// específico. Sem o achado (ex.: motivo de uma execução antiga sem o novo
+// formato), cai no aviso genérico — nunca quebra.
+const _feedbackResumoAbsoluto = (todosMotivos) => {
+  const m = todosMotivos.match(/termo encontrado:\s*"([^"]+)",\s*trecho:\s*"([^"]+)"/);
+  if (m) {
+    const [, termo, trecho] = m;
+    return `O texto foi rejeitado porque contém literalmente "${termo}" no trecho "${trecho}". Reescreva especificamente esse trecho com linguagem clínica não absoluta — evite também sinônimos equivalentes ("exclusivamente", "invariavelmente", "de forma alguma"). Antes de responder, releia os 7 blocos por completo e confirme que nenhum deles contém essas palavras, inclusive dentro de exemplos, falas hipotéticas ou citações entre aspas.`;
+  }
+  return 'A tentativa anterior foi rejeitada porque usou linguagem absoluta ("sempre"/"nunca"/"obrigatório"/"padrão-ouro"/"patognomônico"/percentual específico) sem diretriz controlada injetada. A rejeição é por presença literal da palavra em QUALQUER lugar do texto — inclusive dentro de exemplo, fala hipotética de familiar/paciente ou entre aspas; não há contexto que isente. Reescreva a(s) frase(s) inteira(s) sem essas palavras. Antes de responder, releia os 7 blocos por completo e confirme que nenhum deles contém essas palavras.';
+};
 const _FEEDBACK_RESUMO_NUMERO_ORFAO = "A tentativa anterior introduziu número(s) clínico(s) sem diretriz controlada injetada. Reescreva sem esse(s) número(s) — inclusive intervalos/faixas (ex: \"1-2 horas\") —, preservando o valor pedagógico em linguagem qualitativa.";
 const _FEEDBACK_RESUMO_POSOLOGIA = "A tentativa anterior usou posologia numérica (dose/via/intervalo/duração) sem diretriz controlada injetada. Reescreva sem esses dados posológicos específicos, em linguagem qualitativa.";
 const _FEEDBACK_RESUMO_CORRUPCAO = "A resposta anterior teve corrupção de encoding (caractere inválido misturado ao texto). Gere novamente em português padrão, sem caracteres fora do esperado.";
 const _FEEDBACK_RESUMO_FORMATO = 'A tentativa anterior não retornou o campo "pontos" preenchido corretamente. Responda exclusivamente com o JSON solicitado — schema {"titulo": "...", "pontos": [{"label": "...", "texto": "..."}]} — sem texto antes ou depois, sem markdown, sem cercas de código.';
 
 const _CATEGORIAS_CORRIGIVEIS_RESUMO = [
-  { tipo: "resumo_absoluto",     teste: (t) => /termo absoluto/.test(t), feedback: _FEEDBACK_RESUMO_ABSOLUTO },
-  { tipo: "resumo_numero_orfao", teste: (t) => /número\(s\)\s+clínico\(s\)/.test(t), feedback: _FEEDBACK_RESUMO_NUMERO_ORFAO },
-  { tipo: "resumo_posologia",    teste: (t) => /posologia numérica/.test(t), feedback: _FEEDBACK_RESUMO_POSOLOGIA },
-  { tipo: "resumo_corrupcao",    teste: (t) => /corrupção de encoding/.test(t), feedback: _FEEDBACK_RESUMO_CORRUPCAO },
+  { tipo: "resumo_absoluto",     teste: (t) => /termo absoluto/.test(t), feedback: (t) => _feedbackResumoAbsoluto(t) },
+  { tipo: "resumo_numero_orfao", teste: (t) => /número\(s\)\s+clínico\(s\)/.test(t), feedback: () => _FEEDBACK_RESUMO_NUMERO_ORFAO },
+  { tipo: "resumo_posologia",    teste: (t) => /posologia numérica/.test(t), feedback: () => _FEEDBACK_RESUMO_POSOLOGIA },
+  { tipo: "resumo_corrupcao",    teste: (t) => /corrupção de encoding/.test(t), feedback: () => _FEEDBACK_RESUMO_CORRUPCAO },
 ];
 
 const _classificarFalhaResumoSA = (problemas, erroTecnico) => {
@@ -1280,7 +1312,7 @@ const _classificarFalhaResumoSA = (problemas, erroTecnico) => {
   if (categoriasEncontradas.length > 0) {
     return {
       tipo: categoriasEncontradas.length === 1 ? categoriasEncontradas[0].tipo : "corrigivel_misto",
-      feedback: categoriasEncontradas.map((c) => c.feedback).join(" "),
+      feedback: categoriasEncontradas.map((c) => c.feedback(todos)).join(" "),
     };
   }
 
