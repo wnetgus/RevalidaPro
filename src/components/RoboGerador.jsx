@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { db, auth } from "../firebase";
+import { db, auth, obterTokenAppCheck } from "../firebase";
 import { getQuestoes, invalidarCacheQuestoes } from "../utils/questoesCache";
 import { obterHeadersAutenticados } from "../utils/apiAuth";
 import {
@@ -338,7 +338,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     // importou o chamarIA de promptEngine.js (que já foi corrigido) — define
     // o seu próprio, com o mesmo nome, que nunca recebeu o fix. Se não houver
     // sessão, lança ANTES do fetch (0 chamadas de rede).
-    const headersAuth = await obterHeadersAutenticados(auth);
+    const headersAuth = await obterHeadersAutenticados(auth, obterTokenAppCheck);
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headersAuth },
@@ -1446,7 +1446,7 @@ Requisitos gerais:
         `Responda SOMENTE com array JSON: [{"id":"...","tema_mestre":"..."}]\n` +
         JSON.stringify(loteParaIA);
 
-      const headersAuth = await obterHeadersAutenticados(auth);
+      const headersAuth = await obterHeadersAutenticados(auth, obterTokenAppCheck);
       const resp = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headersAuth },

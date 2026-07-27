@@ -163,24 +163,24 @@ for (const consumidor of CONSUMIDORES_ESPERADOS) {
 
 // ─── 4. Token nunca no body nem na URL ───────────────────────────────────────
 
-teste("4. [estrutural] token nunca é interpolado no body (JSON.stringify) nem na URL do endpoint", () => {
+teste("4. [estrutural] nenhum token (Auth ou App Check) é interpolado no body (JSON.stringify) nem na URL do endpoint", () => {
   for (const consumidor of CONSUMIDORES_ESPERADOS) {
     const conteudo = _ler(consumidor.arquivo);
     // Constrói a URL do endpoint — nenhuma dessas linhas deveria referenciar
-    // headersAuth/token/idToken.
+    // headersAuth/token/idToken/appCheck.
     const construcoesUrl = conteudo.match(/const endpoint\s*=[\s\S]*?"\/gerarQuestoesIA";/g) || [];
     const construcoesUrlUpper = conteudo.match(/const ENDPOINT\s*=[\s\S]*?"\/gerarQuestoesIA";/g) || [];
     for (const trecho of [...construcoesUrl, ...construcoesUrlUpper]) {
-      assert.doesNotMatch(trecho, /headersAuth|token|idToken/i, `${consumidor.arquivo}: URL do endpoint não deveria referenciar token`);
+      assert.doesNotMatch(trecho, /headersAuth|token|idToken|appCheck/i, `${consumidor.arquivo}: URL do endpoint não deveria referenciar token`);
     }
     // Corpo da requisição (JSON.stringify({...})) logo após cada call site —
-    // não deve conter headersAuth/token.
+    // não deve conter headersAuth/token/appCheck.
     const callSites = _localizarCallSites(conteudo);
     for (const idx of callSites) {
       const trecho = conteudo.slice(idx, idx + 500);
       const bodyMatch = trecho.match(/body:\s*JSON\.stringify\(\{([\s\S]*?)\}\)/);
       if (bodyMatch) {
-        assert.doesNotMatch(bodyMatch[1], /headersAuth|idToken|Authorization/i, `${consumidor.arquivo}: body não deveria conter token/headersAuth`);
+        assert.doesNotMatch(bodyMatch[1], /headersAuth|idToken|Authorization|appCheck|AppCheck/i, `${consumidor.arquivo}: body não deveria conter token/headersAuth/App Check`);
       }
     }
   }
@@ -244,6 +244,38 @@ teste("8. [estrutural] resumoEngine.js não define seu próprio fetch para o end
   assert.doesNotMatch(conteudo, /"\/gerarQuestoesIA"/, "resumoEngine.js não deveria construir a URL do endpoint por conta própria");
   assert.match(conteudo, /import\s*\{[^}]*chamarIA[^}]*\}\s*from\s*["'].*promptEngine["']/, "resumoEngine.js deveria importar chamarIA de promptEngine.js");
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MICRO SPRINT 4B.3B.1A — todo consumidor passa a enviar X-Firebase-AppCheck
+// (via obterHeadersAutenticados(auth, obterTokenAppCheck)). Estrutural, como
+// o resto deste arquivo: examina o código-fonte real, não executa fetch nem
+// Firebase real — "enviar o header" aqui significa "todo call site chama o
+// helper com o segundo argumento", que é o único lugar que de fato monta
+// X-Firebase-AppCheck (ver src/utils/apiAuth.js, coberto por
+// scripts/test-appcheck-client.js).
+// ═══════════════════════════════════════════════════════════════════════════
+
+for (const consumidor of CONSUMIDORES_ESPERADOS) {
+  teste(`9. [estrutural] ${consumidor.arquivo} — importa obterTokenAppCheck de ../firebase`, () => {
+    const conteudo = _ler(consumidor.arquivo);
+    assert.match(
+      conteudo, /import\s*\{[^}]*obterTokenAppCheck[^}]*\}\s*from\s*["'].*firebase["']/,
+      `${consumidor.arquivo} deveria importar obterTokenAppCheck de ../firebase`
+    );
+  });
+
+  teste(`10. [estrutural] ${consumidor.arquivo} — todo call site de obterHeadersAutenticados envia obterTokenAppCheck (X-Firebase-AppCheck)`, () => {
+    const conteudo = _ler(consumidor.arquivo);
+    const chamadas = conteudo.match(/obterHeadersAutenticados\([^)]*\)/g) || [];
+    assert.ok(chamadas.length > 0, `${consumidor.arquivo}: nenhuma chamada a obterHeadersAutenticados encontrada`);
+    for (const chamada of chamadas) {
+      assert.match(
+        chamada, /obterTokenAppCheck/,
+        `${consumidor.arquivo}: "${chamada}" deveria passar obterTokenAppCheck como segundo argumento — regressão para só Authorization, sem X-Firebase-AppCheck`
+      );
+    }
+  });
+}
 
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);
 if (falhas.length > 0) {

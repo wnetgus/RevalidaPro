@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
-import { db, auth } from "../firebase";
+import { db, auth, obterTokenAppCheck } from "../firebase";
 import { normalizarMateriaEstrita, pertenceAMateria } from "../utils/normalizarMateria";
 import { getQuestoes, invalidarCacheQuestoes } from "../utils/questoesCache";
 import { obterHeadersAutenticados } from "../utils/apiAuth";
@@ -181,7 +181,7 @@ const ResumoGerador = () => {
     setMigrandoId(questao.id);
     addLog(`Classificando: "${(questao.enunciado || "").slice(0, 55)}..."`, "info");
     try {
-      const headersAuth = await obterHeadersAutenticados(auth);
+      const headersAuth = await obterHeadersAutenticados(auth, obterTokenAppCheck);
       const resp = await fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headersAuth },
@@ -356,7 +356,7 @@ const ResumoGerador = () => {
         ? `Contexto clínico OBRIGATÓRIO: "${subcontexto_clinico}" — todo o conteúdo deve ser específico para este contexto.`
         : "Contexto: adulto padrão.";
 
-      const headersAuth = await obterHeadersAutenticados(auth);
+      const headersAuth = await obterHeadersAutenticados(auth, obterTokenAppCheck);
       const resp = await fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...headersAuth },

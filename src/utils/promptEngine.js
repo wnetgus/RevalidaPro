@@ -15,7 +15,7 @@
  *   - PROMPT_MIGRACAO e PROMPT_RESUMO_TEMA: exclusivos do RoboGerador, ficam nele
  */
 
-import { auth } from "../firebase";
+import { auth, obterTokenAppCheck } from "../firebase";
 import { obterHeadersAutenticados } from "./apiAuth";
 
 // ─── SUPER APOSTAS — Ciclo de Nível de Aposta ────────────────────────────────
@@ -87,7 +87,7 @@ export const chamarIA = async (systemPrompt, promptUsuario) => {
     : (import.meta.env.VITE_FUNCTIONS_BASE_URL ||
        "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/gerarQuestoesIA";
 
-  const headersAuth = await obterHeadersAutenticados(auth);
+  const headersAuth = await obterHeadersAutenticados(auth, obterTokenAppCheck);
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headersAuth },

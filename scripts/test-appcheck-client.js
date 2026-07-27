@@ -139,10 +139,16 @@ teste("9. [estrutural] initializeAppCheck é protegido contra dupla inicializaç
 
 // ─── 10. Inventário de consumidores continua íntegro (nenhum foi alterado) ──
 
-await testeAsync("10. [regressão] inventário de consumidores de gerarQuestoesIA continua íntegro (nenhum tocado nesta sprint)", async () => {
+await testeAsync("10. [regressão] a suíte de inventário de consumidores (test-ia-auth-consumers.js) passa integralmente", async () => {
+  // Não fixa um número exato de testes — desde a Micro Sprint 4B.3B.1A esse
+  // arquivo cresce legitimamente conforme mais checagens de App Check são
+  // adicionadas por consumidor. O que importa aqui é que NENHUM teste falhe
+  // (execFileSync lançaria se o processo saísse com código != 0, já que
+  // test-ia-auth-consumers.js chama process.exit(1) em caso de falha).
   const { execFileSync } = await import("node:child_process");
   const out = execFileSync(process.execPath, [path.join(_raiz, "scripts/test-ia-auth-consumers.js")], { encoding: "utf8" });
-  assert.match(out, /14\/14 testes passaram\./, "a suíte de inventário de consumidores deveria continuar 14/14");
+  assert.doesNotMatch(out, /❌/, "nenhum teste do inventário de consumidores deveria falhar");
+  assert.match(out, /\d+\/\d+ testes passaram\./, "a suíte deveria reportar um resumo de testes passados");
 });
 
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);
