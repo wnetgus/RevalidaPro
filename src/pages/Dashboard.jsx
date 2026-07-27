@@ -12,7 +12,12 @@ import {
 import { SUPER_APOSTAS_CONFIG } from "../config/superApostasConfig";
 import ModalComparativo2026 from "../components/ModalComparativo2026";
 
-const WHATSAPP_CONTATO = "5587996666667"; 
+const WHATSAPP_CONTATO = "5587996666667";
+
+// Anos oficiais do Revalida INEP sempre suportados no Dashboard.
+// Serve de piso: a ausência de um documento em edicoesRevalida NUNCA remove
+// um destes anos — só uma edição explicitamente marcada ativo:false o faz.
+const ANOS_INEP_BASE = ["2026", "2025", "2024", "2023", "2022", "2021"];
 
 const DICAS_MESTRE = [
   "Abdome agudo inflamatório + febre em mulher jovem? Sempre descarte DIP antes de fechar apendicite!",
@@ -34,7 +39,7 @@ const Dashboard = ({ usuario }) => {
   const [editandoMeta, setEditandoMeta] = useState(false);
   const [metaCustomInput, setMetaCustomInput] = useState("");
   const [anoSelecionado, setAnoSelecionado] = useState(null);
-  const [anosINEP, setAnosINEP] = useState(["2026", "2025", "2024", "2023", "2022", "2021"]);
+  const [anosINEP, setAnosINEP] = useState(ANOS_INEP_BASE);
   const [missoes, setMissoes] = useState([]);
   const [carregandoMissoes, setCarregandoMissoes] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
@@ -90,17 +95,26 @@ const Dashboard = ({ usuario }) => {
     setDicaDoMestre(randomTip);
   }, []);
 
-  // Carrega anos do INEP da coleção edicoesRevalida; fallback no estado inicial
+  // Carrega anos do INEP da coleção edicoesRevalida e MESCLA com ANOS_INEP_BASE.
+  // A ausência de um ano em edicoesRevalida (coleção nunca semeada, ou semeada
+  // parcialmente) nunca o remove do Dashboard — só um documento explícito com
+  // ativo:false esconde um ano que já está na base.
   useEffect(() => {
     getDocs(collection(db, "edicoesRevalida")).then(snap => {
       if (snap.empty) return;
-      const anos = [...new Set(
-        snap.docs
-          .map(d => d.data())
-          .filter(d => d.ativo !== false)
-          .map(d => String(d.ano))
-      )].sort((a, b) => b - a);
-      if (anos.length > 0) setAnosINEP(anos);
+      const inativos = new Set();
+      const ativosExtras = new Set();
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (!data?.ano) return;
+        const ano = String(data.ano);
+        if (data.ativo === false) inativos.add(ano);
+        else ativosExtras.add(ano);
+      });
+      const mesclado = [...new Set([...ANOS_INEP_BASE, ...ativosExtras])]
+        .filter(ano => !inativos.has(ano))
+        .sort((a, b) => b - a);
+      if (mesclado.length > 0) setAnosINEP(mesclado);
     }).catch(() => {});
   }, []);
 
@@ -1568,7 +1582,7 @@ const st = {
   missaoLabel: { fontSize: '8px', color: '#ef4444', fontWeight: '900', letterSpacing: '1px' },
   missaoTema: { margin: '2px 0', fontSize: '13px', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px' },
   missaoAviso: { margin: 0, fontSize: '10px', color: '#64748b' },
-  missaoVazia: { background: '#0f172a', padding: '15px', borderRadius: '18px', color: '#64748b', fontSize: '12px', fontWeight: '600', textAlign: 'center', border: '1px solid #1e293b' },
+  missaoVazia: { background: '#0f172a', padding: '15px', borderRadius: '18px', color: '#64748b', fontSize: '12px', fontWeight: '600', textAlign: 'center', border: '1px solid #1e293b', marginBottom: '15px' },
   subSectionHeader: { fontSize: '11px', fontWeight: '900', color: '#f1f5f9', letterSpacing: '0.5px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' },
   badgeRecente: { fontSize: '9px', fontWeight: '900', color: '#ef4444', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '6px', padding: '2px 7px', display: 'inline-block', marginTop: '4px', letterSpacing: '0.3px' },
   badgeAntigo: { fontSize: '9px', fontWeight: '900', color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: '6px', padding: '2px 7px', display: 'inline-block', marginTop: '4px', letterSpacing: '0.3px' },
