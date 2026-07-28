@@ -18,9 +18,14 @@ service cloud.firestore {
       // todos os documentos de usuário públicos para qualquer autenticado.
       // Leitura restrita ao próprio usuário e ao admin.
       // Para o ranking público, usar coleção separada `perfis_publicos`.
+      // Micro hotfix DEV: adicionado wnetgus@gmail.com como segundo admin,
+      // mesmo nível já concedido nas demais coleções administrativas
+      // (questoes, resumos_temas, taxonomiaPedagogica, teorias, materiais,
+      // edicoesRevalida, importacoes_pendentes) — só faltava aqui.
       allow read: if request.auth != null
         && (request.auth.uid == userId
-            || request.auth.token.email == "drweynesouza@gmail.com");
+            || request.auth.token.email == "drweynesouza@gmail.com"
+            || request.auth.token.email == "wnetgus@gmail.com");
 
       allow update, delete: if request.auth != null
         && (request.auth.uid == userId
