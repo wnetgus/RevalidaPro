@@ -199,3 +199,27 @@ Para fechar a lacuna acima, foi criado um controle administrativo genérico em `
 - **R092 e R077 continuam NÃO EXECUTADOS.**
 - Nenhum deploy foi feito (nem DEV, nem produção). Produção intocada.
 - Homologação real do controle (e de R067 através dele) permanece pendente de nova autorização e de auditoria do Codex.
+
+## 13. HOTFIX CRLF DO HARNESS DE TESTE DO CONTROLE DEV (2026-07-28)
+
+Sequência real, sem omitir a falha anterior:
+
+1. O controle administrativo DEV-only da seção 12 foi **criado**, mas nunca foi **acionado em runtime** — nenhuma chamada de IA ocorreu através dele até este ponto.
+2. A primeira auditoria independente (Codex) sobre o commit `a9f7279` retornou **FAIL**: `scripts/test-resumo-isolado-dev-control.js` falhava, no Windows, antes de executar qualquer um dos 24 casos — `extrairBlocoControle()` (nível de módulo) lançava exceção ao localizar o fim do bloco JSX.
+3. **A afirmação anterior de "24/24 PASS" registrada na seção 12 não foi reproduzida naquela auditoria** — o script sequer chegava a rodar os testes no ambiente auditado.
+4. **Causa raiz confirmada:** `RoboGerador.jsx` e `firebase.js` estão salvos em CRLF no disco (comportamento normal do Git/Windows), mas o harness localizava o fim do bloco do controle via `roboSrc.indexOf("    </div>\n  );\n}", ...)` — uma busca de string literal multilinha com quebra de linha LF fixa (`\n`). Contra conteúdo real em CRLF (`\r\n  );\r\n}`), esse `indexOf` nunca casava, e o `assert.ok` correspondente derrubava o script inteiro antes do primeiro teste.
+5. **Hotfix aplicado — exclusivamente em `scripts/test-resumo-isolado-dev-control.js`:** todo conteúdo-fonte lido do disco e usado em extrações textuais (`RoboGerador.jsx`, `firebase.js`, e também `resumoEngine.js`, lido no teste 14) passou a ser normalizado para LF imediatamente após a leitura, via `conteudo.replace(/\r\n?/g, "\n")`, antes de qualquer `indexOf`/regex. Nenhum arquivo de código funcional foi alterado — `RoboGerador.jsx`, `firebase.js`, `ambienteGuard.js`, `promptEngine.js` e `resumoEngine.js` permanecem byte-a-byte como estavam.
+6. Foi adicionado 1 teste novo (nº 16) que prova a portabilidade do mecanismo de extração com conteúdo **sintético em memória** (não os arquivos reais, sem I/O de disco além do já existente): a mesma lógica de `indexOf` com literal multilinha é executada contra uma representação LF e uma representação CRLF equivalente do mesmo conteúdo fictício, e o teste falha se os dois resultados não forem idênticos.
+7. **Resultado real após o hotfix:** `node scripts/test-resumo-isolado-dev-control.js` → **25/25 PASS** (os 24 testes originais, preservados, + o novo teste de portabilidade nº 16). Nenhum total antigo foi mantido artificialmente — o script computa e imprime o total dinamicamente (`${passou}/${passou + falhas.length}`), não há número fixo no código.
+8. Regressão local completa: os demais 11 `scripts/test-*.js` do repositório rodaram individualmente, todos **PASS**, zero rede. `npm run build` → **PASS** (avisos preexistentes de code-splitting, não relacionados). Lint: nenhuma regressão nova — `no-empty` em `promptEngine.js:102` e o warning `react-hooks/exhaustive-deps` (`addLog`) em `RoboGerador.jsx:616` seguem preexistentes e inalterados; `eslint .` completo satura em poluição preexistente do bundle minificado de `dist_test/` (já conhecida, fora do escopo deste hotfix); lint isolado dos arquivos relevantes confirmou que o único erro no próprio harness (`'process' is not defined`, linha do `process.exit(1)`) também é preexistente e idêntico em todos os outros `scripts/test-*.js` (falta de globals de Node nesse glob do ESLint, não introduzido por esta mudança).
+
+**Estado dos dados e do runtime — inalterado por este hotfix:**
+- **R067 continua NÃO REGENERADO.**
+- **R092 e R077 continuam NÃO EXECUTADOS.**
+- Nenhuma chamada real de IA ocorreu. Nenhum crédito foi consumido.
+- Nenhuma leitura ou escrita real no Firestore foi realizada por este hotfix (o script segue 100% mockado/estrutural, zero rede).
+- Produção continua intocada. Nenhum deploy foi realizado (nem DEV, nem produção).
+- **O controle administrativo da seção 12 continua sem homologação por execução real no navegador.** Este hotfix corrige apenas o harness de teste local — não é, por si só, uma validação em runtime.
+- Uma **reauditoria independente deste hotfix continua obrigatória** antes de qualquer regeneração de R067 através do controle.
+
+**Commit:** `test(superapostas): make summary control harness CRLF-safe` (ver seção Git da entrega correspondente para o hash exato).

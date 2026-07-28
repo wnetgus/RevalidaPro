@@ -29,8 +29,20 @@ import { ambienteDevAutorizado, PROJECT_ID_DEV_PERMITIDO } from "../src/utils/am
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _raiz = path.resolve(__dirname, "..");
-const roboSrc = fs.readFileSync(path.join(_raiz, "src/components/RoboGerador.jsx"), "utf8");
-const firebaseSrc = fs.readFileSync(path.join(_raiz, "src/firebase.js"), "utf8");
+
+// Normaliza toda quebra de linha para LF logo após a leitura. As extrações
+// textuais abaixo (indexOf/regex) contêm literais multilinha com "\n" fixo;
+// sem esta normalização, arquivos-fonte salvos em CRLF (comum no Windows,
+// inclusive por core.autocrlf do Git) fazem essas buscas falharem
+// silenciosamente — foi exatamente isso que derrubou a auditoria anterior
+// antes de qualquer um dos 24 casos rodar. Ver também o teste de
+// portabilidade LF/CRLF ao final deste arquivo.
+function normalizarQuebraDeLinha(conteudo) {
+  return conteudo.replace(/\r\n?/g, "\n");
+}
+
+const roboSrc = normalizarQuebraDeLinha(fs.readFileSync(path.join(_raiz, "src/components/RoboGerador.jsx"), "utf8"));
+const firebaseSrc = normalizarQuebraDeLinha(fs.readFileSync(path.join(_raiz, "src/firebase.js"), "utf8"));
 
 let passou = 0;
 const falhas = [];
@@ -233,7 +245,7 @@ await teste("13. O controle delega inteiramente a gerarESalvarResumo/executarGer
 
 // ── 14. Persistência continua condicionada à aprovação (invariante do fluxo existente, não deste controle) ──
 await teste("14. resumoEngine.js: setDoc em 'teorias' continua só depois do guard status !== 'aprovado' (regressão, não tocado por este controle)", () => {
-  const resumoEngineSrc = fs.readFileSync(path.join(_raiz, "src/utils/resumoEngine.js"), "utf8");
+  const resumoEngineSrc = normalizarQuebraDeLinha(fs.readFileSync(path.join(_raiz, "src/utils/resumoEngine.js"), "utf8"));
   const idxGuard = resumoEngineSrc.indexOf('resultado.status !== "aprovado"');
   const idxSetDocSA = resumoEngineSrc.indexOf('setDoc(doc(db, "teorias", key)');
   assert.ok(idxGuard > -1 && idxSetDocSA > -1 && idxSetDocSA > idxGuard, "guard de aprovação antes de setDoc em 'teorias' deveria continuar intacto");
@@ -303,6 +315,42 @@ await teste("15. Nenhum teste deste arquivo importa Firebase real nem faz chamad
   // evita autodetecção da própria string usada nesta checagem como "falso positivo".
   assert.ok(!/^import\b[^\n]*["']firebase\/firestore["']/m.test(esteArquivo), "este arquivo de teste não deveria ter um import real de firebase/firestore");
   assert.ok(!/^import\b[^\n]*["']\.\.\/firebase["']/m.test(esteArquivo), "este arquivo de teste não deveria importar ../firebase (inicialização real do SDK)");
+});
+
+// ── 16. Portabilidade LF/CRLF do mecanismo de extração ─────────────────────
+// Prova, com conteúdo sintético em memória (não os arquivos reais do
+// projeto, sem I/O de disco), que o mecanismo essencial de extração usado
+// acima (normalizar quebra de linha e então localizar por indexOf um
+// literal multilinha) produz o mesmo resultado independente de o
+// arquivo-fonte original estar salvo em LF ou em CRLF. Reproduz em miniatura
+// exatamente o padrão de extrairBlocoControle().
+function extrairBlocoSintetico(conteudoBruto) {
+  const src = normalizarQuebraDeLinha(conteudoBruto);
+  const inicio = src.indexOf("// INICIO-BLOCO");
+  if (inicio === -1) return null;
+  const fim = src.indexOf("    </div>\n  );\n}", inicio);
+  if (fim === -1 || fim <= inicio) return null;
+  return src.slice(inicio, fim);
+}
+
+const fonteSinteticaLF = [
+  "// antes do bloco",
+  "// INICIO-BLOCO",
+  "const exemplo = 1;",
+  "    </div>",
+  "  );",
+  "}",
+  "// depois do bloco",
+  "",
+].join("\n");
+const fonteSinteticaCRLF = fonteSinteticaLF.replace(/\n/g, "\r\n");
+
+await teste("16. Portabilidade: mecanismo de extração produz o mesmo resultado em conteúdo-fonte LF e em CRLF equivalente", () => {
+  const resultadoLF = extrairBlocoSintetico(fonteSinteticaLF);
+  const resultadoCRLF = extrairBlocoSintetico(fonteSinteticaCRLF);
+  assert.ok(resultadoLF, "extração deveria ter sucesso com conteúdo-fonte em LF");
+  assert.ok(resultadoCRLF, "extração deveria ter sucesso com conteúdo-fonte em CRLF equivalente (sem a normalização, este caso falharia)");
+  assert.equal(resultadoLF, resultadoCRLF, "resultado da extração deveria ser idêntico independente da convenção de quebra de linha de origem");
 });
 
 console.log(`\n${passou}/${passou + falhas.length} testes passaram.`);
