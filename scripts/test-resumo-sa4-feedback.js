@@ -58,20 +58,24 @@ teste("2. validarResumoSA usa _localizarAfirmacaoForte quando _contemAfirmacaoFo
   assert.ok(idxLocaliza > idxContem, "_localizarAfirmacaoForte deveria rodar dentro do branch de _contemAfirmacaoForte");
 });
 
-// ── 3. Motivo carrega termo + trecho literais, extraíveis pelo feedback ─────
-teste("3. Motivo de validarResumoSA e regex de extração do feedback são compatíveis (termo + trecho reais)", () => {
+// ── 3. Motivo carrega termo + trecho literais, extraíveis pelo extrator compartilhado ──
+teste("3. Motivo de validarResumoSA e extrator compartilhado são compatíveis (termo + trecho reais)", () => {
   // Template literal real usado por validarResumoSA para montar o motivo.
   const achado = { termo: "nunca", trecho: "agudo e flutuante, nunca insidioso." };
   const motivoReal = `resumo usa termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — termo encontrado: "${achado.termo}", trecho: "${achado.trecho}" (mesma regra do validarLoteSA, SA-4)`;
   assert.ok(promptEngineSrc.includes('termo encontrado: "${achado.termo}", trecho: "${achado.trecho}"'), "template do motivo mudou — assert acima ficaria desalinhado com o código real");
 
-  // Regex real usada por _feedbackResumoAbsoluto para extrair de volta — busca
-  // escopada à função (o arquivo tem outro "todosMotivos.match(...)" homônimo
-  // em _feedbackNumeroNaoSuportado, do validador da QUESTÃO, não do resumo).
+  // _feedbackResumoAbsoluto não tem mais regex própria — delega para o
+  // extrator compartilhado (Micro Hardening: mesmo mecanismo reusado pelo
+  // lado da questão, _feedbackCandidataAbsoluta).
   const fnFeedback = promptEngineSrc.match(/const _feedbackResumoAbsoluto = \(todosMotivos\) => \{[\s\S]*?\n\};/);
   assert.ok(fnFeedback, "_feedbackResumoAbsoluto não encontrada");
-  const regexMatch = fnFeedback[0].match(/const m = todosMotivos\.match\((\/[^/]+\/)\);/);
-  assert.ok(regexMatch, "regex de extração não encontrada em _feedbackResumoAbsoluto");
+  assert.match(fnFeedback[0], /_extrairTermoTrechoAfirmacaoForte\(todosMotivos\)/, "_feedbackResumoAbsoluto deveria delegar para o extrator compartilhado, não duplicar a regex");
+
+  const fnExtrator = promptEngineSrc.match(/const _extrairTermoTrechoAfirmacaoForte = \(todosMotivos\) => \{[\s\S]*?\n\};/);
+  assert.ok(fnExtrator, "_extrairTermoTrechoAfirmacaoForte não encontrado");
+  const regexMatch = fnExtrator[0].match(/\.match\((\/[^/]+\/)\)/);
+  assert.ok(regexMatch, "regex de extração não encontrada em _extrairTermoTrechoAfirmacaoForte");
   // Regex literal extraída do próprio arquivo-fonte (não é input externo).
   const regexExtracao = new Function(`return ${regexMatch[1]};`)();
   const m = motivoReal.match(regexExtracao);

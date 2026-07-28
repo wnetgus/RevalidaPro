@@ -848,6 +848,11 @@ Requisitos gerais:
             // "ANO DE REFERÊNCIA" da diretriz (ex. 2022) seria injetado no
             // prompt mas rejeitado como "sem suporte" ao aparecer no tto.
             groundingTexto: blocoDir || "",
+            // Quantidade real esperada nesta chamada (achado real R079: Opus
+            // devolveu 2 candidatas no modo validação, que pede 1 — nada
+            // conferia isso antes). Fonte única de verdade: a MESMA variável
+            // já usada para montar "Gere exatamente N questões" no prompt.
+            esperado: questoesPorTemaAtual,
           }, chamarIABruto);
 
           resultado.tentativas.forEach((t) => {

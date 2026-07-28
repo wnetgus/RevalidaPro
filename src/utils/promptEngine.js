@@ -785,6 +785,15 @@ const _localizarAfirmacaoForte = (texto) => {
   return null;
 };
 
+// Contraparte de _localizarAfirmacaoForte: extrai {termo, trecho} de volta do
+// TEXTO DO MOTIVO de rejeição (não do conteúdo gerado) — usado pelos feedbacks
+// de retry de ambos os lados (resumo e questão) para citar o achado exato sem
+// duplicar a regex de extração em dois lugares.
+const _extrairTermoTrechoAfirmacaoForte = (todosMotivos) => {
+  const m = String(todosMotivos || "").match(/termo encontrado:\s*"([^"]+)",\s*trecho:\s*"([^"]+)"/);
+  return m ? { termo: m[1], trecho: m[2] } : null;
+};
+
 // Valida/normaliza o formato da Dica Mestre. Só corrige automaticamente o caso
 // ─── SANIDADE TEXTUAL — EXCLUSIVA SUPER APOSTAS 2026.2 (hotfix pré-homologação) ──
 // Detecta corrupção de encoding real (ex: "Preднisona" com cirílico misturado),
@@ -952,7 +961,14 @@ export const validarLoteSA = (lista, { abcd = false, grounding = false, groundin
       // Afirmações fortes sem fonte (REGRA SA-4) — varre raciocínio, tto, dicaMestre e notas.
       const camposParaChecar = [q?.raciocinio, q?.tto, q?.dicaMestre, ...letras.map((l) => q?.alts?.[l]?.nota)];
       if (camposParaChecar.some(_contemAfirmacaoForte)) {
-        motivos.push('conteúdo usa termo absoluto ("patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — proibido pela REGRA SA-4');
+        // Mesmo mecanismo já homologado em validarResumoSA (achado real Q26):
+        // localiza o termo/trecho exatos para o feedback do retry poder citá-los.
+        const achado = _localizarAfirmacaoForte(camposParaChecar.filter(Boolean).join(" "));
+        motivos.push(
+          achado
+            ? `conteúdo usa termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — termo encontrado: "${achado.termo}", trecho: "${achado.trecho}" (proibido pela REGRA SA-4)`
+            : 'conteúdo usa termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — proibido pela REGRA SA-4'
+        );
       }
       // Fabricação de fonte/ano de diretriz sem grounding (REGRA SA-4) — o modelo
       // não pode "lembrar" um guideline e apresentá-lo como verificado nesta geração.
@@ -1088,13 +1104,44 @@ const _feedbackNumeroNaoSuportado = (todosMotivos) => {
     : "A tentativa anterior introduziu precisão numérica não sustentada pela diretriz controlada. Não acrescente números, intervalos ou metas que não estejam explicitamente no grounding fornecido. Reescreva usando apenas as precisões autorizadas.";
 };
 
+// Mesmo mecanismo homologado no resumo (_feedbackResumoAbsoluto/commits
+// 6d86a08, 40040ab), aplicado ao lado da QUESTÃO (achado real R079: 2
+// rejeições SA-4 seguidas com feedback genérico, sem termo/trecho citados).
+// Usa o mesmo extrator compartilhado — _extrairTermoTrechoAfirmacaoForte —
+// para não duplicar a regex entre os dois lados.
+const _feedbackCandidataAbsoluta = (todosMotivos) => {
+  const achado = _extrairTermoTrechoAfirmacaoForte(todosMotivos);
+  if (achado) {
+    return `A tentativa anterior foi rejeitada porque contém literalmente "${achado.termo}" no trecho "${achado.trecho}". Reescreva especificamente esse trecho sem linguagem absoluta — evite também sinônimos equivalentes ("exclusivamente", "invariavelmente", "de forma alguma"). Antes de responder, revise TODOS os campos da questão (enunciado, alternativas, raciocínio, conduta, dica mestre, justificativas), não só o trecho apontado, e confirme que nenhum deles contém essas palavras, inclusive dentro de exemplos ou citações entre aspas.`;
+  }
+  return _FEEDBACK_CANDIDATA_NAO_GROUNDED;
+};
+
+// ── Cardinalidade do array retornado (Micro Hardening — achado real R079) ──
+// esperado vem do fluxo real (questoesPorTemaAtual em RoboGerador.jsx),
+// nunca é re-inferido por texto/regex do prompt. Ver executarGeracaoSA.
+const _MOTIVO_ERRO_CARDINALIDADE = /^erro de protocolo: esperad[ao] (\d+) questão\(ões\), recebid[ao] (\d+)/;
+const _feedbackCardinalidade = (todosMotivos) => {
+  const m = todosMotivos.match(_MOTIVO_ERRO_CARDINALIDADE);
+  if (m) {
+    const [, esperado, recebido] = m;
+    return `A tentativa anterior retornou ${recebido} questão(ões) no array, mas o esperado é exatamente ${esperado}. Gere novamente com exatamente ${esperado} item(ns) no array JSON — nunca inclua rascunhos, versões anteriores, exemplos de estrutura ou objetos parciais junto com a resposta final.`;
+  }
+  return "A tentativa anterior retornou uma quantidade de questões diferente da esperada. Gere novamente com exatamente a quantidade solicitada, sem itens extras ou parciais no array.";
+};
+
 // Cada entrada é uma categoria de motivo CORRIGÍVEL — todas as que baterem
 // no texto dos motivos entram no feedback (motivos mistos, ex. R034 =
 // anti-pista + candidata não grounded ao mesmo tempo, recebem os DOIS
 // fragmentos de feedback na mesma tentativa seguinte, não só o primeiro).
 const _CATEGORIAS_CORRIGIVEIS_SA = [
+  { tipo: "erro_cardinalidade",     teste: (t) => _MOTIVO_ERRO_CARDINALIDADE.test(t), feedback: (t) => _feedbackCardinalidade(t) },
   { tipo: "numero_nao_suportado",   teste: (t) => _MOTIVO_NUMERO_NAO_SUPORTADO.test(t), feedback: (t) => _feedbackNumeroNaoSuportado(t) },
-  { tipo: "candidata_nao_grounded", teste: (t) => _MOTIVO_CANDIDATA_NAO_GROUNDED.test(t), feedback: () => _FEEDBACK_CANDIDATA_NAO_GROUNDED },
+  // termo absoluto (SA-4) tem categoria própria, mais específica — vem antes
+  // e é excluída de candidata_nao_grounded (abaixo) para não duplicar o
+  // feedback genérico junto do específico na mesma tentativa.
+  { tipo: "questao_absoluto",       teste: (t) => /termo encontrado:.*REGRA SA-4/.test(t), feedback: (t) => _feedbackCandidataAbsoluta(t) },
+  { tipo: "candidata_nao_grounded", teste: (t) => _MOTIVO_CANDIDATA_NAO_GROUNDED.test(t) && !/termo encontrado:/.test(t), feedback: () => _FEEDBACK_CANDIDATA_NAO_GROUNDED },
   { tipo: "anti_pista",             teste: (t) => /se destaca formalmente|distrator muito curto|diferença extrema de comprimento/.test(t), feedback: () => _FEEDBACK_ANTI_PISTA },
   { tipo: "dica_mestre_formato",    teste: (t) => /dicaMestre não tem exatamente 4 blocos/.test(t), feedback: () => _FEEDBACK_DICA_MESTRE_FORMATO },
   { tipo: "gabarito_inconsistente", teste: (t) => /nenhuma justificativa começa com|mais de uma alternativa marcada|justificativa marcada como/.test(t), feedback: () => _FEEDBACK_GABARITO_INCONSISTENTE },
@@ -1134,12 +1181,29 @@ const _classificarFalhaSA = (motivos, erroTecnico) => {
   return { tipo: "outro", feedback: "Gere novamente, revisando com cuidado o formato e as regras do prompt." };
 };
 
-export const executarGeracaoSA = async (promptTema, systemPrompt, { abcd, grounding, groundingTexto }, chamarIABruto) => {
+// esperado: quantidade de questões esperada nesta chamada, vinda do fluxo real
+// (questoesPorTemaAtual em RoboGerador.jsx) — nunca re-inferida por regex do
+// texto do prompt. Opcional: omitir (undefined) preserva o comportamento
+// anterior (sem checagem de cardinalidade), compatível com chamadores futuros
+// que ainda não repassem esse dado.
+export const executarGeracaoSA = async (promptTema, systemPrompt, { abcd, grounding, groundingTexto, esperado } = {}, chamarIABruto) => {
   const tentativas = [];
 
   const tentar = async (modelo, prompt, numero) => {
     try {
       const { parsed, usage } = await chamarIABruto(systemPrompt, prompt, modelo);
+
+      // ── Checagem de cardinalidade (Micro Hardening — achado real R079) ──
+      // Roda ANTES da validação clínica/editorial. Se a quantidade recebida
+      // não bate com a esperada, NENHUM item do array vira candidata
+      // individual — nem o primeiro, nem o "mais completo" — evita salvar
+      // excedente e evita tratar objeto parcial como questão clínica válida.
+      if (typeof esperado === "number" && Array.isArray(parsed) && parsed.length !== esperado) {
+        const motivoCardinalidade = `erro de protocolo: esperado ${esperado} questão(ões), recebido ${parsed.length} — array rejeitado sem avaliação clínica individual`;
+        tentativas.push({ modelo, numero, usage, validas: 0, rejeitadas: parsed.length, motivos: [motivoCardinalidade] });
+        return { validas: [], rejeitadas: [{ questao: null, motivos: [motivoCardinalidade] }], altoRisco: false, erro: null };
+      }
+
       const { validas, rejeitadas } = validarLoteSA(parsed, { abcd, grounding, groundingTexto });
       const altoRisco = validas.length > 0 && validas.some(avaliarRiscoClinico);
       tentativas.push({ modelo, numero, usage, validas: validas.length, rejeitadas: rejeitadas.length, motivos: rejeitadas[0]?.motivos, altoRiscoRevisao: altoRisco });
@@ -1269,15 +1333,14 @@ export const validarResumoSA = (pontos, { grounding = false, groundingTexto = ""
 //   resposta sem "pontos"/vazia. Artefato da geração, não do recorte.
 const _MOTIVO_GROUNDING_BLOQUEIO_RESUMO = /não aparece\(m\) no conteúdo da diretriz controlada injetada/;
 
-// Extrai termo/trecho literais gravados por validarResumoSA no motivo (nunca
-// recalcula — usa o mesmo achado que gerou a rejeição) e monta feedback
-// específico. Sem o achado (ex.: motivo de uma execução antiga sem o novo
-// formato), cai no aviso genérico — nunca quebra.
+// Usa _extrairTermoTrechoAfirmacaoForte (achado gravado por validarResumoSA
+// no motivo, nunca recalculado) para montar feedback específico. Sem achado
+// (ex.: motivo de uma execução antiga sem o novo formato), cai no aviso
+// genérico — nunca quebra.
 const _feedbackResumoAbsoluto = (todosMotivos) => {
-  const m = todosMotivos.match(/termo encontrado:\s*"([^"]+)",\s*trecho:\s*"([^"]+)"/);
-  if (m) {
-    const [, termo, trecho] = m;
-    return `O texto foi rejeitado porque contém literalmente "${termo}" no trecho "${trecho}". Reescreva especificamente esse trecho com linguagem clínica não absoluta — evite também sinônimos equivalentes ("exclusivamente", "invariavelmente", "de forma alguma"). Antes de responder, releia os 7 blocos por completo e confirme que nenhum deles contém essas palavras, inclusive dentro de exemplos, falas hipotéticas ou citações entre aspas.`;
+  const achado = _extrairTermoTrechoAfirmacaoForte(todosMotivos);
+  if (achado) {
+    return `O texto foi rejeitado porque contém literalmente "${achado.termo}" no trecho "${achado.trecho}". Reescreva especificamente esse trecho com linguagem clínica não absoluta — evite também sinônimos equivalentes ("exclusivamente", "invariavelmente", "de forma alguma"). Antes de responder, releia os 7 blocos por completo e confirme que nenhum deles contém essas palavras, inclusive dentro de exemplos, falas hipotéticas ou citações entre aspas.`;
   }
   return 'A tentativa anterior foi rejeitada porque usou linguagem absoluta ("sempre"/"nunca"/"obrigatório"/"padrão-ouro"/"patognomônico"/percentual específico) sem diretriz controlada injetada. A rejeição é por presença literal da palavra em QUALQUER lugar do texto — inclusive dentro de exemplo, fala hipotética de familiar/paciente ou entre aspas; não há contexto que isente. Reescreva a(s) frase(s) inteira(s) sem essas palavras. Antes de responder, releia os 7 blocos por completo e confirme que nenhum deles contém essas palavras.';
 };
