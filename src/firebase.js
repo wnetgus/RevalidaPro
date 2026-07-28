@@ -21,6 +21,13 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+// Projeto Firebase REALMENTE inicializado pelo SDK (app.options.projectId),
+// não uma releitura da env var — fonte de verdade para qualquer gate
+// fail-closed que precise confirmar em runtime que o app está rodando
+// contra um projeto específico (ex.: controle de regeneração isolada de
+// resumo em RoboGerador.jsx, restrito a "revalidapro-dev").
+export const FIREBASE_PROJECT_ID = app.options.projectId;
+
 // DEV  → memoryLocalCache: sem persistência entre reloads, getDocFromServer sempre
 //         lê dados frescos, testes não acumulam estado no IndexedDB
 // PROD → persistentLocalCache: comportamento original, suporte a múltiplas abas

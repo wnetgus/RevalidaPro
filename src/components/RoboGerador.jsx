@@ -1,7 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { db, auth, obterTokenAppCheck } from "../firebase";
+import { db, auth, obterTokenAppCheck, FIREBASE_PROJECT_ID } from "../firebase";
 import { getQuestoes, invalidarCacheQuestoes } from "../utils/questoesCache";
 import { obterHeadersAutenticados } from "../utils/apiAuth";
+import { ambienteDevAutorizado } from "../utils/ambienteGuard";
 import {
   doc, setDoc, getDocs, collection, query, where,
   serverTimestamp, writeBatch
@@ -91,6 +92,23 @@ const _termosAbsolutosParaDiagnostico = (texto) => {
     if (m) achados.push(m[0]);
   }
   return achados;
+};
+
+// ─── BUCKET DE RESULTADO — regeneração isolada de resumo (DEV-only) ─────────
+// Traduz o status bruto de gerarESalvarResumo (resumoEngine.js) para um dos 4
+// resultados exibidos ao administrador no controle de regeneração isolada.
+// Pura — nenhuma decisão nova, só vocabulário de UI; a decisão real de
+// aprovar/rejeitar já foi tomada por validarResumoSA/executarGeracaoResumoSA
+// antes do status chegar aqui. "bloqueado_ambiente" nunca vem desta função —
+// é atribuído pelo próprio handler, antes até de chamar gerarESalvarResumo.
+const _bucketResultadoResumoIsolado = (status) => {
+  if (status === "salvo") return "aprovado";
+  if (status === "erro_tecnico") return "erro_operacional";
+  // sem_tema, dedup_sessao, dedup_firestore, bloqueado_diretriz,
+  // rejeitado_grounding, resposta_invalida ou qualquer status desconhecido:
+  // nenhum deles persiste um resumo novo — todos contam como "rejeitado sem
+  // persistência" para fins deste controle administrativo.
+  return "rejeitado_sem_persistencia";
 };
 
 // ─── PRÓXIMO NÚMERO SEQUENCIAL NO FIRESTORE (SA) ─────────────────────────────
@@ -261,6 +279,19 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
     definicao: "", diagnostico: "", tratamento: "",
     pontos_chave: [], pegadinhas: [], dica_mestre: ""
   });
+
+  // ── Estados do painel Regeneração Isolada de Resumo (DEV-only) ────────────
+  // Genérico: opera sobre qualquer questão SA existente carregada pelo ID do
+  // documento — nenhum registro específico (R067, R092, R077...) é
+  // codificado em nenhum lugar deste bloco.
+  const [riDocId, setRiDocId]             = useState("");
+  const [riQuestao, setRiQuestao]         = useState(null);   // questão já existente (getDoc) — nunca gerada aqui
+  const [riBuscando, setRiBuscando]       = useState(false);
+  const [riErroBusca, setRiErroBusca]     = useState("");
+  const [riConfirmando, setRiConfirmando] = useState(false);  // exige 2º clique explícito antes de executar
+  const [riExecutando, setRiExecutando]   = useState(false);  // desabilita a UI durante o processamento
+  const [riResultado, setRiResultado]     = useState(null);   // { bucket, ... } | null
+  const riEmExecucaoRef = useRef(false);  // trava síncrona extra — ignora clique duplo/concorrente
 
   const abortRef      = useRef(false);
   const countdownRef  = useRef(null);  // guarda o resolve() atual para resolver externamente
@@ -659,6 +690,69 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       setTimeout(() => setResSalvo(false), 3000);
     } catch (e) {
       setResLog("❌ Erro ao salvar: " + e.message);
+    }
+  };
+
+  // ─── REGENERAÇÃO ISOLADA DE RESUMO — controle administrativo DEV-only ─────
+  // Antes deste controle, o único caminho para gerarESalvarResumo(questao)
+  // era como efeito colateral automático de gerar uma questão NOVA (ver
+  // salvarQuestoes acima, linha ~490) — não havia forma de corrigir só o
+  // resumo de uma questão SA já salva sem recriar a questão inteira. Este
+  // handler chama exatamente o mesmo gerarESalvarResumo já homologado (mesmo
+  // PROMPT_SISTEMA_RESUMO_SA, mesmo validarResumoSA, mesmo
+  // executarGeracaoResumoSA, mesmo teto de 2 chamadas) — não duplica
+  // nenhuma política clínica, só oferece um ponto de entrada administrativo
+  // para uma questão já existente. Nunca chama o gerador de questão nem
+  // grava em "questoes" — gerarESalvarResumo só escreve em "teorias".
+  const buscarQuestaoParaResumoIsolado = async () => {
+    setRiErroBusca("");
+    setRiResultado(null);
+    setRiQuestao(null);
+    const id = riDocId.trim();
+    if (!id) { setRiErroBusca('Informe o ID da questão (documento em "questoes").'); return; }
+    setRiBuscando(true);
+    try {
+      const snap = await fsGetDoc(fsDoc(db, "questoes", id));
+      if (!snap.exists()) { setRiErroBusca("Questão não encontrada nesse ID."); return; }
+      const dados = snap.data();
+      if (dados.modulo !== "super_apostas") {
+        setRiErroBusca('Esta questão não pertence ao módulo Super Apostas ("modulo" ≠ "super_apostas").');
+        return;
+      }
+      setRiQuestao({ id: snap.id, ...dados });
+    } catch (e) {
+      setRiErroBusca(`Erro ao buscar: ${e.message}`);
+    } finally {
+      setRiBuscando(false);
+    }
+  };
+
+  // Gate fail-closed baseado no projeto Firebase REALMENTE inicializado
+  // (FIREBASE_PROJECT_ID vem de app.options.projectId em src/firebase.js,
+  // não de uma releitura da env var) — checado de novo aqui, no handler,
+  // mesmo que a renderização já esconda o controle fora do DEV. Isso garante
+  // que nenhuma chamada de IA/persistência ocorra mesmo que este handler
+  // seja disparado por engano ou por um refactor futuro da UI.
+  const executarRegeneracaoResumoIsolado = async () => {
+    if (!ambienteDevAutorizado(FIREBASE_PROJECT_ID)) {
+      setRiResultado({ bucket: "bloqueado_ambiente" });
+      setRiConfirmando(false);
+      return;
+    }
+    if (!riQuestao) return;
+    if (riEmExecucaoRef.current) return; // trava síncrona — ignora cliques concorrentes/duplos
+    riEmExecucaoRef.current = true;
+    setRiExecutando(true);
+    setRiResultado(null);
+    try {
+      const r = await gerarESalvarResumo(riQuestao);
+      setRiResultado({ bucket: _bucketResultadoResumoIsolado(r?.status), ...r });
+    } catch (e) {
+      setRiResultado({ bucket: "erro_operacional", erro: e.message });
+    } finally {
+      riEmExecucaoRef.current = false;
+      setRiExecutando(false);
+      setRiConfirmando(false);
     }
   };
 
@@ -2178,6 +2272,128 @@ Requisitos gerais:
           </div>
         )}
       </div>
+
+      {/* ── REGENERAÇÃO ISOLADA DE RESUMO (DEV-only) ─────────────────────── */}
+      {ambienteDevAutorizado(FIREBASE_PROJECT_ID) ? (
+        <div style={{
+          marginTop: "20px", borderRadius: "16px", overflow: "hidden",
+          background: "rgba(56,189,248,0.04)",
+          border: "1px solid rgba(56,189,248,0.25)",
+          padding: "16px",
+        }}>
+          <h4 style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f1f5f9", fontSize: "13px", fontWeight: "800", margin: "0 0 12px" }}>
+            <FaSync size={13} color="#38bdf8" /> Regenerar Somente o Resumo (DEV)
+          </h4>
+          <p style={{ fontSize: "11px", color: "#94a3b8", margin: "0 0 12px", lineHeight: 1.6 }}>
+            Esta ação regenera <strong>somente o resumo</strong> de uma questão Super Apostas já existente. <strong>A questão não será regenerada.</strong>
+          </p>
+
+          <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
+            <input
+              type="text"
+              value={riDocId}
+              onChange={(e) => { setRiDocId(e.target.value); setRiQuestao(null); setRiErroBusca(""); setRiResultado(null); setRiConfirmando(false); }}
+              placeholder="ID do documento em 'questoes' (ex.: SA_<edição>_Q<n>)"
+              disabled={riBuscando || riExecutando}
+              style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: "10px", padding: "9px 14px", color: "#f1f5f9", fontSize: "12px", fontWeight: "600", outline: "none" }}
+            />
+            <button
+              onClick={buscarQuestaoParaResumoIsolado}
+              disabled={riBuscando || riExecutando || !riDocId.trim()}
+              style={{
+                background: riBuscando || riExecutando || !riDocId.trim() ? "#1e293b" : "linear-gradient(135deg,#0284c7,#38bdf8)",
+                color: riBuscando || riExecutando || !riDocId.trim() ? "#475569" : "#fff",
+                border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
+                cursor: riBuscando || riExecutando || !riDocId.trim() ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap",
+              }}
+            >
+              {riBuscando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Buscando…</> : <><FaSearch size={11} /> Carregar questão</>}
+            </button>
+          </div>
+
+          {riErroBusca && (
+            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {riErroBusca}</p>
+          )}
+
+          {riQuestao && (
+            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "12px", padding: "12px 14px", marginBottom: "10px" }}>
+              <p style={{ fontSize: "11px", color: "#94a3b8", margin: "0 0 4px" }}>
+                <strong style={{ color: "#f1f5f9" }}>ID:</strong> {riQuestao.id}
+              </p>
+              <p style={{ fontSize: "11px", color: "#94a3b8", margin: 0 }}>
+                <strong style={{ color: "#f1f5f9" }}>Tema:</strong> {riQuestao.tema_mestre || "(sem tema_mestre)"}
+              </p>
+
+              {!riConfirmando ? (
+                <button
+                  onClick={() => setRiConfirmando(true)}
+                  disabled={riExecutando}
+                  style={{ marginTop: "10px", background: riExecutando ? "#1e293b" : "linear-gradient(135deg,#0284c7,#38bdf8)", color: riExecutando ? "#475569" : "#fff", border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800", cursor: riExecutando ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  <FaSync size={11} /> Regenerar somente o resumo
+                </button>
+              ) : (
+                <div style={{ marginTop: "10px", background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "10px 12px" }}>
+                  <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "700", margin: "0 0 10px" }}>
+                    Confirma? Esta ação regenera somente o resumo. A questão não será regenerada.
+                  </p>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button
+                      onClick={executarRegeneracaoResumoIsolado}
+                      disabled={riExecutando}
+                      style={{ background: riExecutando ? "#1e293b" : "linear-gradient(135deg,#dc2626,#f59e0b)", color: riExecutando ? "#475569" : "#fff", border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800", cursor: riExecutando ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                    >
+                      {riExecutando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Executando…</> : <>Confirmar e executar</>}
+                    </button>
+                    <button
+                      onClick={() => setRiConfirmando(false)}
+                      disabled={riExecutando}
+                      style={{ background: "transparent", border: "1px solid #334155", color: "#64748b", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "700", cursor: riExecutando ? "not-allowed" : "pointer" }}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {riResultado && (
+            <div style={{
+              background: "#0f172a", border: "1px solid #1e293b", borderRadius: "12px", padding: "12px 14px",
+              fontSize: "11px", lineHeight: 1.6,
+            }}>
+              {riResultado.bucket === "aprovado" && (
+                <p style={{ color: "#34d399", fontWeight: "700", margin: 0 }}>✅ Aprovado e salvo — {riResultado.blocos ?? "?"} bloco(s), {riResultado.tentativas ?? 1} tentativa(s).</p>
+              )}
+              {riResultado.bucket === "rejeitado_sem_persistencia" && (
+                <>
+                  <p style={{ color: "#fbbf24", fontWeight: "700", margin: "0 0 6px" }}>⚠ Rejeitado sem persistência — nada foi salvo.</p>
+                  {Array.isArray(riResultado.problemas) && riResultado.problemas.length > 0 && (
+                    <p style={{ color: "#94a3b8", margin: 0 }}>{riResultado.problemas.join(" | ")}</p>
+                  )}
+                </>
+              )}
+              {riResultado.bucket === "erro_operacional" && (
+                <p style={{ color: "#f87171", fontWeight: "700", margin: 0 }}>❌ Erro operacional — {riResultado.erro || "erro desconhecido"}.</p>
+              )}
+              {riResultado.bucket === "bloqueado_ambiente" && (
+                <p style={{ color: "#f87171", fontWeight: "700", margin: 0 }}>⛔ Bloqueado — este controle só opera no ambiente DEV (revalidapro-dev).</p>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{
+          marginTop: "20px", borderRadius: "16px", padding: "14px 16px",
+          background: "rgba(100,116,139,0.06)", border: "1px solid #1e293b",
+        }}>
+          <p style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", margin: 0 }}>
+            ⛔ Regenerar Somente o Resumo — indisponível (este controle só opera no ambiente DEV, revalidapro-dev).
+          </p>
+        </div>
+      )}
     </div>
   );
 }

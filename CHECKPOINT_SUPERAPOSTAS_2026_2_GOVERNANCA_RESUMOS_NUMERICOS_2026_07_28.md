@@ -172,3 +172,30 @@ A auditoria somente leitura da seção 8 foi entregue e analisada pelo ChatGPT.
 - **Nenhum deploy foi feito** (nem DEV, nem produção). Nenhum documento Firestore foi lido, criado ou alterado.
 
 **Commit:** `fix(superapostas): harden numeric summary retry feedback` (ver seção Git da entrega correspondente para o hash exato).
+
+---
+
+## 11. HOMOLOGAÇÃO DE R067 NO DEV — BLOQUEADA ANTES DA EXECUÇÃO (2026-07-28)
+
+Após o PASS-com-ressalvas do Codex sobre o commit `0a5c351`, foi autorizada uma homologação controlada do resumo de R067 no DEV. Resultado: **BLOQUEADO ANTES DA EXECUÇÃO** — nenhuma chamada de IA foi feita, nenhum crédito foi consumido.
+
+**Motivo:** `gerarESalvarResumo(questao)` só existia como efeito colateral automático da geração de uma questão NOVA (`RoboGerador.jsx`) — não havia nenhum fluxo de UI para regenerar isoladamente o resumo de uma questão SA já salva sem recriar a questão. Executar a homologação exigiria uma sessão de navegador autenticada como admin DEV (não disponível neste agente) ou a criação de um novo mecanismo — ambos fora do escopo daquela missão.
+
+## 12. CONTROLE ADMINISTRATIVO DEV-ONLY DE REGENERAÇÃO ISOLADA DE RESUMO (2026-07-28)
+
+Para fechar a lacuna acima, foi criado um controle administrativo genérico em `RoboGerador.jsx` ("Regenerar Somente o Resumo"), restrito ao ambiente DEV.
+
+**O que foi implementado:**
+- `src/utils/ambienteGuard.js` (novo, puro): `ambienteDevAutorizado(projectId)` — fail-closed, só autoriza `projectId === "revalidapro-dev"` exatamente.
+- `src/firebase.js`: novo export `FIREBASE_PROJECT_ID = app.options.projectId` — projeto REALMENTE inicializado pelo SDK, não uma releitura da env var.
+- `RoboGerador.jsx`: novo painel que permite carregar (via `getDoc`, leitura pura) uma questão Super Apostas existente por ID, exibir seu tema, exigir confirmação explícita ("Esta ação regenera somente o resumo. A questão não será regenerada.") e então chamar `gerarESalvarResumo(questao)` — o mesmo fluxo já homologado (mesmo prompt, mesmo `validarResumoSA`, mesmo `executarGeracaoResumoSA`, mesmo teto de 2 chamadas). Gate fail-closed em duas camadas: na renderização (o painel só monta se `ambienteDevAutorizado(FIREBASE_PROJECT_ID)`) e de novo no handler antes de qualquer chamada. Trava síncrona contra clique duplo/execução concorrente. Nenhum ID de registro (R067, R092, R077, SA_2026_2_Q28) está codificado no controle — opera sobre qualquer questão SA que o administrador carregar pelo ID.
+- O controle nunca chama o gerador de questão, nunca escreve na coleção `questoes`, nunca toca lote/progresso/cardinalidade — confirmado por teste automatizado (execução real via mocks, não só leitura estrutural).
+
+**Testes:** `scripts/test-resumo-isolado-dev-control.js` (novo, 24/24 PASS, incluindo execução real do handler com dependências mockadas via `new Function`) + regressão integral da suíte local (12 arquivos, todos PASS, zero rede). Build (`npm run build`) PASS. Lint: nenhum erro novo introduzido pelo código de produção (`RoboGerador.jsx`/`firebase.js`/`ambienteGuard.js`); confirmados como preexistentes e não tocados nesta missão: `no-empty` em `promptEngine.js:102` e a poluição de lint causada pelo bundle minificado em `dist_test/` (ambos presentes antes e depois desta mudança).
+
+**Estado — controle criado, NÃO homologado em runtime:**
+- O controle nunca foi acionado de verdade nesta missão. Nenhuma chamada de IA ocorreu.
+- **R067 continua NÃO REGENERADO.**
+- **R092 e R077 continuam NÃO EXECUTADOS.**
+- Nenhum deploy foi feito (nem DEV, nem produção). Produção intocada.
+- Homologação real do controle (e de R067 através dele) permanece pendente de nova autorização e de auditoria do Codex.
