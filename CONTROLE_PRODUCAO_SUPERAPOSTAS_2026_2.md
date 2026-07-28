@@ -878,19 +878,19 @@ Adicional (2026-07-23): **R041** (HIV — PrEP/PEP) — tentado 2x em produção
 | R064 | Clínica Médica | Hanseníase: Classificação operacional e PQT | MEDIO | sim | BLOQUEADO | - | - | PENDENTE |  |
 | R065 | Pediatria | Sífilis: Sífilis congênita — alta e seguimento sorológico | MEDIO | sim | REVISAO_HUMANA | - | - | PENDENTE |  |
 | R066 | Psiquiatria | TDAH: Diagnóstico diferencial em criança/adolescente | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
-| R067 | Pediatria | Parassonias: Pavor noturno vs. epilepsia | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
+| R067 | Pediatria | Parassonias: Pavor noturno vs. epilepsia | MEDIO | não | LIBERADO | SA_2026_2_Q28 | não informado | REJEITADO (pendente refinamento) | Gerado em `revalidapro-dev` (2026-07-28), 2ª execução (1ª esgotou 3 tentativas sem aprovar). Questão APROVADA e salva. Resumo REJEITADO 2x — números "criança > 6 anos"/"> 8–10 anos" classificados como sem grounding (chave `Parassonias--pediátrico`). Achado que abriu a auditoria de governança numérica dos resumos (ver seção 10). Não conta para as 120 — homologação em DEV. Não recriar a questão; regenerar só o resumo via `gerarESalvarResumo` após o refinamento. |
 | R068 | Pediatria | Enurese noturna: Idade diagnóstica e abordagem inicial | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R069 | Cirurgia | Legg-Calvé-Perthes: Apresentação e conduta por estadiamento | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R070 | Pediatria | Sinais de alarme oncológicos em pediatria | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R071 | Pediatria | Displasia do quadril: Rastreio neonatal (Ortolani/Barlow) | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R072 | Cirurgia | Escoliose idiopática do adolescente — rastreio | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R073 | Pediatria | Epifisiólise proximal do fêmur — urgência de conduta | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
-| R074 | Geriatria | Delirium: Diferenciação de demência | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
+| R074 | Geriatria | Delirium: Diferenciação de demência | MEDIO | não | LIBERADO | SA_2026_2_Q26 | não informado | APROVADO (7 blocos) | Gerado em `revalidapro-dev` (2026-07-27), usado para homologar o hardening SA-4/SA-5 (commits 6d86a08/40040ab). Questão aprovada após 3 tentativas. Resumo rejeitado 2x por "nunca" (achado que motivou o Micro Hotfix 2), depois regenerado com sucesso via `gerarESalvarResumo` — chave `Delirium--idoso`, aprovado na 1ª tentativa pós-fix. Visualização confirmada pelo usuário na plataforma. Não conta para as 120 — homologação em DEV. |
 | R075 | Geriatria | Fragilidade: Rastreio e implicação terapêutica | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R076 | Geriatria | Critérios de Beers/STOPP na prática ambulatorial | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R077 | Geriatria | Quedas em idosos: Avaliação multifatorial | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R078 | Otorrinolaringologia | Epistaxe anterior: Manejo escalonado | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
-| R079 | Otorrinolaringologia | Cerume impactado: Indicação e técnica de remoção | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
+| R079 | Otorrinolaringologia | Cerume impactado: Indicação e técnica de remoção | MEDIO | não | LIBERADO | SA_2026_2_Q27 | opus (3ª tentativa) | APROVADO (7 blocos) | Gerado em `revalidapro-dev` (2026-07-27/28) — 1ª homologação real do enforcement de cardinalidade/enunciado (commit c9b294f). Tentativa 1: JSON malformado. Tentativa 2: rejeição por enunciado de 77 palavras (SA-5) e diretriz não sustentada. Tentativa 3 (Opus): 1 válida/0 rejeitada, cardinalidade correta, nenhuma candidata excedente. Resumo rejeitado na 1ª tentativa, aprovado na 2ª — chave `Cerume impactado--adulto`. Não conta para as 120 — homologação em DEV. |
 | R080 | Otorrinolaringologia | Faringoamigdalite: Viral vs. estreptocócica (Centor) | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R081 | Otorrinolaringologia | Vertigem: Periférica vs. central | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R082 | Medicina Legal e Saúde do Trabalhador | Óbito por acidente de trabalho: Fluxo CAT | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
@@ -978,3 +978,21 @@ Após cada lote real, atualizar manualmente as colunas Questão/Modelo/Resumo/St
 ## 9. Macro Review de Governança (2026-07-24) — pré-requisito antes de retomar
 
 Auditoria arquitetural read-only concluída — ver `MACRO_REVIEW_GOVERNANCA_CLINICA_2026_2.md`. **Achado crítico (C1):** se a coleção Firestore `diretrizes` estiver populada em produção, o bloqueio de governança das Fases 1–3 pode estar inerte (documentos antigos não têm o campo `status`, tratado como "vigente" por ausência). Isso não foi verificado empiricamente (zero acesso ao Firestore nesta auditoria). **Recomendação antes de retomar os 15 recortes qualitativos:** confirmar o estado real da coleção Firestore e, se necessário, aplicar a correção mínima da Fase 4A (tratar `status` ausente em documento Firestore como `PENDENTE_REVISAO`, não como vigente). Produção em massa continua **PAUSADA** até nova autorização explícita.
+
+**Atualização (2026-07-26):** C1 e C2 do `MACRO_REVIEW_GOVERNANCA_CLINICA_2026_2.md` foram corrigidos em código (commits `62fe73d` e `03f9e87`) — `_statusUtilizavel` agora exige `status === "VIGENTE_CONFIRMADA"` explícito (fail-closed real, inclusive para documentos Firestore legados sem o campo). Nenhuma das 17 diretrizes tem hoje esse status — o bloqueio de governança está ativo e funcionando, mas nenhuma diretriz é utilizável até a Fase 4C (validação humana) promover ao menos uma.
+
+## 10. Amostragem final de estabilidade do RoboGerador (DEV) — 2026-07-27/28
+
+Hardening editorial aplicado ao motor SA (commits `caf36e3`, `6d86a08`, `40040ab`, `c9b294f`) e correção de permissão do admin DEV (`63212ac`, `wnetgus@gmail.com` na leitura de `usuarios`). Antes de qualquer decisão sobre produção, iniciada uma amostragem de 3 recortes ainda não usados, para testar estabilidade do hardening em situações reais:
+
+1. **R074** (Delirium) → `SA_2026_2_Q26` — questão e resumo **APROVADOS**. Detalhes na tabela da seção 4.
+2. **R079** (Cerume impactado) → `SA_2026_2_Q27` — questão e resumo **APROVADOS**. 1ª homologação real do enforcement de cardinalidade (commit `c9b294f`) — funcionou como projetado. Detalhes na tabela da seção 4.
+3. **R067** (Parassonias) → `SA_2026_2_Q28` — questão **APROVADA**; resumo **REJEITADO 2x e não salvo** (números de faixa etária tratados como sem grounding). Detalhes na tabela da seção 4.
+4. **R092** (Aleitamento materno) — selecionado para a amostragem, **ainda não gerado**.
+5. **R077** (Quedas em idosos) — selecionado para a amostragem, **ainda não gerado**.
+
+**Amostragem interrompida deliberadamente** após R067, para não consumir mais créditos antes de auditar o achado abaixo. R092 e R077 aguardam a decisão da auditoria numérica antes de serem gerados.
+
+**Achado que motivou a pausa:** o resumo de R067 foi rejeitado por conter "criança > 6 anos" e "> 8–10 anos" — números que a checagem atual de `validarResumoSA` (`_extrairNumerosSignificativos`) trata como "número clínico sem grounding", sem distinguir idade/faixa etária contextual de dose, percentual, limiar laboratorial ou outros números potencialmente inventados. Questão arquitetural em aberto, não implementada ainda — ver `CHECKPOINT_SUPERAPOSTAS_2026_2_GOVERNANCA_RESUMOS_NUMERICOS_2026_07_28.md` para a missão completa de auditoria (somente leitura) a ser executada na retomada.
+
+**Estado ao pausar:** nenhuma das 5 (R074/R079/R067/R092/R077) conta para as 120 — são homologações em `revalidapro-dev`, produção não tocada. Não recriar R074/R079/R067. Não gerar R092/R077 antes da auditoria numérica.
