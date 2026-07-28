@@ -1450,6 +1450,22 @@ const _classificarFalhaResumoSA = (problemas, erroTecnico) => {
 // específico; Tipo A (grounding_bloqueio) para imediatamente, sem retry —
 // mesma disciplina de custo já aplicada a executarGeracaoSA (questão).
 // chamarIABruto(systemPrompt, prompt) deve resolver para { dados, usage }.
+
+// Achado real (R067/Parassonias, Q26/Delirium, Hérnia da parede abdominal--
+// idoso): o feedback de retry é reativo — só cita a categoria que a
+// tentativa 1 efetivamente reprovou (_classificarFalhaResumoSA só inclui no
+// feedback as categorias presentes em r1.problemas). Isso deixa a tentativa
+// 2 livre para reescrever o trecho evitando a categoria já apontada, mas
+// introduzindo uma categoria DIFERENTE (ex.: trocar termo absoluto por
+// número clínico "preciso" para expressar a mesma ideia) — como a tentativa
+// 2 é a última (teto absoluto de 2), essa categoria nova nunca recebe uma
+// correção dedicada. Esta instrução é fixa e sempre anexada ao prompt da
+// tentativa 2, independentemente de qual categoria causou a rejeição da
+// tentativa 1 — cobre preventivamente TODAS as categorias já validadas por
+// validarResumoSA, não só a que foi de fato detectada. Deliberadamente sem
+// exemplo clínico concreto, para não dar ao modelo um texto reproduzível.
+const _INSTRUCAO_PREVENTIVA_RETRY_RESUMO = `⚠️ INSTRUÇÃO PREVENTIVA (vale além do feedback específico acima, cobre TODAS as categorias, mesmo as que não causaram a rejeição anterior): revise o resumo INTEIRO antes de responder, não só o ponto indicado no feedback específico. Sem diretriz controlada injetada, nenhum dos 7 blocos pode conter: (1) termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA"); (2) nenhum número clínico — idade, duração, intervalo, dose, prazo, porcentagem, medida, contagem ou limiar. Não corrija a categoria apontada no feedback específico introduzindo outra dessas categorias em outro trecho. Não copie literalmente os trechos rejeitados nem os substitua por sinônimo, número ou estimativa equivalente. Não invente dado, diretriz ou detalhe novo. Responda apenas com o JSON do resumo corrigido — nenhum texto antes ou depois.`;
+
 export const executarGeracaoResumoSA = async (promptUsuario, systemPrompt, { grounding = false, groundingTexto = "" } = {}, chamarIABruto) => {
   const tentativas = [];
 
@@ -1478,8 +1494,10 @@ export const executarGeracaoResumoSA = async (promptUsuario, systemPrompt, { gro
     return { status: "bloqueado", problemas: r1.problemas, dados: r1.dados, tentativas };
   }
 
-  // Tentativa 2 — única retentativa, sempre a mesma via (Haiku), feedback específico. Teto absoluto de 2 chamadas.
-  const prompt2 = `${promptUsuario}\n\n⚠️ FEEDBACK DA TENTATIVA ANTERIOR: ${cls1.feedback}`;
+  // Tentativa 2 — única retentativa, sempre a mesma via (Haiku), feedback específico
+  // + instrução preventiva global (cobre categoria diferente da que causou a rejeição
+  // da tentativa 1). Teto absoluto de 2 chamadas.
+  const prompt2 = `${promptUsuario}\n\n⚠️ FEEDBACK DA TENTATIVA ANTERIOR: ${cls1.feedback}\n\n${_INSTRUCAO_PREVENTIVA_RETRY_RESUMO}`;
   const r2 = await tentar(prompt2, 2);
   if (r2.ok) return { status: "aprovado", dados: r2.dados, tentativas };
 
