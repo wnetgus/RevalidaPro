@@ -142,3 +142,33 @@ Auditar exclusivamente a governança numérica dos resumos. Responder, sem alter
 - Não alterar `validarResumoSA`, o prompt do resumo, `validarLoteSA` ou os testes sem autorização.
 - Não fazer deploy, não tocar Firestore de produção, não tocar `revalidapro-f812e`.
 - Regenerar o resumo de R067 é a única ação de dados pendente, e só depois do refinamento decidido — via `gerarESalvarResumo(questao)`, nunca recriando a questão.
+
+---
+
+## 10. HOTFIX APLICADO APÓS A AUDITORIA — feedback numérico do resumo (2026-07-28)
+
+A auditoria somente leitura da seção 8 foi entregue e analisada pelo ChatGPT.
+
+**Decisão arquitetural:** implementar somente o refinamento seguro de prompt + feedback de retry. **A Estratégia B (autorizar números presentes no enunciado da questão) foi explicitamente ADIADA, não implementada.** Motivo: a própria auditoria identificou que a comparação numérica atual (`_numerosSemSuporte`) ocorre só pelo valor do token, sem verificar unidade ou significado semântico — autorizar números do enunciado abriria risco real de colisão (ex.: "36 horas" no enunciado autorizando indevidamente "36 mg/kg" no resumo, mesmo dígito, significado clínico distinto). Essa lacuna de unidade/significado permanece não resolvida e deve ser tratada, se algum dia a Estratégia B for retomada, antes de qualquer liberação por presença no enunciado.
+
+**O que foi implementado (`src/utils/promptEngine.js`):**
+- Prompt (`PROMPT_SISTEMA_RESUMO_SA`): reforço textual explícito — idade/faixa/intervalo etário contam como número clínico mesmo em descrição epidemiológica típica; lista explícita de frequência/percentual/temperatura/peso/data-ano/estágio-grau; instrução de que número do enunciado **não está autorizado nesta etapa**; instrução de nunca trocar um número rejeitado por outro; nota dedicada ao bloco COMO RECONHECER para preferir linguagem qualitativa.
+- Feedback do retry (`resumo_numero_orfao`): passou a citar os valores numéricos literais e o trecho (quando extraível) da rejeição — mesmo padrão já usado em `resumo_absoluto` (commits `6d86a08`/`40040ab`) — e a proibir explicitamente a substituição por outro número. Feedback é dinâmico (extrai do motivo real via `_extrairNumerosTrechoOrfaos`), sem nenhum valor fixo codificado para R067.
+- `validarResumoSA`: passou a embutir um trecho de contexto (via novo helper `_localizarTrechoNumero`) na mensagem de rejeição de número órfão, só para enriquecer o feedback — **a política de aprovação/rejeição não mudou em nenhum caso** (mesma extração `_extrairNumerosSignificativos`, mesmo zero-tolerância sem grounding, mesmo `_numerosSemSuporte` sem alteração).
+
+**O que NÃO mudou (confirmado por teste automatizado):**
+- `_numerosSemSuporte` não foi alterado nem ampliado.
+- `validarResumoSA` continua sem qualquer parâmetro ou uso de `enunciado`/`textoCasoAutorizado` — nenhuma idade ou número do enunciado foi liberado.
+- Nenhuma categoria numérica (idade, dose, limiar laboratorial, percentual, ano, estágio/grau) foi excluída da zero-tolerância sem grounding — validador permanece 100% fail-closed.
+- Teto de 2 chamadas do `executarGeracaoResumoSA` inalterado; nenhuma 3ª tentativa; Haiku continua sendo o único modelo do fluxo do resumo.
+- Nenhuma mudança em cardinalidade, persistência, Firestore ou regras do Firebase.
+
+**Testes:** `scripts/test-resumo-numero-orfao-feedback.js` (novo, 21/21 PASS) + regressão integral da suíte local existente (11 arquivos, todos PASS, zero rede). Build (`npm run build`) PASS. Lint sem erros novos (mesmo 1 erro pré-existente em `promptEngine.js`, linha 102, não relacionado a esta mudança).
+
+**Estado dos dados — inalterado por este hotfix:**
+- **R067 continua PENDENTE DE REGENERAÇÃO** — resumo ainda não foi salvo, nenhuma chamada de IA foi feita nesta etapa, questão `SA_2026_2_Q28` não foi recriada.
+- **R092 e R077 continuam NÃO EXECUTADOS.**
+- **Nenhuma homologação manual foi realizada** — este hotfix é só código/prompt/testes locais, não é uma correção validada em produção nem em DEV com o usuário.
+- **Nenhum deploy foi feito** (nem DEV, nem produção). Nenhum documento Firestore foi lido, criado ou alterado.
+
+**Commit:** `fix(superapostas): harden numeric summary retry feedback` (ver seção Git da entrega correspondente para o hash exato).

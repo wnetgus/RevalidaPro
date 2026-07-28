@@ -727,6 +727,28 @@ const _extrairNumerosSignificativos = (texto) => {
   }
   return nums.map((n) => n.replace(",", "."));
 };
+
+// Localiza um trecho ao redor da 1ª ocorrência (no texto original) de
+// qualquer um dos números órfãos já identificados — mesmo princípio de
+// janela de _localizarAfirmacaoForte (30 caracteres antes/depois), aplicado a
+// números em vez de termo absoluto. Usado só para enriquecer o feedback do
+// retry do resumo (_feedbackResumoNumeroOrfao) com contexto real; não recalcula
+// nem altera a decisão de aprovação/rejeição, já tomada por
+// _extrairNumerosSignificativos.
+const _localizarTrechoNumero = (texto, numeros) => {
+  const t = String(texto || "");
+  let melhor = null;
+  for (const n of numeros) {
+    const escapado = n.replace(".", "[.,]");
+    const m = new RegExp(`\\b${escapado}\\b`).exec(t);
+    if (m && (melhor === null || m.index < melhor.index)) melhor = m;
+  }
+  if (!melhor) return null;
+  const inicio = Math.max(0, melhor.index - 30);
+  const fim = Math.min(t.length, melhor.index + melhor[0].length + 30);
+  return t.slice(inicio, fim).trim();
+};
+
 // textoCasoAutorizado (opcional, default ""): números já presentes no caso
 // clínico da própria questão (enunciado) não precisam existir na diretriz —
 // são reutilização de dado do caso, não precisão nova inventada pelo modelo.
@@ -1299,9 +1321,13 @@ export const validarResumoSA = (pontos, { grounding = false, groundingTexto = ""
     // normativo sem fonte. Sem grounding, o resumo não deve conter NENHUM
     // número clínico — mesma disciplina zero-tolerância do "Sem inventar
     // precisão" já pedido no prompt, agora também no validador.
-    const numerosOrfaos = _extrairNumerosSignificativos(textoCompleto);
+    const numerosOrfaos = [...new Set(_extrairNumerosSignificativos(textoCompleto))];
     if (numerosOrfaos.length > 0) {
-      problemas.push(`resumo contém número(s) clínico(s) (${[...new Set(numerosOrfaos)].join(", ")}) sem diretriz controlada injetada — nenhum critério numérico (idade de corte, limiar laboratorial, contagem etc.) pode aparecer sem fonte, mesmo fora do padrão de posologia`);
+      const trechoNumero = _localizarTrechoNumero(textoCompleto, numerosOrfaos);
+      problemas.push(
+        `resumo contém número(s) clínico(s) (${numerosOrfaos.join(", ")}) sem diretriz controlada injetada — nenhum critério numérico (idade de corte, limiar laboratorial, contagem etc.) pode aparecer sem fonte, mesmo fora do padrão de posologia` +
+        (trechoNumero ? `, trecho: "${trechoNumero}"` : "")
+      );
     }
   } else if (groundingTexto) {
     const semSuporte = _numerosSemSuporte(textoCompleto, groundingTexto);
@@ -1344,14 +1370,41 @@ const _feedbackResumoAbsoluto = (todosMotivos) => {
   }
   return 'A tentativa anterior foi rejeitada porque usou linguagem absoluta ("sempre"/"nunca"/"obrigatório"/"padrão-ouro"/"patognomônico"/percentual específico) sem diretriz controlada injetada. A rejeição é por presença literal da palavra em QUALQUER lugar do texto — inclusive dentro de exemplo, fala hipotética de familiar/paciente ou entre aspas; não há contexto que isente. Reescreva a(s) frase(s) inteira(s) sem essas palavras. Antes de responder, releia os 7 blocos por completo e confirme que nenhum deles contém essas palavras.';
 };
-const _FEEDBACK_RESUMO_NUMERO_ORFAO = "A tentativa anterior introduziu número(s) clínico(s) sem diretriz controlada injetada. Reescreva sem esse(s) número(s) — inclusive intervalos/faixas (ex: \"1-2 horas\") —, preservando o valor pedagógico em linguagem qualitativa.";
+// Extrai de volta os números literais e o trecho (quando presente) do motivo
+// gravado por validarResumoSA — nunca recalcula sobre o texto original, só lê
+// o que já foi registrado (mesmo princípio de _extrairTermoTrechoAfirmacaoForte).
+// O bloco capturado por "[^|]*" para no próximo " | " (separador entre
+// problemas em _classificarFalhaResumoSA), isolando este problema mesmo
+// quando o resumo falhou por mais de um motivo na mesma tentativa.
+const _extrairNumerosTrechoOrfaos = (todosMotivos) => {
+  const t = String(todosMotivos || "");
+  const mBloco = t.match(/resumo contém número\(s\) clínico\(s\)\s+\(([^)]+)\)[^|]*/);
+  if (!mBloco) return { numeros: [], trecho: null };
+  const numeros = mBloco[1].split(",").map((s) => s.trim()).filter(Boolean);
+  const mTrecho = mBloco[0].match(/trecho:\s*"([^"]+)"/);
+  return { numeros, trecho: mTrecho ? mTrecho[1] : null };
+};
+const _FEEDBACK_RESUMO_NUMERO_ORFAO_GENERICO = "A tentativa anterior introduziu número(s) clínico(s) sem diretriz controlada injetada. Reescreva sem esse(s) número(s) — inclusive intervalos/faixas (ex: \"1-2 horas\") —, preservando o valor pedagógico em linguagem qualitativa. Não substitua por nenhum outro número, faixa, estimativa ou aproximação — a proibição vale para qualquer número novo, não só o rejeitado.";
+// Feedback dinâmico (achado real R067/Parassonias — 2ª tentativa trocou "6"
+// por "8-10", mesma falha com outro número): cita os valores e o trecho
+// literais já registrados no motivo, e instrui explicitamente a NÃO trocar
+// por outro número — sem isso, o retry tende a reformular a mesma ideia
+// numérica em vez de removê-la. Sem achado (motivo de formato antigo), cai
+// no aviso genérico — nunca quebra.
+const _feedbackResumoNumeroOrfao = (todosMotivos) => {
+  const { numeros, trecho } = _extrairNumerosTrechoOrfaos(todosMotivos);
+  if (numeros.length > 0) {
+    return `A tentativa anterior introduziu número(s) clínico(s) sem diretriz controlada injetada: ${numeros.join(", ")}${trecho ? ` (trecho: "${trecho}")` : ""}. Remova ou reformule qualitativamente exatamente esse(s) número(s) — inclusive intervalos/faixas —, preservando o valor pedagógico. NÃO substitua por nenhum outro número, faixa, estimativa ou "aproximadamente X": a proibição vale para qualquer número novo, não apenas o(s) rejeitado(s). Não use conhecimento próprio para completar essa precisão — sem diretriz controlada que sustente o dado, o ponto deve ficar em linguagem qualitativa.`;
+  }
+  return _FEEDBACK_RESUMO_NUMERO_ORFAO_GENERICO;
+};
 const _FEEDBACK_RESUMO_POSOLOGIA = "A tentativa anterior usou posologia numérica (dose/via/intervalo/duração) sem diretriz controlada injetada. Reescreva sem esses dados posológicos específicos, em linguagem qualitativa.";
 const _FEEDBACK_RESUMO_CORRUPCAO = "A resposta anterior teve corrupção de encoding (caractere inválido misturado ao texto). Gere novamente em português padrão, sem caracteres fora do esperado.";
 const _FEEDBACK_RESUMO_FORMATO = 'A tentativa anterior não retornou o campo "pontos" preenchido corretamente. Responda exclusivamente com o JSON solicitado — schema {"titulo": "...", "pontos": [{"label": "...", "texto": "..."}]} — sem texto antes ou depois, sem markdown, sem cercas de código.';
 
 const _CATEGORIAS_CORRIGIVEIS_RESUMO = [
   { tipo: "resumo_absoluto",     teste: (t) => /termo absoluto/.test(t), feedback: (t) => _feedbackResumoAbsoluto(t) },
-  { tipo: "resumo_numero_orfao", teste: (t) => /número\(s\)\s+clínico\(s\)/.test(t), feedback: () => _FEEDBACK_RESUMO_NUMERO_ORFAO },
+  { tipo: "resumo_numero_orfao", teste: (t) => /número\(s\)\s+clínico\(s\)/.test(t), feedback: (t) => _feedbackResumoNumeroOrfao(t) },
   { tipo: "resumo_posologia",    teste: (t) => /posologia numérica/.test(t), feedback: () => _FEEDBACK_RESUMO_POSOLOGIA },
   { tipo: "resumo_corrupcao",    teste: (t) => /corrupção de encoding/.test(t), feedback: () => _FEEDBACK_RESUMO_CORRUPCAO },
 ];
@@ -1540,17 +1593,22 @@ Sem diretriz controlada, você AINDA PODE ensinar (em linguagem qualitativa):
 
 Sem diretriz controlada, você NÃO PODE inventar/completar:
 • dose, duração, intervalo, volume, concentração — já coberto acima;
-• idade de corte normativa, periodicidade, limiar laboratorial ou qualquer critério numérico oficial (ex: contagem de células em líquor, corte etário para uma doença específica) — isso vale mesmo fora do contexto de medicamento;
+• QUALQUER idade, faixa etária ou intervalo etário (ex: "6 anos", "8-10 anos", "8 a 10 anos", "acima de 65 anos") — mesmo quando parecer descrição epidemiológica típica do tema (não um corte terapêutico), idade só é segura em linguagem qualitativa ("criança pequena", "idade escolar", "adolescente", "idoso"), nunca em número;
+• frequência, percentual, temperatura, peso, data ou ano isolado, estágio ou grau de classificação, periodicidade, limiar laboratorial ou qualquer outro critério numérico oficial (ex: contagem de células em líquor, corte etário para uma doença específica) — isso vale mesmo fora do contexto de medicamento;
 • sequência protocolar rígida e numerada (ex: "sempre nesta ordem: exame → imagem → punção") como se fosse algoritmo oficial — descreva o racional geral, não um fluxograma que parece copiado de diretriz;
 • recomendação terapêutica específica (classe, procedimento ou "sempre fazer X antes de Y") sem fonte;
 • afirmações absolutas do tipo "sempre", "nunca", "obrigatório", "deve ser feito em todos os casos/pacientes", "padrão-ouro", "patognomônico" — mesmo que soem clinicamente plausíveis, elas viram uma citação de norma que este resumo não pode fazer sem fonte real;
-• fonte, diretriz ou ano não injetados neste prompt.
+• fonte, diretriz ou ano não injetados neste prompt;
+• qualquer número, mesmo que já apareça no enunciado da questão original — este resumo amplia o tema além do caso específico, então um número presente no caso NÃO autoriza reutilizá-lo aqui sem diretriz controlada; nenhum número do enunciado está autorizado nesta etapa.
+
+Seu próprio conhecimento médico NUNCA é fonte válida para um número aqui — só a DIRETRIZ CONTROLADA injetada neste prompt autoriza um número específico. Se um número que você pretendia usar não está sustentado por ela, OMITA-O ou reescreva a frase inteira em linguagem qualitativa — NUNCA troque por outro número, faixa, estimativa ou "aproximadamente X": a regra proíbe qualquer número novo, não apenas o número originalmente pretendido.
 
 ATENÇÃO — esta proibição vale em QUALQUER lugar do texto, sem exceção de contexto: dentro de exemplos ilustrativos, em frases hipotéticas atribuídas a um familiar/cuidador/paciente, dentro de aspas, no bloco "Outras formas de cobrança" e em qualquer recomendação prática. Não existe forma segura de escrever essas palavras sem diretriz controlada — mesmo como citação de exemplo ou fala de terceiro, a presença literal do termo rejeita o resumo inteiro. Se a frase que você quer escrever só funciona com uma dessas palavras, reescreva a frase inteira sem elas — nunca as inclua "entre aspas" pensando que isso as isenta.
 
 Frases-substituto seguras (use este registro, não o imperativo/numérico):
 "deve ser avaliado conforme o contexto clínico" · "considerar investigação por imagem quando indicado" · "encaminhar para avaliação especializada diante de sinais de alarme" · "seguir protocolo vigente aplicável" · "tratamento depende da etiologia e gravidade; diante de sinais de complicação, encaminhar para avaliação especializada".
 
+No bloco COMO RECONHECER sem diretriz: descreva o quadro/padrão típico do tema em linguagem qualitativa — faixa etária como "criança pequena"/"idade escolar"/"adolescente"/"idoso", nunca em número; a descrição epidemiológica do tema normalmente convida a citar uma idade ou intervalo, mas isso continua proibido sem diretriz controlada.
 No bloco TRATAMENTO PRÁTICO sem diretriz: não gere posologia nem protocolo terapêutico detalhado de memória — no máximo princípios gerais seguros (o exemplo de frase-substituto acima é o padrão esperado). Se não houver nada de seguro a dizer nesse nível, OMITA o bloco inteiro em vez de forçar conteúdo.
 No bloco PONTE PARA A 2ª FASE sem diretriz: fique em nível de competência prática geral — o que perguntar, o que examinar, o que reconhecer como alarme, quando encaminhar, como orientar — nunca prescrição específica.
 
