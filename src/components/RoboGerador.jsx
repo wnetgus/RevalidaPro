@@ -21,6 +21,7 @@ import {
   MAPA_TEMA_MESTRE, PADROES_FRAGMENTADOS, estaFragmentado, normalizarTemaMestre,
   PROMPT_SISTEMA_ROBO, normalizarRaciocinio,
   PROMPT_SISTEMA_SUPERAPOSTAS_ABCD, equilibrarGabaritoLote, executarGeracaoSA,
+  validarLoteSA, MODELO_HAIKU_SA,
 } from "../utils/promptEngine";
 import { gerarESalvarResumo } from "../utils/resumoEngine";
 import {
@@ -109,6 +110,38 @@ const _bucketResultadoResumoIsolado = (status) => {
   // nenhum deles persiste um resumo novo — todos contam como "rejeitado sem
   // persistência" para fins deste controle administrativo.
   return "rejeitado_sem_persistencia";
+};
+
+// ─── BUILDER PURO DO PROMPT DE TEMA (Super Apostas ABCD) ─────────────────────
+// Extraído de dentro de iniciarRobo (achado real: precisava ser reaproveitado
+// pelo Piloto Controlado DEV sem duplicar o texto do prompt). Puro — só
+// concatena strings a partir dos 4 parâmetros recebidos; nenhum acesso a
+// estado/refs do componente. iniciarRobo continua responsável por resolver
+// blocoDir (cache de diretrizes, diretrizCacheRef) antes de chamar esta
+// função — o cache em si NÃO foi extraído, para não alterar o comportamento
+// de memoização do fluxo normal. Mesmo texto/formato de antes, byte a byte.
+const construirPromptTemaSA = (tema, areaAtual, questoesPorTema, blocoDir) => {
+  const temDetalhamento = /[(),;]|—|-{1,2}|\b(incluindo|especialmente|tratamento|diagnóstico|classificação|complicaç|abordagem|conduta|farmacológ|não.farmacológ|critério)\b/i.test(tema);
+
+  return `Gere exatamente ${questoesPorTema} questõe${questoesPorTema > 1 ? "s" : ""} de múltipla escolha para o Revalida INEP.
+
+Área: ${areaAtual}
+Tema: ${tema}
+${blocoDir}${temDetalhamento ? `
+⚠️ TEMA COM DETALHAMENTO EXPLÍCITO DETECTADO:
+Identifique todos os subtemas e direcionamentos presentes no texto acima.
+${questoesPorTema > 1 ? `Distribua as ${questoesPorTema} questões cobrindo partes DIFERENTES do detalhamento.` : "Escolha a parte do detalhamento mais relevante/decisória para esta única questão."}
+NÃO ignore nenhum elemento após vírgulas, hífens, parênteses ou "incluindo".
+NÃO gere questões genéricas — siga o detalhamento como guia principal.
+` : `
+${questoesPorTema > 1 ? `Aborde ASPECTOS DIFERENTES do tema nas ${questoesPorTema} questões:` : "Aborde o aspecto mais decisório do tema:"}
+ex.: diagnóstico, tratamento, complicação, critério de internação, rastreamento.
+`}
+Requisitos gerais:
+- Caso clínico realista (UBS, UPA, emergência ou enfermaria)
+- Diretrizes atualizadas 2023–2025
+- Distratores plausíveis (pegadinhas de prova, não alternativas óbvias)
+- Diversidade: diferentes faixas etárias, gêneros e contextos clínicos${questoesPorTema > 1 ? "\n- NÃO repita cenário ou conduta entre questões" : ""}`;
 };
 
 // ─── PRÓXIMO NÚMERO SEQUENCIAL NO FIRESTORE (SA) ─────────────────────────────
@@ -293,6 +326,26 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   const [riResultado, setRiResultado]     = useState(null);   // { bucket, ... } | null
   const riEmExecucaoRef = useRef(false);  // trava síncrona extra — ignora clique duplo/concorrente
 
+  // ── Estados do painel Piloto Controlado DEV (teto real de 1 chamada) ─────
+  // Gate DEV-only idêntico ao da Regeneração Isolada de Resumo acima (duas
+  // camadas: render + handler). NÃO reaproveita executarGeracaoSA (retry
+  // embutido de até 3 chamadas) nem gerarESalvarResumo automático — chama
+  // chamarIA e validarLoteSA diretamente, no máximo 1 vez cada, sem loop.
+  const [pcTema, setPcTema]                     = useState("");
+  const [pcRodando, setPcRodando]               = useState(false);
+  const [pcChamadas, setPcChamadas]             = useState(0);   // 0 ou 1 — nunca mais que 1 por rodada
+  const [pcErro, setPcErro]                     = useState("");
+  const [pcResultadoBruto, setPcResultadoBruto] = useState(null); // { validas, rejeitadas } cru de validarLoteSA
+  const [pcCandidata, setPcCandidata]           = useState(null); // única questão válida, pendente de revisão
+  const [pcProximoNum, setPcProximoNum]         = useState(null); // number | null — mesmo número usado no ID e no save
+  const [pcIdPrevisto, setPcIdPrevisto]         = useState("");   // "SA_<edicao>_Q<n>", só para exibição
+  const [pcRevisaoConfirmada, setPcRevisaoConfirmada] = useState(false);
+  const [pcSalvando, setPcSalvando]             = useState(false);
+  const [pcSalvo, setPcSalvo]                   = useState(null); // { docId } | null
+  const [pcErroSalvar, setPcErroSalvar]         = useState("");
+  const pcEmExecucaoRef  = useRef(false); // trava síncrona contra duplo clique/execução concorrente — geração
+  const pcSalvandoRef    = useRef(false); // trava síncrona contra duplo clique/execução concorrente — salvamento
+
   const abortRef      = useRef(false);
   const countdownRef  = useRef(null);  // guarda o resolve() atual para resolver externamente
   const logEndRef     = useRef(null);  // âncora para auto-scroll do log
@@ -427,7 +480,13 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   // estrategiaAposta quando presente. Sem opts (default), comportamento idêntico
   // ao anterior — questões antigas e a edição 2026.1 não são afetadas.
   const salvarQuestoes = useCallback(async (lista, edicaoSA, proximoNum, areaAtual, opts = {}) => {
-    const { formatoABCD = false } = opts;
+    // semResumoAutomatico (Piloto Controlado DEV): quando true, pula o disparo
+    // automático de gerarESalvarResumo abaixo — usado exclusivamente pelo
+    // salvamento manual do piloto de 1 chamada, que não pode disparar uma 2ª
+    // chamada de IA (resumo) sem autorização/consumo adicional explícito.
+    // Default false preserva 100% do comportamento atual — nenhum chamador
+    // pré-existente passa esta opção.
+    const { formatoABCD = false, semResumoAutomatico = false } = opts;
     const anoAtual = String(new Date().getFullYear());
     const idBase   = `SA_${edicaoSA}`;
 
@@ -517,7 +576,10 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
       // desfecho é logado — antes o .catch(() => {}) engolia qualquer falha
       // em silêncio e o operador só descobria que "o resumo não apareceu"
       // olhando a tela do aluno, sem saber o motivo.
-      gerarESalvarResumo(finalData)
+      // semResumoAutomatico: pula inteiramente este bloco — usado só pelo
+      // salvamento manual do Piloto Controlado DEV (teto real de 1 chamada de
+      // IA por rodada; gerarESalvarResumo poderia disparar até mais 2).
+      if (!semResumoAutomatico) gerarESalvarResumo(finalData)
         .then((r) => {
           const chave = r?.key ? ` (${r.key})` : "";
           switch (r?.status) {
@@ -897,8 +959,6 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
           const proximoNum = await obterProximoNumeroSA(edicaoAtual);
           addLog(`   📊 Próximo ID será: SA_${edicaoAtual}_Q${proximoNum}`, "detalhe");
 
-          const temDetalhamento = /[(),;]|—|-{1,2}|\b(incluindo|especialmente|tratamento|diagnóstico|classificação|complicaç|abordagem|conduta|farmacológ|não.farmacológ|critério)\b/i.test(tema);
-
           const temaKey = tema.toLowerCase();
           if (!diretrizCacheRef.current.has(temaKey)) {
             const d = detectarDiretrizDinamica(diretrizesRef.current, tema, "")
@@ -908,26 +968,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
           const diretrizTema = diretrizCacheRef.current.get(temaKey);
           const blocoDir = diretrizTema ? montarBlocoDiretriz(diretrizTema) : "";
 
-          const promptTema =
-`Gere exatamente ${questoesPorTemaAtual} questõe${questoesPorTemaAtual > 1 ? "s" : ""} de múltipla escolha para o Revalida INEP.
-
-Área: ${areaAtual}
-Tema: ${tema}
-${blocoDir}${temDetalhamento ? `
-⚠️ TEMA COM DETALHAMENTO EXPLÍCITO DETECTADO:
-Identifique todos os subtemas e direcionamentos presentes no texto acima.
-${questoesPorTemaAtual > 1 ? `Distribua as ${questoesPorTemaAtual} questões cobrindo partes DIFERENTES do detalhamento.` : "Escolha a parte do detalhamento mais relevante/decisória para esta única questão."}
-NÃO ignore nenhum elemento após vírgulas, hífens, parênteses ou "incluindo".
-NÃO gere questões genéricas — siga o detalhamento como guia principal.
-` : `
-${questoesPorTemaAtual > 1 ? `Aborde ASPECTOS DIFERENTES do tema nas ${questoesPorTemaAtual} questões:` : "Aborde o aspecto mais decisório do tema:"}
-ex.: diagnóstico, tratamento, complicação, critério de internação, rastreamento.
-`}
-Requisitos gerais:
-- Caso clínico realista (UBS, UPA, emergência ou enfermaria)
-- Diretrizes atualizadas 2023–2025
-- Distratores plausíveis (pegadinhas de prova, não alternativas óbvias)
-- Diversidade: diferentes faixas etárias, gêneros e contextos clínicos${questoesPorTemaAtual > 1 ? "\n- NÃO repita cenário ou conduta entre questões" : ""}`;
+          const promptTema = construirPromptTemaSA(tema, areaAtual, questoesPorTemaAtual, blocoDir);
 
           addLog(`   🧠 Chamando IA… (teto de 3 tentativas, sem reinício externo)`, "info");
 
@@ -1188,6 +1229,155 @@ Requisitos gerais:
   const limparLog = () => {
     setLog([]);
     setProgresso({ atual: 0, total: 0 });
+  };
+
+  // ─── PILOTO CONTROLADO DEV — teto real de 1 chamada ────────────────────────
+  // Objetivo: testar a geração de UM recorte com consumo real de IA
+  // rigidamente limitado a 1 chamada, sem retry, sem resumo automático, sem
+  // salvamento automático — homologação prévia à geração real de um recorte.
+  // Reaproveita construirPromptTemaSA, chamarIA, validarLoteSA e
+  // PROMPT_SISTEMA_SUPERAPOSTAS_ABCD — o MESMO builder/schema/contrato do
+  // fluxo normal. NUNCA chama executarGeracaoSA (retry embutido de até 3
+  // chamadas) nem gerarESalvarResumo (chamada automática de resumo). Gate
+  // fail-closed em duas camadas (render + handler), mesmo padrão do controle
+  // de Regeneração Isolada de Resumo (seção própria, acima). Seção isolada de
+  // propósito — não compartilha nenhum estado com a Regeneração Isolada de
+  // Resumo nem com o loop principal do robô (iniciarRobo/pararRobo).
+  const executarPilotoControladoDEV = async () => {
+    if (!ambienteDevAutorizado(FIREBASE_PROJECT_ID)) {
+      setPcErro("Ambiente não autorizado — o Piloto Controlado só opera em revalidapro-dev.");
+      return;
+    }
+    if (pcEmExecucaoRef.current) return; // trava síncrona — ignora clique duplo/concorrente
+    const tema = pcTema.trim();
+    if (!tema) { setPcErro("Informe exatamente um tema."); return; }
+    if (/\n/.test(pcTema)) { setPcErro("Apenas um único tema é permitido neste modo — remova quebras de linha."); return; }
+    if (pcChamadas >= 1) { setPcErro('Teto de 1 chamada já atingido nesta rodada — use "Reiniciar piloto" antes de tentar novamente.'); return; }
+
+    pcEmExecucaoRef.current = true;
+    setPcRodando(true);
+    setPcErro("");
+    setPcErroSalvar("");
+    setPcResultadoBruto(null);
+    setPcCandidata(null);
+    setPcProximoNum(null);
+    setPcIdPrevisto("");
+    setPcRevisaoConfirmada(false);
+    setPcSalvo(null);
+
+    try {
+      // Mesmos pré-checks de custo-zero do fluxo normal — podem bloquear sem
+      // gastar a única chamada permitida nesta rodada.
+      const statusPrevio = statusRecorteSA(tema);
+      if (statusPrevio.status !== "LIBERADO") {
+        setPcErro(`Recorte ${statusPrevio.status} (0 chamadas à IA). Motivo: ${statusPrevio.motivo}`);
+        return;
+      }
+
+      if (diretrizesRef.current === null) {
+        try {
+          const snapDir = await getDocs(collection(db, "diretrizes"));
+          const ativas = snapDir.docs.map((d) => d.data()).filter((d) => d.ativa);
+          diretrizesRef.current = ativas.length > 0 ? ativas : DIRETRIZES_CONTROLADAS.filter((d) => d.ativa);
+        } catch (_e) {
+          diretrizesRef.current = DIRETRIZES_CONTROLADAS.filter((d) => d.ativa);
+        }
+      }
+      const avaliacao = avaliarBloqueioSeguro(diretrizesRef.current, tema, "");
+      if (avaliacao.bloqueado) {
+        setPcErro(`Bloqueado por governança clínica (0 chamadas à IA) — diretriz "${avaliacao.diretriz?.tema}" status ${avaliacao.diretriz?.status}: ${avaliacao.motivo}`);
+        return;
+      }
+
+      const diretrizTema = detectarDiretrizDinamica(diretrizesRef.current, tema, "") || detectarDiretriz(tema, "");
+      const blocoDir = diretrizTema ? montarBlocoDiretriz(diretrizTema) : "";
+      const promptTema = construirPromptTemaSA(tema, area, 1, blocoDir);
+
+      if (pcChamadas >= 1) { setPcErro("Teto de 1 chamada já atingido — abortando antes da chamada."); return; } // defesa em profundidade
+      setPcChamadas(1); // incrementado imediatamente antes da única requisição
+
+      const { parsed } = await chamarIA(promptTema, PROMPT_SISTEMA_SUPERAPOSTAS_ABCD, MODELO_HAIKU_SA);
+
+      if (!Array.isArray(parsed) || parsed.length !== 1) {
+        const motivo = `erro de protocolo: esperada 1 questão, recebida(s) ${Array.isArray(parsed) ? parsed.length : 0} — array rejeitado sem avaliação clínica individual`;
+        setPcResultadoBruto({ validas: [], rejeitadas: [{ questao: null, motivos: [motivo] }] });
+        setPcErro(motivo);
+        return;
+      }
+
+      const { validas, rejeitadas } = validarLoteSA(parsed, {
+        abcd: true, grounding: Boolean(diretrizTema), groundingTexto: blocoDir,
+      });
+      setPcResultadoBruto({ validas, rejeitadas });
+
+      if (validas.length === 0) {
+        setPcErro(`Questão rejeitada na validação: ${rejeitadas[0]?.motivos?.join("; ") || "motivo não especificado"}`);
+        return;
+      }
+
+      const proximoNum = await obterProximoNumeroSA(edicao);
+      setPcProximoNum(proximoNum);
+      setPcIdPrevisto(`SA_${edicao}_Q${proximoNum}`);
+      setPcCandidata(validas[0]);
+    } catch (e) {
+      setPcErro(`Erro técnico: ${e.message}`);
+    } finally {
+      pcEmExecucaoRef.current = false;
+      setPcRodando(false);
+    }
+  };
+
+  // Salvamento manual e separado — nunca chamado automaticamente pelo handler
+  // acima. Reaproveita salvarQuestoes (mesmo schema/ID/transformação do fluxo
+  // normal) com semResumoAutomatico:true, para nunca disparar gerarESalvarResumo.
+  const salvarCandidataPilotoControladoDEV = async () => {
+    if (!ambienteDevAutorizado(FIREBASE_PROJECT_ID)) {
+      setPcErroSalvar("Ambiente não autorizado — salvamento bloqueado.");
+      return;
+    }
+    if (pcSalvandoRef.current) return;   // trava síncrona — ignora clique duplo/concorrente no salvar
+    if (pcEmExecucaoRef.current) return; // não salva durante geração em andamento
+    if (!pcCandidata || !pcRevisaoConfirmada || pcSalvo) return;
+
+    pcSalvandoRef.current = true;
+    setPcSalvando(true);
+    setPcErroSalvar("");
+    try {
+      const docIdEsperado = `SA_${edicao}_Q${pcProximoNum}`;
+      const snapColisao = await fsGetDoc(fsDoc(db, "questoes", docIdEsperado));
+      if (snapColisao.exists()) {
+        setPcErroSalvar(`Colisão de ID detectada em "${docIdEsperado}" — outro documento foi salvo desde a geração. Reinicie o piloto antes de tentar novamente.`);
+        return;
+      }
+      await salvarQuestoes([pcCandidata], edicao, pcProximoNum, area, { formatoABCD: true, semResumoAutomatico: true });
+      invalidarCacheQuestoes();
+      if (typeof onQuestoesSalvas === "function") onQuestoesSalvas();
+      setPcSalvo({ docId: docIdEsperado });
+    } catch (e) {
+      setPcErroSalvar(`Erro ao salvar: ${e.message}`);
+    } finally {
+      pcSalvandoRef.current = false;
+      setPcSalvando(false);
+    }
+  };
+
+  // Reset controlado — nunca chama IA, nunca acessa Firestore, nunca salva.
+  // Só funciona fora de execução (geração ou salvamento em andamento). Nunca
+  // é acionado automaticamente após falha — só por ação humana explícita.
+  const resetarPilotoControladoDEV = () => {
+    if (pcEmExecucaoRef.current || pcSalvandoRef.current) return;
+    setPcTema("");
+    setPcRodando(false);
+    setPcChamadas(0);
+    setPcErro("");
+    setPcResultadoBruto(null);
+    setPcCandidata(null);
+    setPcProximoNum(null);
+    setPcIdPrevisto("");
+    setPcRevisaoConfirmada(false);
+    setPcSalvando(false);
+    setPcSalvo(null);
+    setPcErroSalvar("");
   };
 
   // ── Migração: corrige matérias incorretas já salvas no Firestore ─────────
@@ -2391,6 +2581,168 @@ Requisitos gerais:
         }}>
           <p style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", margin: 0 }}>
             ⛔ Regenerar Somente o Resumo — indisponível (este controle só opera no ambiente DEV, revalidapro-dev).
+          </p>
+        </div>
+      )}
+
+      {/* ── PILOTO CONTROLADO DEV — teto real de 1 chamada (DEV-only) ─────── */}
+      {ambienteDevAutorizado(FIREBASE_PROJECT_ID) ? (
+        <div style={{
+          marginTop: "20px", borderRadius: "16px", overflow: "hidden",
+          background: "rgba(248,113,113,0.04)",
+          border: "1px solid rgba(248,113,113,0.3)",
+          padding: "16px",
+        }}>
+          <h4 style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f1f5f9", fontSize: "13px", fontWeight: "800", margin: "0 0 4px" }}>
+            <FaExclamationTriangle size={13} color="#f87171" /> Homologação Controlada DEV
+          </h4>
+          <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "800", margin: "0 0 12px" }}>
+            Máximo: 1 chamada • Sem retry • Sem resumo automático
+          </p>
+          <p style={{ fontSize: "11px", color: "#94a3b8", margin: "0 0 12px", lineHeight: 1.6 }}>
+            Gera <strong>exatamente 1 questão</strong> de <strong>1 tema</strong> com <strong>no máximo 1 chamada de IA</strong> —
+            sem retry, sem regeneração e sem resumo automático. A questão fica como candidata local pendente de
+            revisão humana; o salvamento no DEV é uma ação manual separada.
+          </p>
+
+          <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+            <input
+              type="text"
+              value={pcTema}
+              onChange={(e) => setPcTema(e.target.value)}
+              placeholder="Um único tema (ex.: Aleitamento materno: fissura, ingurgitamento)"
+              disabled={pcRodando || pcChamadas >= 1}
+              style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: "10px", padding: "9px 14px", color: "#f1f5f9", fontSize: "12px", fontWeight: "600", outline: "none" }}
+            />
+            <button
+              onClick={executarPilotoControladoDEV}
+              disabled={pcRodando || pcChamadas >= 1 || !pcTema.trim()}
+              style={{
+                background: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "#1e293b" : "linear-gradient(135deg,#dc2626,#f59e0b)",
+                color: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "#475569" : "#fff",
+                border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
+                cursor: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap",
+              }}
+            >
+              {pcRodando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Gerando…</> : <><FaPlay size={11} /> Gerar 1 questão (1 chamada)</>}
+            </button>
+          </div>
+
+          <p style={{ fontSize: "10px", color: "#64748b", margin: "0 0 10px" }}>
+            Chamadas de IA usadas nesta rodada: {pcChamadas}/1
+          </p>
+
+          {pcErro && (
+            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {pcErro}</p>
+          )}
+
+          {pcCandidata && (
+            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "12px", padding: "12px 14px", marginBottom: "10px", fontSize: "11px", lineHeight: 1.6 }}>
+              <p style={{ color: "#38bdf8", fontWeight: "800", margin: "0 0 8px" }}>ID previsto: {pcIdPrevisto}</p>
+
+              <p style={{ color: "#94a3b8", margin: "0 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Enunciado:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.enunciado}</p>
+
+              {["a", "b", "c", "d"].map((letra) => (
+                <p key={letra} style={{ color: "#e2e8f0", margin: "0 0 4px" }}>
+                  <strong style={{ color: pcCandidata.gabarito?.toLowerCase() === letra ? "#34d399" : "#f1f5f9" }}>
+                    {letra.toUpperCase()}){pcCandidata.gabarito?.toLowerCase() === letra ? " (GABARITO)" : ""}:
+                  </strong> {pcCandidata.alts?.[letra]?.texto}
+                </p>
+              ))}
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Justificativas:</strong></p>
+              {["a", "b", "c", "d"].map((letra) => (
+                <p key={`nota-${letra}`} style={{ color: "#94a3b8", margin: "0 0 4px" }}>{letra.toUpperCase()}) {pcCandidata.alts?.[letra]?.nota}</p>
+              ))}
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Raciocínio:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.raciocinio}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Tratamento:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.tto}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Dica Mestre:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.dicaMestre}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Nível de aposta:</strong> {pcCandidata.probabilidade_prova || "(não informado pela IA — será resolvido por ciclo posicional ao salvar)"}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Estratégia da aposta:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.estrategiaAposta || "(não informado)"}</p>
+
+              {pcResultadoBruto?.rejeitadas?.length > 0 && (
+                <p style={{ color: "#fbbf24", margin: "8px 0 0" }}>⚠ Avisos do validador (não bloquearam esta candidata): {pcResultadoBruto.rejeitadas.map((r) => r.motivos?.join("; ")).join(" | ")}</p>
+              )}
+              <p style={{ color: "#64748b", margin: "8px 0 0" }}>Chamadas de IA realizadas: {pcChamadas}/1</p>
+            </div>
+          )}
+
+          {pcCandidata && !pcSalvo && (
+            <div style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "10px 12px", marginBottom: "10px" }}>
+              <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "800", margin: "0 0 8px" }}>
+                ⚠ 16 dos 26 critérios de qualidade do padrão premium não possuem garantia estrutural completa —
+                revisão humana é obrigatória antes de salvar.
+              </p>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "11px", color: "#e2e8f0", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={pcRevisaoConfirmada}
+                  onChange={(e) => setPcRevisaoConfirmada(e.target.checked)}
+                  style={{ marginTop: "2px" }}
+                />
+                <span>
+                  Confirmo revisão humana de: padrão ENAMED/INEP; uma única melhor resposta; cenário clínico
+                  verossímil; ausência de cópia literal aparente; distratores plausíveis e da mesma classe;
+                  alternativa correta não sistematicamente maior; comando claro com pergunta final presente;
+                  justificativas A–D adequadas; raciocínio no padrão PADRÃO → DIFERENCIAL → DECISÃO → ARMADILHA;
+                  tratamento correto e atualizado; Dica Mestre adequada; e estratégia da aposta contendo, nesta
+                  ordem, porQueApostamos, comoPodeCair e armadilhaProvavel (dentro do campo único estrategiaAposta).
+                </span>
+              </label>
+            </div>
+          )}
+
+          {pcErroSalvar && (
+            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {pcErroSalvar}</p>
+          )}
+
+          {pcSalvo && (
+            <p style={{ fontSize: "11px", color: "#34d399", fontWeight: "800", margin: "0 0 10px" }}>
+              ✅ Questão salva no DEV como {pcSalvo.docId}. Nenhum resumo foi gerado automaticamente.
+            </p>
+          )}
+
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={salvarCandidataPilotoControladoDEV}
+              disabled={!pcCandidata || !pcRevisaoConfirmada || pcSalvando || Boolean(pcSalvo) || pcRodando}
+              style={{
+                background: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "#1e293b" : "linear-gradient(135deg,#059669,#34d399)",
+                color: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "#475569" : "#fff",
+                border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
+                cursor: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: "6px",
+              }}
+            >
+              {pcSalvando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Salvando…</> : <><FaSave size={11} /> Salvar no DEV</>}
+            </button>
+            <button
+              onClick={resetarPilotoControladoDEV}
+              disabled={pcRodando || pcSalvando}
+              style={{ background: "transparent", border: "1px solid #334155", color: "#64748b", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "700", cursor: (pcRodando || pcSalvando) ? "not-allowed" : "pointer" }}
+            >
+              Reiniciar piloto
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          marginTop: "20px", borderRadius: "16px", padding: "14px 16px",
+          background: "rgba(100,116,139,0.06)", border: "1px solid #1e293b",
+        }}>
+          <p style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", margin: 0 }}>
+            ⛔ Homologação Controlada DEV — indisponível (este controle só opera no ambiente DEV, revalidapro-dev).
           </p>
         </div>
       )}
