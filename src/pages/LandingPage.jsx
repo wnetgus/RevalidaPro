@@ -13,7 +13,10 @@ import {
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 const WHATSAPP = "5587996666667";
-const CLOUD_FN = "https://us-central1-revalidapro-f812e.cloudfunctions.net/criarPreferencia";
+// Via VITE_FUNCTIONS_BASE_URL (mesmo padrão dos demais consumidores), com
+// fallback só para produção — ver ModalAssinatura.jsx para o mesmo hotfix.
+const CLOUD_FN =
+  (import.meta.env.VITE_FUNCTIONS_BASE_URL || "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/criarPreferencia";
 
 
 // ─── Questão demo — caso clínico Revalida estilo real ─────────────────────────

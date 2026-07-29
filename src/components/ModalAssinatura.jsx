@@ -7,8 +7,14 @@ import {
   FaShieldAlt, FaCreditCard, FaBarcode, FaMobileAlt
 } from "react-icons/fa";
 
-// URL da sua Cloud Function — substitua pelo URL real após o deploy
-const CLOUD_FUNCTION_URL = "https://us-central1-revalidapro-f812e.cloudfunctions.net/criarPreferencia";
+// URL da Cloud Function — via VITE_FUNCTIONS_BASE_URL (mesmo padrão dos
+// demais consumidores em src/utils/promptEngine.js, RoboGerador.jsx,
+// ResumoGerador.jsx, ImportadorPro.jsx), com fallback só para produção.
+// Sem isso, uma build DEV (npm run build:dev) chamava incondicionalmente a
+// Cloud Function de pagamento REAL de produção, mesmo hospedada em
+// revalidapro-dev.
+const CLOUD_FUNCTION_URL =
+  (import.meta.env.VITE_FUNCTIONS_BASE_URL || "https://us-central1-revalidapro-f812e.cloudfunctions.net") + "/criarPreferencia";
 const WHATSAPP_CONTATO = "5587996666667";
 
 const ModalAssinatura = ({ motivo, usuario, onLogout }) => {
