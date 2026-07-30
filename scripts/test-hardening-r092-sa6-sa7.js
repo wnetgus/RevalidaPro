@@ -260,6 +260,85 @@ teste("12. REGRA 1, REGRA 5, SA-1 (anti-pistas) e SA-3 permanecem byte-a-byte id
   }
 });
 
+// 12b. Missão da precedência SA-3/SA-4: os dois blocos citados como
+// "superados" pela nova frase (REGRA 2 e a seção DIRETRIZES ATUALIZADAS) e
+// as demais regras SA (SA-2, SA-5, SA-6, SA-7) precisam continuar byte-a-byte
+// intactas — a correção só pode viver DENTRO do texto de SA-4, nunca alterar
+// o conteúdo das regras que ela passa a ter precedência sobre.
+teste("12b. REGRA 2, DIRETRIZES ATUALIZADAS, SA-2, SA-5, SA-6 e SA-7 permanecem byte-a-byte idênticas (hash) — só SA-4 foi tocada", () => {
+  const HASH_ESPERADO = {
+    "REGRA 2": "b0183a69c4aed612e704201924968d9df2b5574ac11ad344ad2e8431270d9ac4",
+    "DIRETRIZES ATUALIZADAS": "894d2e724dfb45fd46547962530928013fccd2867f2f95fb55d1a12e7b503323",
+    "SA-2 (dica mestre)": "76c60b43229a3c9edb2b552130e42dcc6f7eb46f3a1f5fa51ec0523c28d6353a",
+    "SA-5 (estilo)": "7e9e83f5c812c9c88a5dc379770a604db9d3ff5d9ba01485719864287efafe54",
+    "SA-6 (não intervenção)": "c6398f46dc8810e04b20926fbdb1aa701ccef84692c1d7a8c341087390ca8bf1",
+    "SA-7 (cenários ampliados)": "b0804eacb585d74d8a992e90e0e1eb5d45b2f4787762f69ef62aafac5a19fe97",
+  };
+  const blocos = {
+    "REGRA 2": extraiEntre("═══ REGRA 2 —", "═══ REGRA 3 —", "REGRA 2"),
+    "DIRETRIZES ATUALIZADAS": extraiEntre("═══ DIRETRIZES ATUALIZADAS ═══", "`;", "DIRETRIZES ATUALIZADAS"),
+    "SA-2 (dica mestre)": extraiEntre("═══ REGRA SA-2 —", "═══ REGRA SA-3 —", "SA-2"),
+    "SA-5 (estilo)": extraiEntre("═══ REGRA SA-5 —", "═══ REGRA SA-6 —", "SA-5"),
+    "SA-6 (não intervenção)": extraiEntre("═══ REGRA SA-6 —", "═══ REGRA SA-7 —", "SA-6"),
+    "SA-7 (cenários ampliados)": extraiEntre("═══ REGRA SA-7 —", "`;", "SA-7"),
+  };
+  for (const [nome, texto] of Object.entries(blocos)) {
+    assert.equal(hash(texto), HASH_ESPERADO[nome], `${nome} foi alterada (hash não bate) — esta missão só deveria adicionar texto dentro de SA-4`);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// MISSÃO — PRECEDÊNCIA SA-3/SA-4 SOBRE REGRA 2 / DIRETRIZES ATUALIZADAS
+// ════════════════════════════════════════════════════════════════════════
+// Motivada pelo diagnóstico read-only da rejeição pós-hardening do R092:
+// REGRA 2 ("nome da fonte", "dose... quando possível") e a seção DIRETRIZES
+// ATUALIZADAS ("Cadernos de Atenção Primária") são instruções BASE
+// incondicionais que competem com a restrição condicional de SA-3/SA-4
+// quando não há bloco DIRETRIZ CONTROLADA injetado — sem nenhuma frase de
+// precedência declarada entre elas. A correção adiciona só essa frase,
+// inteiramente dentro do bloco de SA-4.
+
+teste("13. SA-4 contém frase de PRECEDÊNCIA OBRIGATÓRIA citando nominalmente SA-3", () => {
+  const sa4 = extraiEntre("═══ REGRA SA-4 —", "═══ REGRA SA-5 —", "REGRA SA-4");
+  assert.match(sa4, /PRECEDÊNCIA OBRIGATÓRIA/, "SA-4 deveria conter uma frase de precedência explícita");
+  assert.match(sa4, /SA-3/, "a frase de precedência deveria citar SA-3 nominalmente");
+});
+
+teste("14. a frase de precedência cita nominalmente REGRA 2", () => {
+  const sa4 = extraiEntre("═══ REGRA SA-4 —", "═══ REGRA SA-5 —", "REGRA SA-4");
+  const precedencia = sa4.match(/PRECEDÊNCIA OBRIGATÓRIA[\s\S]*/)[0];
+  assert.match(precedencia, /REGRA 2/, "a frase de precedência deveria citar REGRA 2 nominalmente");
+});
+
+teste("15. a frase de precedência cita DIRETRIZES ATUALIZADAS/Cadernos de Atenção Primária", () => {
+  const sa4 = extraiEntre("═══ REGRA SA-4 —", "═══ REGRA SA-5 —", "REGRA SA-4");
+  const precedencia = sa4.match(/PRECEDÊNCIA OBRIGATÓRIA[\s\S]*/)[0];
+  assert.match(precedencia, /DIRETRIZES ATUALIZADAS/, "a frase de precedência deveria citar a seção DIRETRIZES ATUALIZADAS");
+  assert.match(precedencia, /Cadernos de Atenção Primária/, "a frase de precedência deveria citar nominalmente os Cadernos de Atenção Primária");
+});
+
+teste("16. a frase de precedência reafirma ausência de posologia numérica em tto sem grounding (resolve SA-3)", () => {
+  const sa4 = extraiEntre("═══ REGRA SA-4 —", "═══ REGRA SA-5 —", "REGRA SA-4");
+  const precedencia = sa4.match(/PRECEDÊNCIA OBRIGATÓRIA[\s\S]*/)[0];
+  assert.match(precedencia, /"tto"/, 'a frase de precedência deveria citar o campo "tto" nominalmente');
+  assert.match(precedencia, /proibido de conter posologia numérica/, 'a frase de precedência deveria reafirmar a proibição de posologia numérica em "tto"');
+});
+
+teste("17. a frase de precedência reafirma ano_diretriz:null e fonte_diretriz:\"\" (resolve SA-4)", () => {
+  const sa4 = extraiEntre("═══ REGRA SA-4 —", "═══ REGRA SA-5 —", "REGRA SA-4");
+  const precedencia = sa4.match(/PRECEDÊNCIA OBRIGATÓRIA[\s\S]*/)[0];
+  assert.match(precedencia, /"ano_diretriz"\/"fonte_diretriz" continuam null\/""/, 'a frase de precedência deveria reafirmar ano_diretriz null e fonte_diretriz ""');
+});
+
+teste("18. a frase de precedência foi ANEXADA ao final de SA-4 (append-only) — o parágrafo dos termos absolutos (teste 3/4) continua intacto e antes dela, não substituído", () => {
+  const sa4 = extraiEntre("═══ REGRA SA-4 —", "═══ REGRA SA-5 —", "REGRA SA-4");
+  const idxTermosAbsolutos = sa4.indexOf('"sempre", "nunca", "obrigatório"');
+  const idxPrecedencia = sa4.indexOf("PRECEDÊNCIA OBRIGATÓRIA");
+  assert.ok(idxTermosAbsolutos > -1, "parágrafo dos termos absolutos (hardening anterior) deveria continuar presente em SA-4");
+  assert.ok(idxPrecedencia > -1, "frase de precedência deveria estar presente em SA-4");
+  assert.ok(idxPrecedencia > idxTermosAbsolutos, "a frase de precedência deveria vir DEPOIS do parágrafo de termos absolutos — edição append-only, não substituição");
+});
+
 // Preservação extra: SA-5 continua íntegra por baixo das novas SA-6/SA-7
 // (o encadeamento textual precisava terminar a SA-5 antes de abrir SA-6).
 teste("preservação extra: REGRA SA-5 permanece intacta (SA-6/SA-7 foram anexadas depois, não inseridas no meio)", () => {
