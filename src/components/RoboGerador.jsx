@@ -333,6 +333,7 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   // chamarIA e validarLoteSA diretamente, no máximo 1 vez cada, sem loop.
   const [pcTema, setPcTema]                     = useState("");
   const [pcRodando, setPcRodando]               = useState(false);
+  const [pcConfirmando, setPcConfirmando]       = useState(false); // confirmação de 2 cliques — puramente de UI, antes do handler
   const [pcChamadas, setPcChamadas]             = useState(0);   // 0 ou 1 — nunca mais que 1 por rodada
   const [pcErro, setPcErro]                     = useState("");
   const [pcResultadoBruto, setPcResultadoBruto] = useState(null); // { validas, rejeitadas } cru de validarLoteSA
@@ -1256,6 +1257,7 @@ Requisitos gerais:
 
     pcEmExecucaoRef.current = true;
     setPcRodando(true);
+    setPcConfirmando(false); // fecha a caixa de confirmação assim que a execução realmente começa
     setPcErro("");
     setPcErroSalvar("");
     setPcResultadoBruto(null);
@@ -1847,6 +1849,233 @@ Requisitos gerais:
         </div>
       )}
 
+      {/* ── HOMOLOGAÇÃO CONTROLADA DEV — teto real de 1 chamada (DEV-only) ──
+          Posicionado no topo, ANTES de "Configuração do Robô", de propósito
+          (achado real de incidente: o painel ficava no fim da página e era
+          confundido com o checkbox "1 questão por recorte" do robô normal,
+          que não tem nenhuma das garantias abaixo). Única renderização deste
+          bloco no arquivo — não duplicar. */}
+      {ambienteDevAutorizado(FIREBASE_PROJECT_ID) ? (
+        <div style={{
+          marginBottom: "20px", borderRadius: "16px", overflow: "hidden",
+          background: "rgba(248,113,113,0.05)",
+          border: "2px solid rgba(248,113,113,0.5)",
+          padding: "16px",
+        }}>
+          <h4 style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f1f5f9", fontSize: "14px", fontWeight: "900", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.3px" }}>
+            <FaExclamationTriangle size={14} color="#f87171" /> Homologação Controlada DEV
+          </h4>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "12px" }}>
+            {[
+              "MÁXIMO: 1 CHAMADA",
+              "SEM RETRY",
+              "SEM FALLBACK",
+              "SEM SALVAMENTO AUTOMÁTICO",
+              "SEM RESUMO AUTOMÁTICO",
+              "REVISÃO HUMANA OBRIGATÓRIA",
+            ].map((selo) => (
+              <span key={selo} style={{
+                fontSize: "10px", fontWeight: "800", color: "#fbbf24",
+                background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)",
+                borderRadius: "999px", padding: "4px 10px",
+              }}>
+                {selo}
+              </span>
+            ))}
+          </div>
+
+          <p style={{ fontSize: "11px", color: "#94a3b8", margin: "0 0 6px", lineHeight: 1.6 }}>
+            Use exclusivamente este painel para testes controlados de um único recorte.
+          </p>
+          <p style={{ fontSize: "11px", color: "#e2e8f0", margin: "0 0 12px", lineHeight: 1.6 }}>
+            Gera <strong>exatamente 1 questão</strong> de <strong>1 tema</strong> com <strong>no máximo 1 chamada de IA</strong> —
+            sem retry, sem regeneração e sem resumo automático. A questão fica como candidata local pendente de
+            revisão humana; o salvamento no DEV é uma ação manual separada. <strong>A chamada não é gratuita — uma
+            execução real continua consumindo 1 chamada de IA.</strong>
+          </p>
+
+          <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+            <input
+              type="text"
+              value={pcTema}
+              onChange={(e) => setPcTema(e.target.value)}
+              placeholder="Um único tema (ex.: Aleitamento materno: fissura, ingurgitamento)"
+              disabled={pcRodando || pcConfirmando || pcChamadas >= 1}
+              style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: "10px", padding: "9px 14px", color: "#f1f5f9", fontSize: "12px", fontWeight: "600", outline: "none" }}
+            />
+            {!pcConfirmando ? (
+              <button
+                onClick={() => setPcConfirmando(true)}
+                disabled={pcRodando || pcChamadas >= 1 || !pcTema.trim()}
+                style={{
+                  background: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "#1e293b" : "linear-gradient(135deg,#dc2626,#f59e0b)",
+                  color: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "#475569" : "#fff",
+                  border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
+                  cursor: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "not-allowed" : "pointer",
+                  display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap",
+                }}
+              >
+                {pcRodando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Gerando…</> : <><FaPlay size={11} /> Gerar candidata — exatamente 1 chamada</>}
+              </button>
+            ) : (
+              <button
+                onClick={() => setPcConfirmando(false)}
+                disabled={pcRodando}
+                style={{ background: "transparent", border: "1px solid #334155", color: "#64748b", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "700", cursor: pcRodando ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}
+              >
+                Editar tema
+              </button>
+            )}
+          </div>
+          <p style={{ fontSize: "10px", color: "#64748b", margin: "0 0 10px" }}>
+            A candidata não será salva automaticamente.
+          </p>
+
+          {pcConfirmando && (
+            <div style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "10px 12px", marginBottom: "10px" }}>
+              <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "700", margin: "0 0 10px", lineHeight: 1.6 }}>
+                Você está prestes a consumir exatamente 1 chamada de IA no DEV. Não haverá retry, fallback,
+                salvamento automático ou resumo automático. A execução produzirá apenas uma candidata local
+                para revisão humana. Confirmar execução?
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  onClick={executarPilotoControladoDEV}
+                  disabled={pcRodando}
+                  style={{ background: pcRodando ? "#1e293b" : "linear-gradient(135deg,#dc2626,#f59e0b)", color: pcRodando ? "#475569" : "#fff", border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800", cursor: pcRodando ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                >
+                  {pcRodando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Executando…</> : <>Confirmar execução</>}
+                </button>
+                <button
+                  onClick={() => setPcConfirmando(false)}
+                  disabled={pcRodando}
+                  style={{ background: "transparent", border: "1px solid #334155", color: "#64748b", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "700", cursor: pcRodando ? "not-allowed" : "pointer" }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <p style={{ fontSize: "10px", color: "#64748b", margin: "0 0 10px" }}>
+            Chamadas de IA usadas nesta rodada: {pcChamadas}/1
+          </p>
+
+          {pcErro && (
+            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {pcErro}</p>
+          )}
+
+          {pcCandidata && (
+            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "12px", padding: "12px 14px", marginBottom: "10px", fontSize: "11px", lineHeight: 1.6 }}>
+              <p style={{ color: "#38bdf8", fontWeight: "800", margin: "0 0 8px" }}>ID previsto: {pcIdPrevisto}</p>
+
+              <p style={{ color: "#94a3b8", margin: "0 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Enunciado:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.enunciado}</p>
+
+              {["a", "b", "c", "d"].map((letra) => (
+                <p key={letra} style={{ color: "#e2e8f0", margin: "0 0 4px" }}>
+                  <strong style={{ color: pcCandidata.gabarito?.toLowerCase() === letra ? "#34d399" : "#f1f5f9" }}>
+                    {letra.toUpperCase()}){pcCandidata.gabarito?.toLowerCase() === letra ? " (GABARITO)" : ""}:
+                  </strong> {pcCandidata.alts?.[letra]?.texto}
+                </p>
+              ))}
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Justificativas:</strong></p>
+              {["a", "b", "c", "d"].map((letra) => (
+                <p key={`nota-${letra}`} style={{ color: "#94a3b8", margin: "0 0 4px" }}>{letra.toUpperCase()}) {pcCandidata.alts?.[letra]?.nota}</p>
+              ))}
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Raciocínio:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.raciocinio}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Tratamento:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.tto}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Dica Mestre:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.dicaMestre}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Nível de aposta:</strong> {pcCandidata.probabilidade_prova || "(não informado pela IA — será resolvido por ciclo posicional ao salvar)"}</p>
+
+              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Estratégia da aposta:</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.estrategiaAposta || "(não informado)"}</p>
+
+              {pcResultadoBruto?.rejeitadas?.length > 0 && (
+                <p style={{ color: "#fbbf24", margin: "8px 0 0" }}>⚠ Avisos do validador (não bloquearam esta candidata): {pcResultadoBruto.rejeitadas.map((r) => r.motivos?.join("; ")).join(" | ")}</p>
+              )}
+              <p style={{ color: "#64748b", margin: "8px 0 0" }}>Chamadas de IA realizadas: {pcChamadas}/1</p>
+            </div>
+          )}
+
+          {pcCandidata && !pcSalvo && (
+            <div style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "10px 12px", marginBottom: "10px" }}>
+              <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "800", margin: "0 0 8px" }}>
+                ⚠ 16 dos 26 critérios de qualidade do padrão premium não possuem garantia estrutural completa —
+                revisão humana é obrigatória antes de salvar.
+              </p>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "11px", color: "#e2e8f0", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={pcRevisaoConfirmada}
+                  onChange={(e) => setPcRevisaoConfirmada(e.target.checked)}
+                  style={{ marginTop: "2px" }}
+                />
+                <span>
+                  Confirmo revisão humana de: padrão ENAMED/INEP; uma única melhor resposta; cenário clínico
+                  verossímil; ausência de cópia literal aparente; distratores plausíveis e da mesma classe;
+                  alternativa correta não sistematicamente maior; comando claro com pergunta final presente;
+                  justificativas A–D adequadas; raciocínio no padrão PADRÃO → DIFERENCIAL → DECISÃO → ARMADILHA;
+                  tratamento correto e atualizado; Dica Mestre adequada; e estratégia da aposta contendo, nesta
+                  ordem, porQueApostamos, comoPodeCair e armadilhaProvavel (dentro do campo único estrategiaAposta).
+                </span>
+              </label>
+            </div>
+          )}
+
+          {pcErroSalvar && (
+            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {pcErroSalvar}</p>
+          )}
+
+          {pcSalvo && (
+            <p style={{ fontSize: "11px", color: "#34d399", fontWeight: "800", margin: "0 0 10px" }}>
+              ✅ Questão salva no DEV como {pcSalvo.docId}. Nenhum resumo foi gerado automaticamente.
+            </p>
+          )}
+
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              onClick={salvarCandidataPilotoControladoDEV}
+              disabled={!pcCandidata || !pcRevisaoConfirmada || pcSalvando || Boolean(pcSalvo) || pcRodando}
+              style={{
+                background: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "#1e293b" : "linear-gradient(135deg,#059669,#34d399)",
+                color: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "#475569" : "#fff",
+                border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
+                cursor: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", gap: "6px",
+              }}
+            >
+              {pcSalvando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Salvando…</> : <><FaSave size={11} /> Salvar no DEV</>}
+            </button>
+            <button
+              onClick={resetarPilotoControladoDEV}
+              disabled={pcRodando || pcSalvando}
+              style={{ background: "transparent", border: "1px solid #334155", color: "#64748b", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "700", cursor: (pcRodando || pcSalvando) ? "not-allowed" : "pointer" }}
+            >
+              Reiniciar piloto
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          marginBottom: "20px", borderRadius: "16px", padding: "14px 16px",
+          background: "rgba(100,116,139,0.06)", border: "1px solid #1e293b",
+        }}>
+          <p style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", margin: 0 }}>
+            ⛔ Homologação Controlada DEV — indisponível (este controle só opera no ambiente DEV, revalidapro-dev).
+          </p>
+        </div>
+      )}
+
       {/* ── CONFIGURAÇÃO ─────────────────────────────────────────────────── */}
       <div style={st.card}>
         <div style={st.cardTitle}>
@@ -1910,11 +2139,31 @@ Requisitos gerais:
               onChange={e => setModoUmPorRecorte(e.target.checked)}
             />
             <span style={{ fontSize: "12px", color: modoUmPorRecorte ? "#818cf8" : "#94a3b8", fontWeight: "700" }}>
-              Modo validação — 1 questão por recorte <span style={{ fontWeight: "400", color: "#64748b" }}>
+              Robô normal — gerar 1 questão por recorte <span style={{ fontWeight: "400", color: "#64748b" }}>
                 (em vez de 3; use para homologar recortes específicos do Mapa Mestre sem gastar tokens em variações extras)
               </span>
+              <br />
+              <span style={{ fontWeight: "700", color: "#f59e0b" }}>Não limita o fluxo a uma chamada.</span>
             </span>
           </label>
+        )}
+
+        {formatoABCD && modoUmPorRecorte && (
+          <div style={{
+            marginBottom: "18px", padding: "12px 14px", borderRadius: "10px",
+            background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.4)",
+          }}>
+            <p style={{ fontSize: "12px", color: "#f87171", fontWeight: "800", margin: "0 0 6px" }}>
+              ⚠ ATENÇÃO: ESTE NÃO É O PILOTO CONTROLADO.
+            </p>
+            <p style={{ fontSize: "11px", color: "#e2e8f0", margin: "0 0 6px", lineHeight: 1.6 }}>
+              Este modo gera apenas uma questão por recorte, mas ainda pode realizar até 3 chamadas de IA,
+              usar fallback para outro modelo, salvar automaticamente a questão e gerar o resumo automático.
+            </p>
+            <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "700", margin: 0 }}>
+              Para executar apenas 1 chamada, use o painel "Homologação Controlada DEV" no topo da página.
+            </p>
+          </div>
         )}
 
         <div style={st.rowSingle}>
@@ -1959,7 +2208,8 @@ Requisitos gerais:
               onClick={iniciarRobo}
               disabled={listasTemas.length === 0}
             >
-              <FaPlay size={11} /> Iniciar Robô
+              <FaPlay size={11} />
+              {(formatoABCD && modoUmPorRecorte) ? " Iniciar robô normal — até 3 chamadas + resumo" : " Iniciar Robô"}
             </button>
           ) : (
             <button style={st.btnParar} onClick={pararRobo}>
@@ -2585,167 +2835,6 @@ Requisitos gerais:
         </div>
       )}
 
-      {/* ── PILOTO CONTROLADO DEV — teto real de 1 chamada (DEV-only) ─────── */}
-      {ambienteDevAutorizado(FIREBASE_PROJECT_ID) ? (
-        <div style={{
-          marginTop: "20px", borderRadius: "16px", overflow: "hidden",
-          background: "rgba(248,113,113,0.04)",
-          border: "1px solid rgba(248,113,113,0.3)",
-          padding: "16px",
-        }}>
-          <h4 style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f1f5f9", fontSize: "13px", fontWeight: "800", margin: "0 0 4px" }}>
-            <FaExclamationTriangle size={13} color="#f87171" /> Homologação Controlada DEV
-          </h4>
-          <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "800", margin: "0 0 12px" }}>
-            Máximo: 1 chamada • Sem retry • Sem resumo automático
-          </p>
-          <p style={{ fontSize: "11px", color: "#94a3b8", margin: "0 0 12px", lineHeight: 1.6 }}>
-            Gera <strong>exatamente 1 questão</strong> de <strong>1 tema</strong> com <strong>no máximo 1 chamada de IA</strong> —
-            sem retry, sem regeneração e sem resumo automático. A questão fica como candidata local pendente de
-            revisão humana; o salvamento no DEV é uma ação manual separada.
-          </p>
-
-          <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
-            <input
-              type="text"
-              value={pcTema}
-              onChange={(e) => setPcTema(e.target.value)}
-              placeholder="Um único tema (ex.: Aleitamento materno: fissura, ingurgitamento)"
-              disabled={pcRodando || pcChamadas >= 1}
-              style={{ flex: 1, background: "#0f172a", border: "1px solid #334155", borderRadius: "10px", padding: "9px 14px", color: "#f1f5f9", fontSize: "12px", fontWeight: "600", outline: "none" }}
-            />
-            <button
-              onClick={executarPilotoControladoDEV}
-              disabled={pcRodando || pcChamadas >= 1 || !pcTema.trim()}
-              style={{
-                background: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "#1e293b" : "linear-gradient(135deg,#dc2626,#f59e0b)",
-                color: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "#475569" : "#fff",
-                border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
-                cursor: pcRodando || pcChamadas >= 1 || !pcTema.trim() ? "not-allowed" : "pointer",
-                display: "flex", alignItems: "center", gap: "6px", whiteSpace: "nowrap",
-              }}
-            >
-              {pcRodando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Gerando…</> : <><FaPlay size={11} /> Gerar 1 questão (1 chamada)</>}
-            </button>
-          </div>
-
-          <p style={{ fontSize: "10px", color: "#64748b", margin: "0 0 10px" }}>
-            Chamadas de IA usadas nesta rodada: {pcChamadas}/1
-          </p>
-
-          {pcErro && (
-            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {pcErro}</p>
-          )}
-
-          {pcCandidata && (
-            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "12px", padding: "12px 14px", marginBottom: "10px", fontSize: "11px", lineHeight: 1.6 }}>
-              <p style={{ color: "#38bdf8", fontWeight: "800", margin: "0 0 8px" }}>ID previsto: {pcIdPrevisto}</p>
-
-              <p style={{ color: "#94a3b8", margin: "0 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Enunciado:</strong></p>
-              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.enunciado}</p>
-
-              {["a", "b", "c", "d"].map((letra) => (
-                <p key={letra} style={{ color: "#e2e8f0", margin: "0 0 4px" }}>
-                  <strong style={{ color: pcCandidata.gabarito?.toLowerCase() === letra ? "#34d399" : "#f1f5f9" }}>
-                    {letra.toUpperCase()}){pcCandidata.gabarito?.toLowerCase() === letra ? " (GABARITO)" : ""}:
-                  </strong> {pcCandidata.alts?.[letra]?.texto}
-                </p>
-              ))}
-
-              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Justificativas:</strong></p>
-              {["a", "b", "c", "d"].map((letra) => (
-                <p key={`nota-${letra}`} style={{ color: "#94a3b8", margin: "0 0 4px" }}>{letra.toUpperCase()}) {pcCandidata.alts?.[letra]?.nota}</p>
-              ))}
-
-              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Raciocínio:</strong></p>
-              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.raciocinio}</p>
-
-              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Tratamento:</strong></p>
-              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.tto}</p>
-
-              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Dica Mestre:</strong></p>
-              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.dicaMestre}</p>
-
-              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Nível de aposta:</strong> {pcCandidata.probabilidade_prova || "(não informado pela IA — será resolvido por ciclo posicional ao salvar)"}</p>
-
-              <p style={{ color: "#94a3b8", margin: "8px 0 4px" }}><strong style={{ color: "#f1f5f9" }}>Estratégia da aposta:</strong></p>
-              <p style={{ color: "#e2e8f0", margin: "0 0 8px", whiteSpace: "pre-wrap" }}>{pcCandidata.estrategiaAposta || "(não informado)"}</p>
-
-              {pcResultadoBruto?.rejeitadas?.length > 0 && (
-                <p style={{ color: "#fbbf24", margin: "8px 0 0" }}>⚠ Avisos do validador (não bloquearam esta candidata): {pcResultadoBruto.rejeitadas.map((r) => r.motivos?.join("; ")).join(" | ")}</p>
-              )}
-              <p style={{ color: "#64748b", margin: "8px 0 0" }}>Chamadas de IA realizadas: {pcChamadas}/1</p>
-            </div>
-          )}
-
-          {pcCandidata && !pcSalvo && (
-            <div style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "10px 12px", marginBottom: "10px" }}>
-              <p style={{ fontSize: "11px", color: "#fbbf24", fontWeight: "800", margin: "0 0 8px" }}>
-                ⚠ 16 dos 26 critérios de qualidade do padrão premium não possuem garantia estrutural completa —
-                revisão humana é obrigatória antes de salvar.
-              </p>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "11px", color: "#e2e8f0", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={pcRevisaoConfirmada}
-                  onChange={(e) => setPcRevisaoConfirmada(e.target.checked)}
-                  style={{ marginTop: "2px" }}
-                />
-                <span>
-                  Confirmo revisão humana de: padrão ENAMED/INEP; uma única melhor resposta; cenário clínico
-                  verossímil; ausência de cópia literal aparente; distratores plausíveis e da mesma classe;
-                  alternativa correta não sistematicamente maior; comando claro com pergunta final presente;
-                  justificativas A–D adequadas; raciocínio no padrão PADRÃO → DIFERENCIAL → DECISÃO → ARMADILHA;
-                  tratamento correto e atualizado; Dica Mestre adequada; e estratégia da aposta contendo, nesta
-                  ordem, porQueApostamos, comoPodeCair e armadilhaProvavel (dentro do campo único estrategiaAposta).
-                </span>
-              </label>
-            </div>
-          )}
-
-          {pcErroSalvar && (
-            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {pcErroSalvar}</p>
-          )}
-
-          {pcSalvo && (
-            <p style={{ fontSize: "11px", color: "#34d399", fontWeight: "800", margin: "0 0 10px" }}>
-              ✅ Questão salva no DEV como {pcSalvo.docId}. Nenhum resumo foi gerado automaticamente.
-            </p>
-          )}
-
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              onClick={salvarCandidataPilotoControladoDEV}
-              disabled={!pcCandidata || !pcRevisaoConfirmada || pcSalvando || Boolean(pcSalvo) || pcRodando}
-              style={{
-                background: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "#1e293b" : "linear-gradient(135deg,#059669,#34d399)",
-                color: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "#475569" : "#fff",
-                border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
-                cursor: (!pcCandidata || !pcRevisaoConfirmada || pcSalvando || pcSalvo || pcRodando) ? "not-allowed" : "pointer",
-                display: "flex", alignItems: "center", gap: "6px",
-              }}
-            >
-              {pcSalvando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Salvando…</> : <><FaSave size={11} /> Salvar no DEV</>}
-            </button>
-            <button
-              onClick={resetarPilotoControladoDEV}
-              disabled={pcRodando || pcSalvando}
-              style={{ background: "transparent", border: "1px solid #334155", color: "#64748b", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "700", cursor: (pcRodando || pcSalvando) ? "not-allowed" : "pointer" }}
-            >
-              Reiniciar piloto
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div style={{
-          marginTop: "20px", borderRadius: "16px", padding: "14px 16px",
-          background: "rgba(100,116,139,0.06)", border: "1px solid #1e293b",
-        }}>
-          <p style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", margin: 0 }}>
-            ⛔ Homologação Controlada DEV — indisponível (este controle só opera no ambiente DEV, revalidapro-dev).
-          </p>
-        </div>
-      )}
     </div>
   );
 }

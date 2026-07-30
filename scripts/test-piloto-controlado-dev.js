@@ -103,12 +103,64 @@ await teste("4. painel bloqueado com projectId undefined explícito / variação
 });
 
 await teste("Painel é renderizado condicionalmente via ambienteDevAutorizado(FIREBASE_PROJECT_ID), com ramo indisponível fora do DEV", () => {
-  const marcador = roboSrc.indexOf("PILOTO CONTROLADO DEV — teto real de 1 chamada (DEV-only)");
+  const marcador = roboSrc.indexOf("HOMOLOGAÇÃO CONTROLADA DEV — teto real de 1 chamada (DEV-only)");
   assert.ok(marcador > -1, "marcador do painel não encontrado");
-  const trecho = roboSrc.slice(marcador, marcador + 400);
+  const trecho = roboSrc.slice(marcador, marcador + 600);
   assert.match(trecho, /\{ambienteDevAutorizado\(FIREBASE_PROJECT_ID\) \? \(/, "painel deveria ser condicionado a ambienteDevAutorizado(FIREBASE_PROJECT_ID)");
   const fimPainel = roboSrc.indexOf("Homologação Controlada DEV — indisponível");
   assert.ok(fimPainel > marcador, "ramo \"indisponível\" fora do DEV não encontrado após o marcador do painel");
+});
+
+// ── Hotfix de interface: posição, unicidade e distinção visual dos painéis ──
+await teste("1(interface). Painel controlado aparece ANTES de 'Configuração do Robô'", () => {
+  const idxPainel = roboSrc.indexOf("HOMOLOGAÇÃO CONTROLADA DEV — teto real de 1 chamada (DEV-only)");
+  const idxConfig = roboSrc.indexOf('{/* ── CONFIGURAÇÃO');
+  assert.ok(idxPainel > -1 && idxConfig > -1, "marcadores não encontrados");
+  assert.ok(idxPainel < idxConfig, "painel controlado deveria vir ANTES de 'Configuração do Robô'");
+});
+
+await teste("2(interface). Existe somente UMA renderização do painel controlado (sem duplicação)", () => {
+  const ocorrenciasTitulo = (roboSrc.match(/<FaExclamationTriangle size=\{14\} color="#f87171" \/> Homologação Controlada DEV/g) || []).length;
+  assert.equal(ocorrenciasTitulo, 1, "deveria haver exatamente 1 título de painel renderizado");
+  const ocorrenciasBotaoGerar = (roboSrc.match(/Gerar candidata — exatamente 1 chamada/g) || []).length;
+  assert.equal(ocorrenciasBotaoGerar, 1, "deveria haver exatamente 1 botão \"Gerar candidata\"");
+});
+
+await teste("7/8/9/10(interface). Textos obrigatórios de segurança presentes no painel controlado", () => {
+  for (const texto of ["MÁXIMO: 1 CHAMADA", "SEM RETRY", "SEM FALLBACK", "SEM SALVAMENTO AUTOMÁTICO", "SEM RESUMO AUTOMÁTICO", "REVISÃO HUMANA OBRIGATÓRIA"]) {
+    assert.ok(roboSrc.includes(texto), `texto obrigatório ausente do painel: "${texto}"`);
+  }
+});
+
+await teste("11/12/13/14(interface). Alerta \"ESTE NÃO É O PILOTO CONTROLADO\" existe no modo normal e informa 3 chamadas + salvamento + resumo", () => {
+  const idxAlerta = roboSrc.indexOf("ATENÇÃO: ESTE NÃO É O PILOTO CONTROLADO.");
+  assert.ok(idxAlerta > -1, "alerta não encontrado no painel do robô normal");
+  const trecho = roboSrc.slice(idxAlerta, idxAlerta + 500);
+  assert.match(trecho, /até 3 chamadas/i, "alerta deveria mencionar até 3 chamadas de IA");
+  assert.match(trecho, /salvar automaticamente/i, "alerta deveria mencionar salvamento automático");
+  assert.match(trecho, /resumo automático/i, "alerta deveria mencionar resumo automático");
+  // O alerta só deve renderizar quando formatoABCD && modoUmPorRecorte (mesma condição do checkbox)
+  const idxCondicao = roboSrc.lastIndexOf("{formatoABCD && modoUmPorRecorte && (", idxAlerta);
+  assert.ok(idxCondicao > -1 && idxCondicao < idxAlerta, "alerta deveria estar condicionado a formatoABCD && modoUmPorRecorte");
+});
+
+await teste("15(interface). Botão do robô normal continua ligado exclusivamente a iniciarRobo", () => {
+  assert.match(roboSrc, /onClick=\{iniciarRobo\}/, "botão do robô normal deveria continuar chamando iniciarRobo");
+  const ocorrencias = (roboSrc.match(/onClick=\{iniciarRobo\}/g) || []).length;
+  assert.equal(ocorrencias, 1, "deveria haver exatamente 1 botão ligado a iniciarRobo");
+});
+
+await teste("Texto do botão do robô normal muda apenas quando formatoABCD && modoUmPorRecorte, sem alterar a execução", () => {
+  assert.match(roboSrc, /Iniciar robô normal — até 3 chamadas \+ resumo/, "texto alternativo do botão não encontrado");
+  const idxBotao = roboSrc.indexOf("onClick={iniciarRobo}");
+  const trecho = roboSrc.slice(idxBotao, idxBotao + 300);
+  assert.match(trecho, /\(formatoABCD && modoUmPorRecorte\) \?/, "troca de texto deveria depender de formatoABCD && modoUmPorRecorte");
+});
+
+await teste("Checkbox do robô normal foi renomeado para 'Robô normal — gerar 1 questão por recorte' com aviso 'Não limita o fluxo a uma chamada.'", () => {
+  assert.match(roboSrc, /Robô normal — gerar 1 questão por recorte/);
+  assert.match(roboSrc, /Não limita o fluxo a uma chamada\./);
+  assert.ok(!roboSrc.includes("Modo validação — 1 questão por recorte"), "texto antigo do checkbox não deveria mais existir");
 });
 
 // ── 5. Handler repete o gate DEV, independente da renderização ──────────────
@@ -241,7 +293,7 @@ function montarHarnessGerar(opts = {}) {
 
   const chamadas = { chamarIA: 0, validarLoteSA: 0, obterProximoNumeroSA: 0, getDocs: 0 };
   const estado = {
-    pcErro: "", pcRodando: false,
+    pcErro: "", pcRodando: false, pcConfirmando: true, // já "confirmado" ao entrar no handler — a confirmação em si é gate de UI, fora do handler
     pcResultadoBruto: null, pcCandidata: null,
     pcProximoNum: null, pcIdPrevisto: "",
     pcRevisaoConfirmada: false,
@@ -263,6 +315,7 @@ function montarHarnessGerar(opts = {}) {
     pcTema: tema,
     setPcErro: (v) => { estado.pcErro = v; },
     setPcRodando: (v) => { estado.pcRodando = v; },
+    setPcConfirmando: (v) => { estado.pcConfirmando = v; },
     setPcErroSalvar: (v) => { estado.pcErroSalvar = v; },
     setPcResultadoBruto: (v) => { estado.pcResultadoBruto = v; },
     setPcCandidata: (v) => { estado.pcCandidata = v; },
@@ -318,6 +371,40 @@ await teste("6/11/23. Tema único aceito, exatamente 1 chamada, resposta válida
   assert.equal(h.estado.pcSalvo, null, "geração NUNCA salva automaticamente");
   assert.equal(h.estado.pcErro, "");
   assert.equal(h.pcEmExecucaoRef.current, false, "trava síncrona deveria ser liberada ao final (finally)");
+});
+
+await teste("Ao iniciar de verdade, executarPilotoControladoDEV fecha a caixa de confirmação (setPcConfirmando(false))", async () => {
+  const h = montarHarnessGerar({}); // estado.pcConfirmando começa true (ver montarHarnessGerar)
+  await h.rodar();
+  assert.equal(h.estado.pcConfirmando, false, "confirmação deveria ser fechada assim que a execução real começa");
+});
+
+await teste("4(interface). Botão \"Confirmar execução\" chama executarPilotoControladoDEV", () => {
+  const idxCaixa = roboSrc.indexOf("Você está prestes a consumir exatamente 1 chamada de IA no DEV.");
+  assert.ok(idxCaixa > -1, "caixa de confirmação não encontrada");
+  const trecho = roboSrc.slice(idxCaixa, idxCaixa + 700);
+  assert.match(trecho, /onClick=\{executarPilotoControladoDEV\}/, "botão de confirmação deveria chamar executarPilotoControladoDEV");
+});
+
+await teste("5(interface). Botão controlado (1º clique e confirmação) NUNCA chama iniciarRobo ou executarGeracaoSA", () => {
+  const idxPainel = roboSrc.indexOf("HOMOLOGAÇÃO CONTROLADA DEV — teto real de 1 chamada (DEV-only)");
+  const idxFimPainel = roboSrc.indexOf('{/* ── CONFIGURAÇÃO', idxPainel);
+  const blocoPainelJSX = roboSrc.slice(idxPainel, idxFimPainel);
+  assert.ok(!blocoPainelJSX.includes("onClick={iniciarRobo}"), "painel controlado não deveria conter onClick={iniciarRobo}");
+  assert.ok(!blocoPainelJSX.includes("executarGeracaoSA("), "painel controlado não deveria referenciar executarGeracaoSA");
+});
+
+await teste("17(interface). Botão \"Cancelar\" da confirmação só fecha a caixa — não chama o handler nem toca em pcChamadas", () => {
+  const idxCaixa = roboSrc.indexOf("Você está prestes a consumir exatamente 1 chamada de IA no DEV.");
+  const trecho = roboSrc.slice(idxCaixa, idxCaixa + 1600);
+  const idxCancelar = trecho.indexOf("Cancelar");
+  assert.ok(idxCancelar > -1, "botão Cancelar não encontrado na caixa de confirmação");
+  const idxOnClickCancelar = trecho.lastIndexOf("onClick={() => setPcConfirmando(false)}", idxCancelar);
+  assert.ok(idxOnClickCancelar > -1, "Cancelar deveria apenas chamar setPcConfirmando(false)");
+  // Nenhuma menção a chamarIA, executarPilotoControladoDEV ou pcChamadas entre o onClick do Cancelar e o próprio texto "Cancelar"
+  const trechoBotaoCancelar = trecho.slice(idxOnClickCancelar, idxCancelar + "Cancelar".length);
+  assert.ok(!trechoBotaoCancelar.includes("executarPilotoControladoDEV"), "Cancelar não deveria chamar o handler de geração");
+  assert.ok(!trechoBotaoCancelar.includes("setPcChamadas"), "Cancelar não deveria alterar o contador de chamadas");
 });
 
 await teste("7. Tema com múltiplas linhas é rejeitado antes de qualquer chamada", async () => {
