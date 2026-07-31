@@ -1,8 +1,9 @@
-# CHECKPOINT OFICIAL — PILOTO CONTROLADO R092 (pausa: hardening de prompt pendente + análise externa aguardada)
+# CHECKPOINT OFICIAL — PILOTO CONTROLADO R092 (ciclo encerrado em 2026-07-31 — ver seção 11)
 
-**Data:** 2026-07-30
+**Data:** 2026-07-30 (fase original) / **atualizado em 2026-07-31** (ver seção 11 — fechamento do ciclo)
 **Sessão:** Implementação e deploy do hotfix "Homologação Controlada DEV" (teto real de 1 chamada) + hotfix de interface (distinção visual do robô normal) + 1ª execução real controlada (R092) + auditoria da rejeição
-**Status:** Pausa deliberada. Nenhuma persistência ocorreu. Hardening mínimo de prompt identificado, mas **não implementado**. Novo piloto bloqueado até o hardening ser aplicado e auditado, e até análise de imagens externas ainda não recebidas.
+**Status (original, 2026-07-30):** Pausa deliberada. Nenhuma persistência ocorreu. Hardening mínimo de prompt identificado, mas **não implementado**. Novo piloto bloqueado até o hardening ser aplicado e auditado, e até análise de imagens externas ainda não recebidas.
+**Status atual (2026-07-31):** Hardening implementado, auditado e publicado. 2ª execução real realizada. **Hotfix de normalização validado; R092 rejeitado por regra independente SA-3; sem persistência.** Ciclo do R092 encerrado — nenhuma nova tentativa autorizada. Ver seção 11.
 
 ---
 
@@ -128,6 +129,65 @@ O usuário enviará, em momento futuro, imagens contendo possíveis mudanças e 
 
 ---
 
-## 10. CONFIRMAÇÃO FINAL
+## 10. CONFIRMAÇÃO FINAL (fase 2026-07-30)
 
 Produção (`revalidapro-f812e`) permaneceu intocada durante toda esta fase. Nenhuma questão nova foi persistida no piloto (R092 rejeitado, nada salvo). Nenhum crédito de IA foi consumido além da 1 chamada real e controlada do piloto (mais as 3 chamadas do incidente do robô normal, já auditadas e atribuídas à ambiguidade de interface corrigida no commit `242ac4f`) e o incidente de "Failed to fetch" (0 créditos, confirmado por ausência de logs). Hardening mínimo de prompt (seção 6) identificado e documentado, mas **não implementado**. Análise de imagens externas sobre novos padrões do Revalida **aguardada, não iniciada**.
+
+---
+
+## 11. FECHAMENTO DO CICLO R092 (2026-07-31)
+
+**Esta seção supersede o bloqueio da seção 7 especificamente para "executar novamente R092" e a pendência da seção 6 — o hardening abaixo foi implementado, testado e auditado.** As demais pendências das seções 6/7/8 (R077, R067, análise de imagens externas) continuam nos mesmos estados registrados nas fases anteriores, não tocadas por este fechamento.
+
+### 11.1 Cadeia de hardening implementada e auditada
+
+Commits, em ordem (todos em `main`, todos com testes locais aprovados):
+
+1. `a8aedb1` — precedência entre SA-3 e SA-4.
+2. `58d557a` — grounding explícito injetado no user prompt.
+3. `6598050` — decoupling do teste de hardening (`test-hardening-r092-sa6-sa7.js`) para não depender de HEAD.
+4. `83bdc03` — `fix(super-apostas): normalize directive fields without grounding`. Centraliza em `validarLoteSA` (`src/utils/promptEngine.js`): quando `grounding === false`, `ano_diretriz` é normalizado para `null` e `fonte_diretriz` para `""` antes da validação final; valores fabricados pelo modelo são descartados sem mutar o objeto original; `_diagnosticoGroundingSA4` não chega à persistência. Quando `grounding === true`, os valores originais são preservados. SA-1, SA-3, SA-4 textual, percentual, prazo/duração, termos absolutos e pistas formais continuam ativos e independentes.
+
+Testes locais informados no fechamento do commit `83bdc03`: `test-normalizacao-diretriz-sem-grounding.js` (15/15), `test-hardening-r092-sa6-sa7.js` (24/24), `test-grounding-user-prompt.js` (21/21), `test-piloto-controlado-dev.js` (65/65), build PASS, `git diff --check` PASS.
+
+`83bdc03` foi reauditado de forma independente e read-only (Codex) e aprovado para push. Push realizado (`origin/main`: `6598050` → `83bdc03`, fast-forward, sem force). Nenhum outro arquivo além de `src/utils/promptEngine.js` e `scripts/test-normalizacao-diretriz-sem-grounding.js` faz parte do commit.
+
+### 11.2 2ª execução real do piloto — R092 (localhost, código pós-`83bdc03`)
+
+- **Tema/recorte:** "Aleitamento materno: manejo de fissura e ingurgitamento mamário" (mesmo tema da 1ª execução, seção 3).
+- **Resultado:** 1 chamada consumida, sem retry, sem fallback, sem salvamento automático.
+- **Rejeição:** REGRA SA-3 — campo `tto` contendo posologia numérica sem diretriz controlada injetada.
+- **Achado central:** a rejeição antiga por `ano_diretriz`/`fonte_diretriz` (documentada na seção 4-c da fase 2026-07-30 como defeito de prompt comprovado) **não reapareceu** — evidência direta de que a normalização determinística do commit `83bdc03` funcionou no código real, em execução real.
+- **Candidata não salva.** Botão de salvamento permaneceu desabilitado.
+- **Classificação separada (conforme exigido pela missão):** (A) normalização de fonte/ano — **funcionou**; (B) candidata — **rejeitada por outra regra independente (SA-3)**, o que não representa falha do hotfix.
+
+Uma chamada real distinta e anterior foi observada no Hosting DEV ainda não atualizado (bundle anterior ao commit `83bdc03`): rejeitada por pista formal e pela antiga SA-4 (fonte/ano sem grounding) — essa chamada serviu para confirmar, por comparação direta, que o Hosting DEV estava desatualizado antes do deploy da seção 11.3. Nenhuma candidata salva nessa chamada.
+
+**Total conhecido neste ciclo pós-hardening: 2 chamadas reais distintas, nenhuma persistência em nenhuma delas.**
+
+**Resultado formal do ciclo:** **"Hotfix de normalização validado; R092 rejeitado por regra independente SA-3; sem persistência."**
+
+### 11.3 Deploy do Hosting DEV
+
+- Comando: `firebase deploy --project revalidapro-dev --only hosting` (projeto explícito, nunca o alias `default` do `.firebaserc`, que aponta para `revalidapro-f812e`; escopo restrito a Hosting).
+- Build: `npm run build:dev` (`vite build --mode development`), aprovado.
+- Resultado: deploy concluído, apenas `hosting[revalidapro-dev]` — Firestore, Rules, Functions, Storage e Auth não foram tocados.
+- URL: `https://revalidapro-dev.web.app`.
+- Bundle publicado: `assets/index-DneAkGoW.js` — confirmado, por leitura HTTP read-only, que contém a marca `_diagnosticoGroundingSA4` introduzida pelo commit `83bdc03` (evidência de que o hotfix está ativo no Hosting DEV, não só no localhost).
+- Produção (`revalidapro-f812e`) intocada durante todo o deploy.
+
+### 11.4 Verificação visual pós-deploy (Ctrl+F5, sem geração)
+
+Painel "Homologação Controlada DEV" disponível e carregando normalmente; ambiente identificado como `revalidapro-dev`; contador em `0/1`; campo de tema vazio; geração e salvamento desabilitados; nenhuma candidata pendente; nenhuma execução adicional de R092 ou Q29 realizada nesta verificação.
+
+### 11.5 Decisão de governança
+
+**R092 está encerrado.** Não será executado novamente sem nova autorização explícita e um motivo técnico novo — a combinação de teste automatizado, reauditoria independente, execução real em localhost, desaparecimento da rejeição indevida de fonte/ano, publicação do mesmo bundle no Hosting DEV e verificação visual do painel é considerada suficiente para encerrar o hotfix sem consumir mais créditos. A rejeição pela SA-3 é uma rejeição independente e legítima, não uma falha do hotfix.
+
+### 11.6 Estado de Q29 e produção
+
+`SA_2026_2_Q29` permanece intocada e não foi executada nesta fase (fora de escopo). Produção `revalidapro-f812e` permaneceu intocada em toda a fase 2026-07-31 (hardening, push, execução real, deploy, verificação).
+
+### 11.7 Próximo passo recomendado (não executado)
+
+Planejar a Q29 separadamente, começando por inspeção read-only, sem execução automática — mesma disciplina de gate aplicada ao ciclo do R092.

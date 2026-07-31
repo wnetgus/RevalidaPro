@@ -903,7 +903,7 @@ Adicional (2026-07-23): **R041** (HIV — PrEP/PEP) — tentado 2x em produção
 | R089 | Pediatria | Constipação funcional: Critérios de Roma | BAIXO | não | LIBERADO | - | - | PENDENTE |  |
 | R090 | Pediatria | Convulsão febril simples: Critérios de benignidade | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R091 | Pediatria | Curvas de crescimento e sinais de alerta | BAIXO | não | LIBERADO | - | - | PENDENTE |  |
-| R092 | Pediatria | Aleitamento materno: Fissura, ingurgitamento | BAIXO | não | LIBERADO | - | - | PENDENTE |  |
+| R092 | Pediatria | Aleitamento materno: Fissura, ingurgitamento | BAIXO | não | LIBERADO | - | - | PENDENTE | Piloto controlado encerrado 2026-07-31 (ver `CHECKPOINT_PILOTO_CONTROLADO_R092_2026_07_30.md` seção 11): 2 chamadas reais, ambas rejeitadas (SA-4 antiga no Hosting DEV desatualizado; SA-3 no localhost pós-hotfix `83bdc03`), nenhuma persistida. Hotfix de normalização validado. Nenhuma nova tentativa autorizada. |
 | R093 | Pediatria | Alimentação complementar: Sinais de prontidão | BAIXO | não | LIBERADO | - | - | PENDENTE |  |
 | R094 | Pediatria | Puericultura: Calendário de consultas e triagens | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
 | R095 | Geriatria | Funcionalidade como eixo da decisão terapêutica | MEDIO | não | LIBERADO | - | - | PENDENTE |  |
@@ -1012,3 +1012,13 @@ A auditoria de governança numérica referenciada na seção 10 (achado sobre `v
 **Hotfix implementado** (código, sem execução): `src/components/RoboGerador.jsx` ganhou um painel administrativo DEV-only "Homologação Controlada DEV" com teto técnico real de **1 chamada de IA** por rodada — sem retry, sem regeneração automática, sem resumo automático (`gerarESalvarResumo` nunca é chamado neste modo). Geração e salvamento são ações manuais separadas; salvamento exige revisão humana explícita confirmada pelo operador antes de habilitar. `salvarQuestoes` ganhou a opção aditiva `semResumoAutomatico` (default `false`, preserva 100% do comportamento existente para o fluxo normal). Novo teste local `scripts/test-piloto-controlado-dev.js` (54/54 PASS, zero rede, zero IA real).
 
 **Geração real de R092 continua NÃO autorizada por esta missão.** Esta missão implementou e testou apenas o hotfix (código); nenhuma chamada de IA foi feita, nenhuma questão foi gerada, nenhum crédito foi consumido. A execução do piloto (1 chamada real, revisão humana, salvamento manual em `revalidapro-dev`) e o deploy do Hosting DEV com este hotfix são **missões futuras separadas**, cada uma exigindo autorização explícita própria.
+
+## 13. Fechamento do ciclo R092 (2026-07-31) — ponteiro
+
+A 1ª execução real, documentada em `CHECKPOINT_PILOTO_CONTROLADO_R092_2026_07_30.md`, seção 4-c, rejeitou a candidata por, entre outros motivos, `ano_diretriz`/`fonte_diretriz` preenchidos sem diretriz injetada — defeito de prompt comprovado. Uma cadeia de hardening separada (commits `a8aedb1`, `58d557a`, `6598050`, `83bdc03`) corrigiu esse defeito por normalização determinística em `validarLoteSA`, foi reauditada de forma independente e enviada a `origin/main`.
+
+Uma 2ª execução real (localhost, código pós-`83bdc03`) usou o mesmo tema do R092 e foi rejeitada pela REGRA SA-3 (posologia numérica sem diretriz) — a rejeição antiga de fonte/ano não reapareceu, confirmando a normalização. Nenhuma candidata foi salva. O hotfix foi em seguida publicado com sucesso no Hosting DEV (`firebase deploy --project revalidapro-dev --only hosting`), exclusivamente Hosting, produção intocada.
+
+**Resultado formal:** "Hotfix de normalização validado; R092 rejeitado por regra independente SA-3; sem persistência." **R092 está encerrado** — nenhuma nova tentativa autorizada. Narrativa completa, cadeia de commits, evidências de deploy e decisão de governança em `CHECKPOINT_PILOTO_CONTROLADO_R092_2026_07_30.md` seção 11 (fonte primária desta atualização — não duplicar detalhes aqui).
+
+`SA_2026_2_Q29` permanece intocada, fora do escopo deste fechamento. Próximo passo recomendado, não executado: planejar Q29 separadamente, começando por inspeção read-only.
