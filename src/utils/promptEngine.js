@@ -903,6 +903,47 @@ const _validarDicaMestre = (texto) => {
   };
 };
 
+// ─── NORMALIZAÇÃO DETERMINÍSTICA DE FONTE/ANO SEM GROUNDING (REGRA SA-4) ─────
+// Achado real R092: 3 execuções reais e 2 rodadas de hardening TEXTUAL do
+// prompt (REGRA SA-4 explícita, frase de precedência sobre REGRA 2/DIRETRIZES
+// ATUALIZADAS, bloco "DIRETRIZ CONTROLADA — AUSENTE" saliente no user prompt)
+// não impediram o modelo de preencher ano_diretriz/fonte_diretriz sem
+// grounding — o fingerprint textual da fabricação mudou a cada rodada, mas a
+// fabricação em si persistiu (desobediência estocástica residual do Haiku a
+// uma instrução condicional negativa). Em vez de insistir em mais prosa,
+// estes dois campos — únicos, estruturados, fora de texto livre — são
+// normalizados de forma determinística: sem grounding, SEMPRE null/"",
+// independente do que o modelo escreveu. Isso elimina para sempre a rejeição
+// por ESTE motivo específico (sem gastar crédito real repetindo o padrão já
+// documentado 3 vezes) sem tocar em nenhuma outra validação — SA-1
+// (anti-pistas), SA-3 (posologia) e o restante de SA-4 (termos absolutos,
+// percentuais, "desde AAAA") continuam rodando sobre texto livre normalmente
+// e continuam podendo rejeitar a mesma candidata por outros motivos.
+// Com grounding=true, não faz nada — comportamento pré-existente intacto
+// (não há, hoje, checagem de que fonte/ano batem com o bloco injetado; esta
+// missão não introduz uma).
+const _normalizarDiretrizSemGrounding = (q, grounding) => {
+  if (grounding) return q;
+  // Já canônico (inclui o caso comum: campos ausentes/undefined não contam
+  // como "fabricados", só como não preenchidos) — nada a fazer, sem cópia.
+  if (q?.ano_diretriz === null && q?.fonte_diretriz === "") return q;
+
+  const anoInventado = q?.ano_diretriz !== null && q?.ano_diretriz !== undefined && q?.ano_diretriz !== "";
+  const fonteInventada = typeof q?.fonte_diretriz === "string" && q.fonte_diretriz.trim() !== "";
+  const normalizado = { ...q, ano_diretriz: null, fonte_diretriz: "" };
+  if (anoInventado || fonteInventada) {
+    // Sinal diagnóstico não-persistido: salvarQuestoes (RoboGerador.jsx) monta
+    // o documento final por allowlist de campos nomeados (nunca faz spread de
+    // `q`), então este campo extra nunca alcança o Firestore — existe só para
+    // quem quiser inspecionar/logar que o modelo tentou fabricar fonte/ano.
+    normalizado._diagnosticoGroundingSA4 = {
+      anoDescartado: q?.ano_diretriz ?? null,
+      fonteDescartada: q?.fonte_diretriz ?? "",
+    };
+  }
+  return normalizado;
+};
+
 export const validarLoteSA = (lista, { abcd = false, grounding = false, groundingTexto = "" } = {}) => {
   const letras = abcd ? ["a", "b", "c", "d"] : ["a", "b", "c", "d", "e"];
   const validas = [];
@@ -910,8 +951,11 @@ export const validarLoteSA = (lista, { abcd = false, grounding = false, groundin
 
   for (const qOriginal of Array.isArray(lista) ? lista : []) {
     const motivos = [];
-    // Cópia rasa — a única mutação permitida é a normalização segura da Dica Mestre.
-    const q = { ...qOriginal };
+    // Cópia rasa, já com a normalização determinística de fonte/ano aplicada
+    // (sem grounding, ano_diretriz/fonte_diretriz SEMPRE chegam null/"" a
+    // partir daqui, mesmo que o modelo tenha tentado preenchê-los). Demais
+    // mutações permitidas: normalização segura da Dica Mestre, abaixo.
+    const q = _normalizarDiretrizSemGrounding({ ...qOriginal }, grounding);
     const gabaritoLower = String(q?.gabarito || "").toLowerCase();
 
     if (abcd && q?.alts?.e?.texto) motivos.push("contém alternativa E em questão do formato ABCD");
@@ -1007,13 +1051,10 @@ export const validarLoteSA = (lista, { abcd = false, grounding = false, groundin
             : 'conteúdo usa termo absoluto ("sempre"/"nunca"/"obrigatório"/"em todos os casos"/"patognomônico"/"padrão-ouro"/percentual específico/"desde AAAA") sem diretriz controlada injetada — proibido pela REGRA SA-4'
         );
       }
-      // Fabricação de fonte/ano de diretriz sem grounding (REGRA SA-4) — o modelo
-      // não pode "lembrar" um guideline e apresentá-lo como verificado nesta geração.
-      const anoInventado = q?.ano_diretriz !== null && q?.ano_diretriz !== undefined && q?.ano_diretriz !== "";
-      const fonteInventada = typeof q?.fonte_diretriz === "string" && q.fonte_diretriz.trim() !== "";
-      if (anoInventado || fonteInventada) {
-        motivos.push(`campo "ano_diretriz"/"fonte_diretriz" preenchido (${q?.ano_diretriz ?? "-"} / "${q?.fonte_diretriz ?? "-"}") sem diretriz controlada injetada — proibido pela REGRA SA-4, deveria ficar null/""`);
-      }
+      // Fabricação de fonte/ano de diretriz sem grounding (REGRA SA-4): não é
+      // mais motivo de rejeição — normalizada deterministicamente para
+      // null/"" em _normalizarDiretrizSemGrounding, antes de `q` existir
+      // aqui em cima. Ver comentário daquela função para o histórico.
     }
 
     // ── Suporte numérico estrito quando HÁ grounding (saneamento final) ──
