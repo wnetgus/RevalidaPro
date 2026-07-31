@@ -207,27 +207,37 @@ teste("10. Nenhum tema do curso (One Health, clima, arboviroses, geriatria, inte
 });
 
 // 11. Ausência de alteração em chamadas/retry/fallback/persistência/resumo —
-// auditado por blast radius real do COMMIT HEAD em relação ao seu pai (não do
+// auditado por blast radius real do COMMIT HISTÓRICO DE HARDENING (não do
 // working tree — em um checkout limpo pós-commit, `git diff --name-only`
-// retorna vazio, o que quebrava este teste). `git diff-tree` audita o
-// conteúdo do commit em si, funcionando tanto antes quanto depois do commit.
-teste("11. blast radius real do commit HEAD (git diff-tree) restrito aos dois arquivos autorizados — nada de fluxo/retry/fallback/persistência/resumo foi tocado", () => {
+// retorna vazio, o que quebrava este teste antes; nem do `HEAD` dinâmico —
+// achado real: um commit legítimo posterior (58d557a, grounding do user
+// prompt) moveu HEAD para um commit com OUTRO conjunto de arquivos, o que
+// fazia este teste falhar por motivo espúrio, sem nenhuma regressão real em
+// SA-6/SA-7). `git diff-tree` audita o conteúdo de um commit específico
+// contra seu pai — aqui, fixado neste hash nomeado, nunca em `HEAD` — para
+// que commits legítimos futuros no topo do histórico nunca invalidem esta
+// asserção. Se um dia o hardening de SA-6/SA-7 precisar mesmo ser revisto
+// (novo commit tocando aqueles arquivos), este teste continua auditando o
+// commit histórico correto — a checagem não fica "cega" a alterações reais,
+// só deixa de depender de qual commit está no topo agora.
+const COMMIT_HARDENING_R092_SA6_SA7 = "a8aedb1824054bdd968f1e6056475109cf857deb";
+teste(`11. blast radius real do commit histórico de hardening (${COMMIT_HARDENING_R092_SA6_SA7}, via git diff-tree) restrito aos dois arquivos autorizados — nada de fluxo/retry/fallback/persistência/resumo foi tocado`, () => {
   let arquivosDoCommit;
   try {
     const saida = execFileSync(
       "git",
-      ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+      ["diff-tree", "--no-commit-id", "--name-only", "-r", COMMIT_HARDENING_R092_SA6_SA7],
       { cwd: _raiz, encoding: "utf8" }
     );
     arquivosDoCommit = saida.split("\n").map((l) => l.trim()).filter(Boolean).sort();
   } catch (e) {
-    throw new Error(`não foi possível rodar git diff-tree --no-commit-id --name-only -r HEAD: ${e.message}`);
+    throw new Error(`não foi possível rodar git diff-tree --no-commit-id --name-only -r ${COMMIT_HARDENING_R092_SA6_SA7}: ${e.message}`);
   }
   const esperado = ["scripts/test-hardening-r092-sa6-sa7.js", "src/utils/promptEngine.js"].sort();
   assert.deepEqual(
     arquivosDoCommit,
     esperado,
-    `esperava exatamente ${JSON.stringify(esperado)} no commit HEAD, encontrado: ${JSON.stringify(arquivosDoCommit)}`
+    `esperava exatamente ${JSON.stringify(esperado)} no commit HISTÓRICO de hardening ${COMMIT_HARDENING_R092_SA6_SA7} (não no HEAD atual), encontrado: ${JSON.stringify(arquivosDoCommit)}`
   );
   for (const arquivoProibido of [
     "src/components/RoboGerador.jsx",
