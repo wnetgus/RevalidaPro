@@ -119,9 +119,32 @@ const _bucketResultadoResumoIsolado = (status) => {
 // estado/refs do componente. iniciarRobo continua responsável por resolver
 // blocoDir (cache de diretrizes, diretrizCacheRef) antes de chamar esta
 // função — o cache em si NÃO foi extraído, para não alterar o comportamento
-// de memoização do fluxo normal. Mesmo texto/formato de antes, byte a byte.
+// de memoização do fluxo normal.
+//
+// Grounding explícito no user prompt (achado real R092, 2ª rejeição pós-SA-4):
+// a linha antiga "- Diretrizes atualizadas 2023–2025" era incondicional — o
+// user prompt (mensagem de maior recência real na chamada, depois de todo o
+// system) nunca declarava a AUSÊNCIA de diretriz controlada, só o SILÊNCIO
+// de blocoDir="". O modelo preencheu ano_diretriz/fonte_diretriz mesmo sem
+// grounding, citando anos dentro do intervalo "2023–2025" sugerido aqui. Sem
+// diretriz controlada, a linha vira um bloco de ausência tão saliente quanto
+// o bloco de presença (montarBlocoDiretriz, mesmo estilo ━━━/✗/✓). Com
+// diretriz controlada, a linha genérica é substituída por uma que subordina
+// fonte/ano exclusivamente ao bloco já injetado — nunca autoriza fonte/ano
+// externos. Não altera _SCHEMA_QUESTAO_SA_ABCD, SA-4 nem validarLoteSA
+// (promptEngine.js) — o defeito estava só neste user prompt.
 const construirPromptTemaSA = (tema, areaAtual, questoesPorTema, blocoDir) => {
   const temDetalhamento = /[(),;]|—|-{1,2}|\b(incluindo|especialmente|tratamento|diagnóstico|classificação|complicaç|abordagem|conduta|farmacológ|não.farmacológ|critério)\b/i.test(tema);
+  const temGrounding = Boolean(blocoDir && blocoDir.trim());
+  const linhaDiretriz = temGrounding
+    ? `- Fonte/ano: use exclusivamente a DIRETRIZ CONTROLADA injetada acima — não complemente nem substitua por outra fonte ou ano do seu conhecimento.`
+    : `━━━ DIRETRIZ CONTROLADA — AUSENTE NESTA GERAÇÃO ━━━
+Não há bloco de diretriz controlada verificado para este tema.
+✗ PROIBIDO citar, inventar ou inferir fonte, sociedade, órgão, documento, diretriz, guideline ou ano — mesmo que pareça real, atualizado ou familiar.
+✗ PROIBIDO usar a instrução geral de "diretrizes atualizadas" ou os exemplos do prompt de sistema como autorização para preencher esses campos.
+✓ OBRIGATÓRIO preencher: "ano_diretriz": null
+✓ OBRIGATÓRIO preencher: "fonte_diretriz": ""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`;
 
   return `Gere exatamente ${questoesPorTema} questõe${questoesPorTema > 1 ? "s" : ""} de múltipla escolha para o Revalida INEP.
 
@@ -139,7 +162,7 @@ ex.: diagnóstico, tratamento, complicação, critério de internação, rastrea
 `}
 Requisitos gerais:
 - Caso clínico realista (UBS, UPA, emergência ou enfermaria)
-- Diretrizes atualizadas 2023–2025
+${linhaDiretriz}
 - Distratores plausíveis (pegadinhas de prova, não alternativas óbvias)
 - Diversidade: diferentes faixas etárias, gêneros e contextos clínicos${questoesPorTema > 1 ? "\n- NÃO repita cenário ou conduta entre questões" : ""}`;
 };
