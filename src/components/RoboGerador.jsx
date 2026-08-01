@@ -30,6 +30,7 @@ import {
   avaliarBloqueioSeguro,
 } from "../config/diretrizesControladas";
 import { statusRecorteSA } from "../config/recortesStatusSA";
+import { analisarInventarioSA } from "../utils/inventarioSA";
 
 // ─── CONSTANTES DE TEMPORIZAÇÃO ────────────────────────────────────────────────
 // 90s entre temas: buffer para a Cloud Function (timeout 180s) e evitar
@@ -367,6 +368,16 @@ const RoboGerador = ({ onQuestoesSalvas }) => {
   const [pcSalvando, setPcSalvando]             = useState(false);
   const [pcSalvo, setPcSalvo]                   = useState(null); // { docId } | null
   const [pcErroSalvar, setPcErroSalvar]         = useState("");
+
+  // ── Estados do Inventário Read-Only DEV (temporário) ────────────────────
+  // Ferramenta isolada de propósito: reconcilia a divergência documental de
+  // Q1–Q29 (CONTROLE_PRODUCAO_SUPERAPOSTAS_2026_2.md) por leitura real do
+  // Firestore, antes da produção em lote. Não compartilha estado com o
+  // Piloto Controlado nem com o robô normal — só lê, nunca escreve.
+  const [invRodando, setInvRodando]     = useState(false);
+  const [invErro, setInvErro]           = useState("");
+  const [invResultado, setInvResultado] = useState(null); // objeto de analisarInventarioSA() | null
+  const invEmExecucaoRef = useRef(false); // trava síncrona — mesmo padrão de pcEmExecucaoRef acima
   const pcEmExecucaoRef  = useRef(false); // trava síncrona contra duplo clique/execução concorrente — geração
   const pcSalvandoRef    = useRef(false); // trava síncrona contra duplo clique/execução concorrente — salvamento
 
@@ -1386,6 +1397,62 @@ Requisitos gerais:
     }
   };
 
+  // ── INVENTÁRIO READ-ONLY DEV (temporário) ───────────────────────────────
+  // Objetivo único: reconciliar o inventário real da edição 2026_2 antes da
+  // produção em lote, resolvendo a divergência documental de Q1–Q29 sem
+  // depender de leitura manual do Firestore Console. Consulta EXCLUSIVAMENTE
+  // `questoes` com `edicao == "2026_2"` — nenhuma outra coleção (em
+  // particular, nunca `teorias`), nenhuma escrita (setDoc/addDoc/updateDoc/
+  // deleteDoc/writeBatch/transaction), nenhuma chamada de IA. Fail-closed:
+  // o handler reconfirma ambienteDevAutorizado() mesmo já estando atrás do
+  // gate de renderização (mesmo padrão em duas camadas do Piloto Controlado
+  // acima) — nunca executa fora de revalidapro-dev, mesmo se o botão vazar
+  // para o DOM por algum motivo.
+  const gerarInventarioReadOnlySA = async () => {
+    if (!ambienteDevAutorizado(FIREBASE_PROJECT_ID)) {
+      setInvErro("Ambiente não autorizado — inventário só opera em revalidapro-dev.");
+      return;
+    }
+    if (invEmExecucaoRef.current) return; // trava síncrona — ignora clique duplo/concorrente
+    invEmExecucaoRef.current = true;
+    setInvRodando(true);
+    setInvErro("");
+    setInvResultado(null);
+    try {
+      const snap = await getDocs(
+        query(collection(db, "questoes"), where("edicao", "==", "2026_2"))
+      );
+      // Extração read-only — só os campos pedidos, nenhuma mutação do
+      // documento original, nenhum campo interno/sensível copiado.
+      const docs = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          documentId:    d.id,
+          id:            data.id ?? null,
+          numeroQuestao: typeof data.numeroQuestao === "number" ? data.numeroQuestao : null,
+          edicao:        data.edicao ?? null,
+          materia:       data.materia ?? null,
+          tema_mestre:   data.tema_mestre ?? null,
+          subtema:       data.subtema ?? null,
+          gabarito:      data.gabarito ?? null,
+          status:        data.status ?? null,
+          recorteId:     data.recorteId ?? null,
+          // schema real grava `criadoEm` (serverTimestamp) — exposto aqui
+          // como createdAt só para nomenclatura do inventário, sem alterar
+          // o documento de origem.
+          createdAt:     data.createdAt ?? data.criadoEm ?? null,
+          updatedAt:     data.updatedAt ?? null,
+        };
+      });
+      setInvResultado(analisarInventarioSA(docs));
+    } catch (e) {
+      setInvErro(`Erro na consulta read-only: ${e.message}`);
+    } finally {
+      invEmExecucaoRef.current = false;
+      setInvRodando(false);
+    }
+  };
+
   // Reset controlado — nunca chama IA, nunca acessa Firestore, nunca salva.
   // Só funciona fora de execução (geração ou salvamento em andamento). Nunca
   // é acionado automaticamente após falha — só por ação humana explícita.
@@ -2096,6 +2163,119 @@ Requisitos gerais:
           <p style={{ fontSize: "11px", color: "#64748b", fontWeight: "700", margin: 0 }}>
             ⛔ Homologação Controlada DEV — indisponível (este controle só opera no ambiente DEV, revalidapro-dev).
           </p>
+        </div>
+      )}
+
+      {/* ── INVENTÁRIO READ-ONLY DEV (TEMPORÁRIO) ────────────────────────────
+          Ferramenta temporária, DEV-only, estritamente read-only, criada
+          para reconciliar a divergência documental de Q1–Q29 registrada em
+          CONTROLE_PRODUCAO_SUPERAPOSTAS_2026_2.md antes da produção em lote.
+          Remover quando a reconciliação estiver concluída e documentada. */}
+      {ambienteDevAutorizado(FIREBASE_PROJECT_ID) && (
+        <div style={{
+          marginBottom: "20px", borderRadius: "16px", overflow: "hidden",
+          background: "rgba(56,189,248,0.05)",
+          border: "2px solid rgba(56,189,248,0.4)",
+          padding: "16px",
+        }}>
+          <h4 style={{ display: "flex", alignItems: "center", gap: "8px", color: "#f1f5f9", fontSize: "14px", fontWeight: "900", margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.3px" }}>
+            <FaSearch size={14} color="#38bdf8" /> Inventário Read-Only DEV (temporário)
+          </h4>
+
+          <p style={{ fontSize: "11px", color: "#94a3b8", margin: "0 0 6px", lineHeight: 1.6 }}>
+            Ferramenta temporária, exclusiva de <strong>revalidapro-dev</strong>, criada para reconciliar o
+            inventário real da edição 2026_2 antes da produção em lote.
+          </p>
+          <p style={{ fontSize: "11px", color: "#e2e8f0", margin: "0 0 12px", lineHeight: 1.6 }}>
+            Consulta exclusivamente <code>questoes</code> onde <code>edicao == "2026_2"</code>.
+            <strong> Estritamente read-only</strong> — nenhuma escrita, atualização ou exclusão de documento.
+            Zero chamada de IA, zero crédito consumido.
+          </p>
+
+          <button
+            onClick={gerarInventarioReadOnlySA}
+            disabled={invRodando}
+            style={{
+              background: invRodando ? "#1e293b" : "linear-gradient(135deg,#0284c7,#38bdf8)",
+              color: invRodando ? "#475569" : "#fff",
+              border: "none", borderRadius: "10px", padding: "9px 16px", fontSize: "12px", fontWeight: "800",
+              cursor: invRodando ? "not-allowed" : "pointer",
+              display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px",
+            }}
+          >
+            {invRodando ? <><FaSpinner style={{ animation: "spin 1s linear infinite" }} size={11} /> Consultando…</> : <><FaSearch size={11} /> Gerar inventário read-only</>}
+          </button>
+
+          {invErro && (
+            <p style={{ fontSize: "11px", color: "#f87171", fontWeight: "700", margin: "0 0 10px" }}>⚠ {invErro}</p>
+          )}
+
+          {invResultado && (
+            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: "12px", padding: "12px 14px", fontSize: "11px", lineHeight: 1.6 }}>
+              <p style={{ color: "#34d399", fontWeight: "800", margin: "0 0 10px" }}>
+                ✅ Consulta read-only — nenhum documento foi alterado
+              </p>
+
+              <p style={{ color: "#e2e8f0", margin: "0 0 4px" }}>Total encontrado: <strong>{invResultado.total}</strong></p>
+              <p style={{ color: "#e2e8f0", margin: "0 0 4px" }}>
+                numeroQuestao — menor: <strong>{invResultado.menor ?? "—"}</strong> · maior: <strong>{invResultado.maior ?? "—"}</strong>
+              </p>
+              <p style={{ color: invResultado.ausentes.length ? "#fbbf24" : "#e2e8f0", margin: "0 0 4px" }}>
+                Números ausentes: {invResultado.ausentes.length ? invResultado.ausentes.join(", ") : "nenhum"}
+              </p>
+              <p style={{ color: invResultado.duplicados.length ? "#f87171" : "#e2e8f0", margin: "0 0 4px" }}>
+                Números duplicados: {invResultado.duplicados.length ? invResultado.duplicados.join(", ") : "nenhum"}
+              </p>
+              <p style={{ color: invResultado.documentIdsDuplicados.length ? "#f87171" : "#e2e8f0", margin: "0 0 4px" }}>
+                IDs de documento duplicados: {invResultado.documentIdsDuplicados.length ? invResultado.documentIdsDuplicados.join(", ") : "nenhum"}
+              </p>
+              <p style={{ color: invResultado.idsDuplicados.length ? "#f87171" : "#e2e8f0", margin: "0 0 4px" }}>
+                Campos "id" duplicados: {invResultado.idsDuplicados.length ? invResultado.idsDuplicados.join(", ") : "nenhum"}
+              </p>
+              <p style={{ color: invResultado.semNumero.length ? "#fbbf24" : "#e2e8f0", margin: "0 0 10px" }}>
+                Documentos sem numeroQuestao: {invResultado.semNumero.length}
+              </p>
+
+              <div style={{ overflowX: "auto", marginBottom: "10px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "#94a3b8", borderBottom: "1px solid #1e293b" }}>
+                      <th style={{ padding: "4px 6px" }}>numeroQuestao</th>
+                      <th style={{ padding: "4px 6px" }}>id</th>
+                      <th style={{ padding: "4px 6px" }}>documentId</th>
+                      <th style={{ padding: "4px 6px" }}>materia</th>
+                      <th style={{ padding: "4px 6px" }}>tema_mestre</th>
+                      <th style={{ padding: "4px 6px" }}>gabarito</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invResultado.tabela.map((d) => (
+                      <tr key={d.documentId} style={{ borderBottom: "1px solid #1e293b", color: "#e2e8f0" }}>
+                        <td style={{ padding: "4px 6px" }}>{d.numeroQuestao ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{d.id ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{d.documentId}</td>
+                        <td style={{ padding: "4px 6px" }}>{d.materia ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{d.tema_mestre ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{d.gabarito ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p style={{ color: "#94a3b8", margin: "0 0 4px" }}>JSON copiável:</p>
+              <textarea
+                readOnly
+                value={invResultado.json}
+                style={{
+                  width: "100%", minHeight: "160px", background: "#020617", color: "#94a3b8",
+                  border: "1px solid #1e293b", borderRadius: "8px", padding: "8px",
+                  fontFamily: "monospace", fontSize: "10px", resize: "vertical",
+                }}
+                onClick={(e) => e.target.select()}
+              />
+            </div>
+          )}
         </div>
       )}
 
